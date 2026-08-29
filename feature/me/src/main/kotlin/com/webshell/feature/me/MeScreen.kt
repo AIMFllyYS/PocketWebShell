@@ -1,19 +1,15 @@
 package com.webshell.feature.me
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.net.Uri
-import android.os.Build
-import android.os.PowerManager
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,16 +17,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -40,21 +43,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/** 我的：所有控件都接入持久化设置或真实系统入口。 */
+/** “我的”一级菜单入口；点击进入对应二级页面。 */
+private enum class MeSection {
+    LAYOUT,
+    BACKGROUND,
+    ENGINE,
+    UPDATE_LOG,
+}
+
+/** 我的：一级菜单 + 二级设置页；运行中的后台会话固定置顶。 */
 @Composable
 fun MeScreen(
     onKeepAliveServiceChanged: (Boolean) -> Unit = {},
@@ -62,43 +73,55 @@ fun MeScreen(
 ) {
     val settingsState by viewModel.settings.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var notificationsGranted by remember {
-        mutableStateOf(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted -> notificationsGranted = granted }
-
-    fun refreshRuntimeState() {
-        val powerManager = context.getSystemService(PowerManager::class.java)
-        viewModel.refreshBatteryState(
-            powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true,
-        )
-        viewModel.refreshSessions()
-        notificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
-    }
+    var section by rememberSaveable { mutableStateOf<MeSection?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refreshRuntimeState()
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshSessions()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        refreshRuntimeState()
+        viewModel.refreshSessions()
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    BackHandler(enabled = section != null) { section = null }
+
+    when (section) {
+        null -> MeHome(
+            state = state,
+            onStopSession = viewModel::stopSession,
+            onOpenSection = { section = it },
+        )
+        MeSection.LAYOUT -> LayoutSettingsPage(
+            settings = settingsState,
+            viewModel = viewModel,
+            onBack = { section = null },
+        )
+        MeSection.BACKGROUND -> BackgroundSettingsPage(
+            state = state,
+            keepAliveEnabled = settingsState.keepAliveServiceEnabled,
+            onKeepAliveChanged = {
+                viewModel.setKeepAliveServiceEnabled(it)
+                onKeepAliveServiceChanged(it)
+            },
+            onBatteryState = viewModel::refreshBatteryState,
+            onBack = { section = null },
+        )
+        MeSection.ENGINE -> EngineInfoPage(
+            capabilities = state.capabilities,
+            onBack = { section = null },
+        )
+        MeSection.UPDATE_LOG -> UpdateLogPage(onBack = { section = null })
+    }
+}
+
+@Composable
+private fun MeHome(
+    state: MeUiState,
+    onStopSession: (String) -> Unit,
+    onOpenSection: (MeSection) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -107,109 +130,10 @@ fun MeScreen(
     ) {
         Text("我的", style = MaterialTheme.typography.headlineMedium)
         Text(
-            "桌面、后台与引擎状态",
+            "后台会话与设置中心",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(16.dp))
-
-        SectionCard(title = "主页布局") {
-            NumberSetting(
-                icon = Icons.Filled.GridView,
-                title = "每行图标数",
-                value = settingsState.gridColumns,
-                range = 3..6,
-                onValue = viewModel::setColumns,
-            )
-            NumberSetting(
-                icon = Icons.Filled.GridView,
-                title = "每页行数",
-                value = settingsState.gridRows,
-                range = 4..7,
-                onValue = viewModel::setRows,
-            )
-            NumberSetting(
-                icon = Icons.Filled.Info,
-                title = "图标大小",
-                value = settingsState.iconSizeDp,
-                range = 44..72,
-                suffix = " dp",
-                onValue = viewModel::setIconSize,
-            )
-            NumberSetting(
-                icon = Icons.Filled.Info,
-                title = "图标圆角",
-                value = settingsState.iconCornerRadiusPercent,
-                range = 0..50,
-                suffix = "%",
-                onValue = viewModel::setIconCorner,
-            )
-            ToggleRow(
-                title = "显示应用名称",
-                checked = settingsState.showLabels,
-                onCheckedChange = viewModel::setShowLabels,
-            )
-            ToggleRow(
-                title = "显示页面指示器",
-                checked = settingsState.showPageIndicator,
-                onCheckedChange = viewModel::setShowPageIndicator,
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        SectionCard(title = "后台与通知") {
-            SettingRow(
-                icon = Icons.Filled.BatterySaver,
-                title = if (state.batteryWhitelisted) "电池优化：已豁免" else "电池优化：受系统限制",
-                subtitle = if (state.batteryWhitelisted) {
-                    "系统限制更少，但厂商策略、内存压力仍可能暂停网页"
-                } else {
-                    "点按打开系统授权，可提高后台会话存活率"
-                },
-                onClick = {
-                    val directRequest = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                        .setData(Uri.parse("package:${context.packageName}"))
-                    val listSettings = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                    runCatching {
-                        context.startActivity(if (state.batteryWhitelisted) listSettings else directRequest)
-                    }.onFailure { context.startActivity(listSettings) }
-                },
-            ) {}
-            SettingRow(
-                icon = Icons.Filled.Notifications,
-                title = if (notificationsGranted) "通知：已允许" else "通知：未允许",
-                subtitle = "后台保活状态与停止入口会显示在通知中",
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                        !notificationsGranted
-                    ) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        context.startActivity(
-                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
-                        )
-                    }
-                },
-            ) {}
-            ToggleRow(
-                title = "增强保活服务",
-                subtitle = "仅对明确开启保活的网页应用生效；可随时关闭",
-                checked = settingsState.keepAliveServiceEnabled,
-                onCheckedChange = {
-                    viewModel.setKeepAliveServiceEnabled(it)
-                    onKeepAliveServiceChanged(it)
-                },
-            )
-            Text(
-                text = state.oemHint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-        }
-
         Spacer(Modifier.height(16.dp))
 
         SectionCard(title = "运行中的后台会话") {
@@ -242,7 +166,7 @@ fun MeScreen(
                                 maxLines = 1,
                             )
                         }
-                        OutlinedButton(onClick = { viewModel.stopSession(session.sessionId) }) {
+                        OutlinedButton(onClick = { onStopSession(session.sessionId) }) {
                             Text("结束")
                         }
                     }
@@ -253,28 +177,109 @@ fun MeScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        SectionCard(title = "WebView 引擎") {
-            Text(
-                "版本 ${state.capabilities.webViewVersion.orEmpty()}",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                "独立存储 Profile：${capabilityLabel(state.capabilities.multiProfile)} · " +
-                    "文档启动注入：${capabilityLabel(state.capabilities.documentStartJs)} · " +
-                    "算法深色：${capabilityLabel(state.capabilities.algorithmicDarkening)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 4.dp),
-            )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                MenuRow(
+                    icon = Icons.Filled.GridView,
+                    title = "主页布局",
+                    subtitle = "行列数、图标样式与页面指示",
+                    onClick = { onOpenSection(MeSection.LAYOUT) },
+                )
+                MenuDivider()
+                MenuRow(
+                    icon = Icons.Filled.BatterySaver,
+                    title = "后台与通知",
+                    subtitle = "电池优化、通知与增强保活",
+                    onClick = { onOpenSection(MeSection.BACKGROUND) },
+                )
+                MenuDivider()
+                MenuRow(
+                    icon = Icons.Filled.Public,
+                    title = "WebView 引擎",
+                    subtitle = "版本与能力支持",
+                    onClick = { onOpenSection(MeSection.ENGINE) },
+                )
+                MenuDivider()
+                MenuRow(
+                    icon = Icons.Filled.NewReleases,
+                    title = "项目更新日志",
+                    subtitle = "查看最近版本更新",
+                    onClick = { onOpenSection(MeSection.UPDATE_LOG) },
+                )
+            }
         }
         Spacer(Modifier.height(24.dp))
     }
 }
 
-private fun capabilityLabel(supported: Boolean): String = if (supported) "支持" else "降级"
+@Composable
+private fun MenuDivider() {
+    HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
+}
 
 @Composable
-private fun SectionCard(title: String, content: @Composable () -> Unit) {
+private fun MenuRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+/** 二级页面骨架：返回栏 + 标题 + 可滚动内容。 */
+@Composable
+internal fun DetailPage(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+            }
+            Text(title, style = MaterialTheme.typography.titleLarge)
+        }
+        Spacer(Modifier.height(12.dp))
+        content()
+    }
+}
+
+@Composable
+internal fun SectionCard(title: String, content: @Composable () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Text(
@@ -289,7 +294,7 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingRow(
+internal fun SettingRow(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
@@ -319,8 +324,10 @@ private fun SettingRow(
     }
 }
 
+/** 数值滑杆设置：细圆角渐变轨道 + 描边圆形滑块。 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NumberSetting(
+internal fun NumberSetting(
     icon: ImageVector,
     title: String,
     value: Int,
@@ -339,12 +346,54 @@ private fun NumberSetting(
             onValueChange = { onValue(it.toInt()) },
             valueRange = range.first.toFloat()..range.last.toFloat(),
             steps = (range.count() - 2).coerceAtLeast(0),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp),
+            thumb = {
+                Box(
+                    Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                )
+            },
+            track = { sliderState ->
+                val span = sliderState.valueRange.endInclusive - sliderState.valueRange.start
+                val fraction = if (span > 0f) {
+                    ((sliderState.value - sliderState.valueRange.start) / span).coerceIn(0f, 1f)
+                } else {
+                    0f
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.tertiary,
+                                    ),
+                                ),
+                            ),
+                    )
+                }
+            },
         )
     }
 }
 
 @Composable
-private fun ToggleRow(
+internal fun ToggleRow(
     title: String,
     subtitle: String? = null,
     checked: Boolean,
