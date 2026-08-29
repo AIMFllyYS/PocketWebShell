@@ -14,7 +14,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -537,129 +536,131 @@ private fun BrowserTopBar(
     progress: Int,
 ) {
     Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-        BoxWithConstraints {
-            val compact = maxWidth < 420.dp
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = onBack, enabled = canGoBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                    if (!compact) {
-                        IconButton(onClick = onForward, enabled = canGoForward) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "前进")
-                        }
-                    }
-                    OutlinedTextField(
-                        value = urlInput,
-                        onValueChange = onUrlInputChanged,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(vertical = 2.dp),
-                        singleLine = true,
-                        placeholder = { Text("输入网址或搜索") },
-                        shape = RoundedCornerShape(22.dp),
-                        textStyle = MaterialTheme.typography.bodySmall,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { onGo() }),
-                        trailingIcon = {
-                            IconButton(onClick = if (loading) onStop else onRefresh) {
-                                Icon(
-                                    if (loading) Icons.Filled.Stop else Icons.Filled.Refresh,
-                                    contentDescription = if (loading) "停止" else "刷新",
-                                )
-                            }
-                        },
+        Column {
+            // 单行紧凑顶栏：地址栏与标签按钮统一 46dp 高，操作入口收进右侧菜单
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack, enabled = canGoBack, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "返回",
+                        modifier = Modifier.size(22.dp),
                     )
-                    Surface(
-                        onClick = onTabSwitcher,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .size(48.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) { TabCountBadge(tabCount) }
-                    }
-                    Box {
-                        IconButton(onClick = { onMenuToggle(!menuExpanded) }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "菜单")
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { onMenuToggle(false) },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("新标签页") },
-                                leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                                onClick = { onMenuToggle(false); onNewTab() },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("桌面版") },
-                                leadingIcon = {
-                                    Icon(Icons.Filled.DesktopWindows, contentDescription = null)
-                                },
-                                trailingIcon = {
-                                    if (desktopMode) Icon(Icons.Filled.Check, contentDescription = "已开启")
-                                },
-                                onClick = onDesktopMode,
-                            )
-                            DropdownMenuItem(
-                                text = { Text("历史") },
-                                leadingIcon = { Icon(Icons.Filled.History, contentDescription = null) },
-                                onClick = onHistory,
-                            )
-                            DropdownMenuItem(
-                                text = { Text("收藏夹") },
-                                leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null) },
-                                onClick = onBookmarks,
-                            )
-                            DropdownMenuItem(
-                                text = { Text("关闭全部标签") },
-                                leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
-                                onClick = onCloseAllTabs,
-                            )
-                        }
-                    }
                 }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                IconButton(
+                    onClick = onForward,
+                    enabled = canGoForward,
+                    modifier = Modifier.size(40.dp),
                 ) {
-                    IconButton(onClick = onBookmark) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "前进",
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                OutlinedTextField(
+                    value = urlInput,
+                    onValueChange = onUrlInputChanged,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp),
+                    singleLine = true,
+                    placeholder = { Text("输入网址或搜索") },
+                    shape = RoundedCornerShape(23.dp),
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { onGo() }),
+                    trailingIcon = {
+                        IconButton(onClick = if (loading) onStop else onRefresh) {
+                            Icon(
+                                if (loading) Icons.Filled.Stop else Icons.Filled.Refresh,
+                                contentDescription = if (loading) "停止" else "刷新",
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    },
+                )
+                Surface(
+                    onClick = onTabSwitcher,
+                    modifier = Modifier
+                        .padding(start = 6.dp)
+                        .size(46.dp),
+                    shape = RoundedCornerShape(23.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center) { TabCountBadge(tabCount) }
+                }
+                Box {
+                    IconButton(onClick = { onMenuToggle(!menuExpanded) }, modifier = Modifier.size(40.dp)) {
                         Icon(
-                            if (bookmarked) Icons.Filled.Star else Icons.Filled.StarBorder,
-                            contentDescription = if (bookmarked) "取消收藏" else "收藏",
-                            tint = if (bookmarked) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            Icons.Filled.MoreVert,
+                            contentDescription = "菜单",
+                            modifier = Modifier.size(22.dp),
                         )
                     }
-                    IconButton(onClick = onFind) {
-                        Icon(Icons.Filled.FindInPage, contentDescription = "查找")
-                    }
-                    if (compact) {
-                        IconButton(onClick = onForward, enabled = canGoForward) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "前进")
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onNewTab) {
-                        Icon(Icons.Filled.Add, contentDescription = null)
-                        Text("新标签")
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { onMenuToggle(false) },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(if (bookmarked) "取消收藏" else "收藏本页") },
+                            leadingIcon = {
+                                Icon(
+                                    if (bookmarked) Icons.Filled.Star else Icons.Filled.StarBorder,
+                                    contentDescription = null,
+                                    tint = if (bookmarked) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            onClick = { onMenuToggle(false); onBookmark() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("页内查找") },
+                            leadingIcon = { Icon(Icons.Filled.FindInPage, contentDescription = null) },
+                            onClick = { onMenuToggle(false); onFind() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("新标签页") },
+                            leadingIcon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                            onClick = { onMenuToggle(false); onNewTab() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("桌面版") },
+                            leadingIcon = {
+                                Icon(Icons.Filled.DesktopWindows, contentDescription = null)
+                            },
+                            trailingIcon = {
+                                if (desktopMode) Icon(Icons.Filled.Check, contentDescription = "已开启")
+                            },
+                            onClick = onDesktopMode,
+                        )
+                        DropdownMenuItem(
+                            text = { Text("历史") },
+                            leadingIcon = { Icon(Icons.Filled.History, contentDescription = null) },
+                            onClick = onHistory,
+                        )
+                        DropdownMenuItem(
+                            text = { Text("收藏夹") },
+                            leadingIcon = { Icon(Icons.Filled.Star, contentDescription = null) },
+                            onClick = onBookmarks,
+                        )
+                        DropdownMenuItem(
+                            text = { Text("关闭全部标签") },
+                            leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                            onClick = onCloseAllTabs,
+                        )
                     }
                 }
-                if (loading) {
-                    LinearProgressIndicator(
-                        progress = { progress / 100f },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+            }
+            if (loading) {
+                LinearProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
