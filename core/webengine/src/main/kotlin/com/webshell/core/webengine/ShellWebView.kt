@@ -344,7 +344,7 @@ class ShellWebView internal constructor(
             val request = DownloadManager.Request(url.toUri())
                 .setMimeType(mimeType)
                 .setTitle(fileName)
-                .setDescription("WebShell 下载")
+                .setDescription("玄览 下载")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
                 .addRequestHeader("User-Agent", userAgent)

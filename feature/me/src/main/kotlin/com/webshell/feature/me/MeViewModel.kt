@@ -27,7 +27,7 @@ private fun oemHintFor(manufacturer: String): String {
     val m = manufacturer.lowercase()
     return when {
         m.contains("xiaomi") || m.contains("redmi") ->
-            "小米/红米：请在 系统设置→应用管理→WebShell 中开启「自启动」，并在最近任务里下拉锁定本应用。"
+            "小米/红米：请在 系统设置→应用管理→玄览 中开启「自启动」，并在最近任务里下拉锁定本应用。"
         m.contains("huawei") || m.contains("honor") ->
             "华为/荣耀：请在 设置→电池→启动管理 中允许自启动与后台运行。"
         m.contains("oppo") || m.contains("realme") || m.contains("oneplus") ->

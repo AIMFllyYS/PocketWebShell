@@ -69,7 +69,7 @@ class WebHostService : Service() {
         )
         return NotificationCompat.Builder(this, KeepAliveRegistry.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_shell)
-            .setContentTitle("WebShell 后台运行中")
+            .setContentTitle("玄览 后台运行中")
             .setContentText(summaryText())
             .setOngoing(true)
             .setContentIntent(contentIntent)
