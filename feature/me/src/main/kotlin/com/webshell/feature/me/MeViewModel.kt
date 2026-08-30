@@ -1,5 +1,7 @@
 package com.webshell.feature.me
 
+import android.content.Context
+import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,12 +10,16 @@ import com.webshell.core.data.SettingsRepository
 import com.webshell.core.webengine.KeepAliveRegistry
 import com.webshell.core.webengine.WebViewCapabilities
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class MeUiState(
     val batteryWhitelisted: Boolean = false,
@@ -43,6 +49,7 @@ private fun oemHintFor(manufacturer: String): String {
 @HiltViewModel
 class MeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     val settings: StateFlow<HomeSettings> = settingsRepository.settings
@@ -85,5 +92,27 @@ class MeViewModel @Inject constructor(
 
     fun refreshSessions() {
         _uiState.value = _uiState.value.copy(runningSessions = KeepAliveRegistry.entries)
+    }
+
+    fun setThemeMode(mode: String) = viewModelScope.launch {
+        settingsRepository.setThemeMode(mode)
+    }
+
+    /** 把用户挑选的照片复制到应用私有目录并持久化路径（IO 在后台线程）。 */
+    fun setPhotoWallpaper(uri: Uri) = viewModelScope.launch {
+        val path = withContext(Dispatchers.IO) {
+            runCatching {
+                val dir = File(context.filesDir, "wallpaper").apply { mkdirs() }
+                val target = File(dir, "wallpaper_${System.currentTimeMillis()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                } ?: return@runCatching null
+                // 只保留当前壁纸，避免私有目录无限增长
+                dir.listFiles()?.forEach { if (it.absolutePath != target.absolutePath) it.delete() }
+                target.absolutePath
+            }.getOrNull()
+        } ?: return@launch
+        settingsRepository.setPhotoWallpaperPath(path)
+        settingsRepository.setThemeMode(com.webshell.core.data.THEME_MODE_PHOTO)
     }
 }

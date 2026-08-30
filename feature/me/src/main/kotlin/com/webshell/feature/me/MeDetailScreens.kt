@@ -8,17 +8,26 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.RoundedCorner
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,15 +35,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import coil3.compose.AsyncImage
 import com.webshell.core.data.HomeSettings
+import com.webshell.core.data.THEME_MODE_DARK
+import com.webshell.core.data.THEME_MODE_LIGHT
+import com.webshell.core.data.THEME_MODE_PHOTO
+import com.webshell.core.data.THEME_MODE_SYSTEM
 import com.webshell.core.webengine.WebViewCapabilities
+import java.io.File
 
 /** 二级页：主页布局（网格行列 + 图标样式）。 */
 @Composable
@@ -186,8 +204,8 @@ internal fun BackgroundSettingsPage(
             Text(
                 text = state.oemHint,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 6.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             )
         }
         Spacer(Modifier.height(24.dp))
@@ -201,7 +219,7 @@ internal fun EngineInfoPage(
     onBack: () -> Unit,
 ) {
     DetailPage(title = "WebView 引擎", onBack = onBack) {
-        SectionCard(title = "引擎信息") {
+        SectionCard(title = "引擎信息", edgeToEdge = false) {
             Text(
                 "版本 ${capabilities.webViewVersion.orEmpty()}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -211,7 +229,7 @@ internal fun EngineInfoPage(
                     "文档启动注入：${capabilityLabel(capabilities.documentStartJs)} · " +
                     "算法深色：${capabilityLabel(capabilities.algorithmicDarkening)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
@@ -220,3 +238,105 @@ internal fun EngineInfoPage(
 }
 
 private fun capabilityLabel(supported: Boolean): String = if (supported) "支持" else "降级"
+
+/** 二级页：外观与主题（跟随系统/纯白/纯黑/照片壁纸）。 */
+@Composable
+internal fun AppearanceSettingsPage(
+    settings: HomeSettings,
+    viewModel: MeViewModel,
+    onBack: () -> Unit,
+) {
+    val pickWallpaper = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri -> if (uri != null) viewModel.setPhotoWallpaper(uri) }
+
+    DetailPage(title = "外观与主题", onBack = onBack) {
+        SectionCard(title = "主题模式") {
+            ThemeModeRow(
+                title = "跟随系统",
+                subtitle = "随系统深浅色自动切换",
+                selected = settings.themeMode == THEME_MODE_SYSTEM,
+                onClick = { viewModel.setThemeMode(THEME_MODE_SYSTEM) },
+            )
+            ThemeModeRow(
+                title = "纯白",
+                subtitle = "苹果式纯白基底，始终浅色",
+                selected = settings.themeMode == THEME_MODE_LIGHT,
+                onClick = { viewModel.setThemeMode(THEME_MODE_LIGHT) },
+            )
+            ThemeModeRow(
+                title = "纯黑",
+                subtitle = "苹果式纯黑基底，始终深色",
+                selected = settings.themeMode == THEME_MODE_DARK,
+                onClick = { viewModel.setThemeMode(THEME_MODE_DARK) },
+            )
+            ThemeModeRow(
+                title = "照片壁纸",
+                subtitle = "上传照片作为主页壁纸，并从照片提取主题色",
+                selected = settings.themeMode == THEME_MODE_PHOTO,
+                onClick = {
+                    if (settings.photoWallpaperPath.isNullOrBlank()) {
+                        pickWallpaper.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                        )
+                    } else {
+                        viewModel.setThemeMode(THEME_MODE_PHOTO)
+                    }
+                },
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        SectionCard(title = "壁纸") {
+            if (!settings.photoWallpaperPath.isNullOrBlank()) {
+                AsyncImage(
+                    model = File(settings.photoWallpaperPath!!),
+                    contentDescription = "当前壁纸预览",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                        .height(140.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+            }
+            SettingRow(
+                icon = Icons.Filled.Wallpaper,
+                title = if (settings.photoWallpaperPath.isNullOrBlank()) "选择照片" else "更换照片",
+                subtitle = "从相册挑选一张作为主页壁纸",
+                onClick = {
+                    pickWallpaper.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            ) {}
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun ThemeModeRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
