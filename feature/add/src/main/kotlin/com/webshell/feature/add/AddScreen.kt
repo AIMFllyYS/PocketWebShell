@@ -196,7 +196,7 @@ private fun InputStep(
         Text(
             "支持选择一个或多个 .html 文件，导入后离线可用",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.outline,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tab
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,6 +79,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -535,7 +538,7 @@ private fun BrowserTopBar(
     onCloseAllTabs: () -> Unit,
     progress: Int,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             // 单行紧凑顶栏：地址栏与标签按钮统一 46dp 高，操作入口收进右侧菜单
             Row(
@@ -562,19 +565,43 @@ private fun BrowserTopBar(
                         modifier = Modifier.size(22.dp),
                     )
                 }
-                OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = onUrlInputChanged,
+                // 自绘地址栏：BasicTextField + 胶囊容器，文本垂直居中，
+                // 不用 M3 OutlinedTextField（其固定内边距会在 46dp 高度下把文字截半）
+                Surface(
                     modifier = Modifier
                         .weight(1f)
                         .height(46.dp),
-                    singleLine = true,
-                    placeholder = { Text("输入网址或搜索") },
                     shape = RoundedCornerShape(23.dp),
-                    textStyle = MaterialTheme.typography.bodySmall,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(onGo = { onGo() }),
-                    trailingIcon = {
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 16.dp),
+                    ) {
+                        BasicTextField(
+                            value = urlInput,
+                            onValueChange = onUrlInputChanged,
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                            keyboardActions = KeyboardActions(onGo = { onGo() }),
+                            decorationBox = { innerTextField ->
+                                if (urlInput.isEmpty()) {
+                                    Text(
+                                        "输入网址或搜索",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                    )
+                                }
+                                innerTextField()
+                            },
+                        )
                         IconButton(onClick = if (loading) onStop else onRefresh) {
                             Icon(
                                 if (loading) Icons.Filled.Stop else Icons.Filled.Refresh,
@@ -582,15 +609,16 @@ private fun BrowserTopBar(
                                 modifier = Modifier.size(20.dp),
                             )
                         }
-                    },
-                )
+                    }
+                }
                 Surface(
                     onClick = onTabSwitcher,
                     modifier = Modifier
                         .padding(start = 6.dp)
                         .size(46.dp),
                     shape = RoundedCornerShape(23.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
                     Box(contentAlignment = Alignment.Center) { TabCountBadge(tabCount) }
                 }
@@ -760,7 +788,7 @@ private fun TabSwitcherSheet(
                     .padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("暂无标签页", color = MaterialTheme.colorScheme.outline)
+                Text("暂无标签页", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyVerticalGrid(
@@ -825,7 +853,7 @@ private fun TabCard(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .size(32.dp),
-                    tint = MaterialTheme.colorScheme.outline,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Icon(
@@ -850,7 +878,7 @@ private fun TabCard(
             Text(
                 tab.url.stripScheme(),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -892,7 +920,7 @@ private fun HistorySheet(
                     .padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("暂无历史记录", color = MaterialTheme.colorScheme.outline)
+                Text("暂无历史记录", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -911,7 +939,7 @@ private fun HistorySheet(
                         Icon(
                             Icons.Filled.Public,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -924,7 +952,7 @@ private fun HistorySheet(
                             Text(
                                 entry.url,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -968,7 +996,7 @@ private fun BookmarksSheet(
                     .padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("暂无收藏", color = MaterialTheme.colorScheme.outline)
+                Text("暂无收藏", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -1000,7 +1028,7 @@ private fun BookmarksSheet(
                             Text(
                                 bookmark.url,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1030,7 +1058,7 @@ private fun EmptyTabsPrompt(
             Icons.Filled.Public,
             contentDescription = null,
             modifier = Modifier.size(56.dp),
-            tint = MaterialTheme.colorScheme.outline,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
         Text("暂无标签页", style = MaterialTheme.typography.titleMedium)
@@ -1038,7 +1066,7 @@ private fun EmptyTabsPrompt(
         Text(
             "输入网址或新建标签页开始浏览",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.outline,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(16.dp))
         TextButton(onClick = onNewTab) { Text("新建标签页") }

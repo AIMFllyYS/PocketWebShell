@@ -56,16 +56,22 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.WebAppEntity
+import com.webshell.core.designsystem.theme.LocalPhotoWallpaperPath
+import java.io.File
 import kotlinx.coroutines.delay
 
 private const val FOLDER_HOVER_MILLIS = 500L
@@ -144,6 +150,25 @@ fun HomeScreen(
             .fillMaxSize()
             .onGloballyPositioned { rootOrigin = it.positionInRoot() },
     ) {
+        // 照片壁纸主题：壁纸铺底 + 可读性 scrim；不参与网格测量，见 docs/DESIGN.md
+        val wallpaperPath = LocalPhotoWallpaperPath.current
+        if (wallpaperPath != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(File(wallpaperPath))
+                    .size(1080)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.35f)),
+            )
+        }
+
         val widthPx = with(density) { maxWidth.toPx() }
         val iconSize = settings.iconSizeDp.dp.coerceAtMost(
             ((maxWidth - 24.dp) / settings.gridColumns) - 12.dp,
@@ -346,7 +371,7 @@ fun HomeScreen(
                 Text(
                     "点按添加，把常用网站放到桌面",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
