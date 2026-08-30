@@ -36,4 +36,10 @@ dependencies {
     debugApi(libs.compose.ui.tooling)
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.palette.ktx)
+    implementation(libs.coil.compose)
+    api(libs.haze)
+    api(libs.haze.materials)
+    implementation(project(":core:data"))
 }

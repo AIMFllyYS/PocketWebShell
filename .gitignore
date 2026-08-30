@@ -22,3 +22,8 @@ release-signing.properties
 
 # Locally generated release artifacts are uploaded to GitHub Releases.
 /dist/
+
+# IDE / temporary scratch directories
+/.trae/
+/.tmp/
+/build-alt/
