@@ -29,8 +29,9 @@ android {
         applicationId = "com.webshell.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // 版本计数已重置，规则见 docs/VERSIONING.md
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     signingConfigs {
@@ -94,4 +95,7 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
+
+    implementation(libs.haze)
+    implementation(libs.haze.materials)
 }

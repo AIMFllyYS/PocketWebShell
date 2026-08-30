@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -23,7 +24,15 @@ data class HomeSettings(
     val showPageIndicator: Boolean = true,
     val keepAliveServiceEnabled: Boolean = true,
     val batteryWhitelistAcknowledged: Boolean = false,
+    val themeMode: String = THEME_MODE_SYSTEM,
+    val photoWallpaperPath: String? = null,
 )
+
+/** 主题模式取值，见 docs/DESIGN.md */
+const val THEME_MODE_SYSTEM = "system"
+const val THEME_MODE_LIGHT = "light"
+const val THEME_MODE_DARK = "dark"
+const val THEME_MODE_PHOTO = "photo"
 
 @Singleton
 class SettingsRepository @Inject constructor(
@@ -38,6 +47,8 @@ class SettingsRepository @Inject constructor(
         val PAGE_INDICATOR = booleanPreferencesKey("page_indicator")
         val KEEP_ALIVE_SERVICE = booleanPreferencesKey("keep_alive_service")
         val BATTERY_ACK = booleanPreferencesKey("battery_whitelist_ack")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val PHOTO_WALLPAPER = stringPreferencesKey("photo_wallpaper_path")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
@@ -50,6 +61,8 @@ class SettingsRepository @Inject constructor(
             showPageIndicator = prefs[Keys.PAGE_INDICATOR] ?: true,
             keepAliveServiceEnabled = prefs[Keys.KEEP_ALIVE_SERVICE] ?: true,
             batteryWhitelistAcknowledged = prefs[Keys.BATTERY_ACK] ?: false,
+            themeMode = prefs[Keys.THEME_MODE] ?: THEME_MODE_SYSTEM,
+            photoWallpaperPath = prefs[Keys.PHOTO_WALLPAPER],
         )
     }
 
@@ -76,4 +89,12 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setBatteryWhitelistAcknowledged(value: Boolean) =
         context.settingsStore.edit { it[Keys.BATTERY_ACK] = value }
+
+    suspend fun setThemeMode(value: String) =
+        context.settingsStore.edit { it[Keys.THEME_MODE] = value }
+
+    suspend fun setPhotoWallpaperPath(value: String?) =
+        context.settingsStore.edit {
+            if (value == null) it.remove(Keys.PHOTO_WALLPAPER) else it[Keys.PHOTO_WALLPAPER] = value
+        }
 }

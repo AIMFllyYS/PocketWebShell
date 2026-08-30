@@ -17,7 +17,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.webshell.core.data.WebAppEntity
 
@@ -114,13 +113,13 @@ private fun IconFallback(title: String, size: Dp) {
     Box(
         modifier = Modifier
             .size(size)
-            .background(Color(0xFFE8F0FE)),
+            .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = title.trim().take(1).uppercase().ifEmpty { "?" },
-            color = Color(0xFF1A73E8),
-            fontSize = 20.sp,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
         )
     }
 }

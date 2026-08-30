@@ -181,6 +181,14 @@ A change is complete only when:
 - no secrets/generated build outputs are staged;
 - the final summary names changed areas, checks run and known limitations.
 
+## Project-specific specifications
+
+The following documents are authoritative and apply to every change in their domain:
+
+- `docs/DESIGN.md`: visual design baseline — Apple-style pure white/pure black color system, theme modes (system/light/dark/photo wallpaper), iOS Liquid Glass baseline for bottom navigation and floating layers, and the component-library selection principle (prefer mature open-source libraries, one unified library per capability, no reinventing the wheel).
+- `docs/VERSIONING.md`: version numbering rules — counting restarted from 0.0.0 (versionCode 1); the default and ONLY automatic increment is the third digit +1, with no carry (0.1.1000 → 0.1.1001); the first and second digits change ONLY on explicit user instruction; every version change must sync `CHANGELOG.md` and the in-app update log page.
+- `docs/PERFORMANCE.md`: performance budgets — at most one live blur backdrop (the bottom bar), blur radius ≤ 24dp equivalent, glass/wallpaper layers never affect measurement, background-thread image decoding and palette extraction, graceful degradation on API 29–32.
+
 ## Normative references
 
 - AGENTS.md open format: https://agents.md/
