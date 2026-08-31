@@ -6,10 +6,12 @@ import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.model.AppLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -26,6 +28,27 @@ class HomeViewModel @Inject constructor(
     val settings: StateFlow<HomeSettings> = settingsRepository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeSettings())
 
+    /**
+     * 自由摆放落子：把 cell（应用或文件夹）移动到 (toPage, toSlot)；
+     * 目标槽被占用则双方交换槽位。图标停在松手的网格位，不自动压实。
+     */
+    fun moveCellToSlot(draggedKey: String, toPage: Int, toSlot: Int, pageCapacity: Int) {
+        viewModelScope.launch {
+            val updates = HomePages.resolveSlotMove(
+                apps = apps.value,
+                draggedKey = draggedKey,
+                toPage = toPage,
+                toSlot = toSlot,
+                pageCapacity = pageCapacity,
+            )
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            val title = updates.firstOrNull { it.id == draggedKey || "folder-${it.folderId}" == draggedKey }?.title
+                ?: updates.first().title
+            AppLog.log("home", "移动「$title」到第 ${toPage + 1} 页第 ${toSlot + 1} 格")
+        }
+    }
+
     /** 把 app 移动到 (page, cellIndex)，并同页顺序压实 */
     fun moveApp(appId: String, toPage: Int, toCellIndex: Int) {
         viewModelScope.launch {
@@ -41,6 +64,7 @@ class HomeViewModel @Inject constructor(
                 entity.copy(homePage = toPage, homeCellIndex = index)
             }
             updates.forEach { dao.upsert(it) }
+            AppLog.log("home", "移动应用「${moved.title}」到第 ${toPage + 1} 页")
         }
     }
 
@@ -62,6 +86,7 @@ class HomeViewModel @Inject constructor(
             val insertAt = if (fromIndex < toIndex) toIndex - 1 else toIndex
             cells.add(insertAt.coerceIn(0, cells.size), moved)
             persistCellOrder(cells, pageCapacity)
+            AppLog.log("home", "重排「${moved.app.title}」至第 ${insertAt + 1} 格")
         }
     }
 
@@ -93,25 +118,51 @@ class HomeViewModel @Inject constructor(
                     ),
                 )
             }
+            AppLog.log("home", "创建文件夹（「${a.title}」+「${target.app.title}」）")
         }
     }
 
-    /** 文件夹解散：成员回到原页尾部 */
+    /** 文件夹解散：自动整理模式成员回到原页尾部；自由摆放模式从文件夹槽位起顺序占空槽。 */
     fun dissolveFolder(folderId: String) {
         viewModelScope.launch {
+            val settings = settingsRepository.settings.first()
+            if (!settings.autoArrangeHome) {
+                val updates = HomePages.resolveDissolve(
+                    apps = apps.value,
+                    folderId = folderId,
+                    pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
+                )
+                if (updates.isEmpty()) return@launch
+                dao.upsertAll(updates)
+                AppLog.log("home", "解散文件夹（${updates.size} 个成员）")
+                return@launch
+            }
             val members = apps.value.filter { it.folderId == folderId }
             val page = members.minOfOrNull { it.homePage } ?: return@launch
             members.forEachIndexed { index, entity ->
                 dao.upsert(entity.copy(folderId = null, homePage = page, homeCellIndex = -1 - index))
             }
+            AppLog.log("home", "解散文件夹（${members.size} 个成员）")
         }
     }
 
-    /** 从文件夹中移出单个应用 */
+    /** 从文件夹中移出单个应用：自由摆放模式放到文件夹旁的第一个空槽。 */
     fun removeFromFolder(appId: String) {
         viewModelScope.launch {
+            val settings = settingsRepository.settings.first()
+            if (!settings.autoArrangeHome) {
+                val updated = HomePages.resolveRemoveFromFolder(
+                    apps = apps.value,
+                    appId = appId,
+                    pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
+                ) ?: return@launch
+                dao.upsert(updated)
+                AppLog.log("home", "「${updated.title}」移出文件夹")
+                return@launch
+            }
             apps.value.firstOrNull { it.id == appId }?.let {
                 dao.upsert(it.copy(folderId = null, homeCellIndex = -1))
+                AppLog.log("home", "「${it.title}」移出文件夹")
             }
         }
     }
@@ -120,6 +171,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             apps.value.firstOrNull { it.id == appId }?.let {
                 dao.upsert(it.copy(desktopMode = !it.desktopMode))
+                AppLog.log("home", "「${it.title}」切换${if (!it.desktopMode) "桌面版" else "手机版"}")
             }
         }
     }
@@ -128,12 +180,26 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             apps.value.firstOrNull { it.id == appId }?.let {
                 dao.upsert(it.copy(keepAlive = !it.keepAlive))
+                AppLog.log("home", "「${it.title}」${if (!it.keepAlive) "开启" else "关闭"}后台保活")
             }
         }
     }
 
     fun delete(appId: String) {
-        viewModelScope.launch { dao.deleteById(appId) }
+        viewModelScope.launch {
+            val app = apps.value.firstOrNull { it.id == appId }
+            dao.deleteById(appId)
+            if (app != null) AppLog.log("home", "删除应用「${app.title}」")
+        }
+    }
+
+    /** 删除文件夹：连同全部成员应用一起删除。 */
+    fun deleteFolder(folderId: String) {
+        viewModelScope.launch {
+            val members = apps.value.filter { it.folderId == folderId }
+            members.forEach { dao.deleteById(it.id) }
+            AppLog.log("home", "删除文件夹（${members.size} 个成员）")
+        }
     }
 
     private suspend fun persistCellOrder(cells: List<HomeCell>, pageCapacity: Int) {
