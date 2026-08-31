@@ -116,7 +116,8 @@ fun ShellScreen(initialUrl: String? = null, immersive: Boolean = false) {
             }
 
             override fun onNewWindow(url: String) {
-                sessionKey = null
+                // 复用当前会话加载新窗口 URL，不再制造无人销毁的孤儿 browse-* 会话
+                sessionKey?.let { key -> WebViewPool.get(key)?.load(url) }
                 activeUrl = url
                 urlInput = url
             }

@@ -30,7 +30,7 @@ import androidx.webkit.WebViewFeature
 
 /**
  * "原生感"网页壳引擎：零浏览器 UI、下拉刷新容器、SPA 返回、外链路由、
- * 下载/上传/权限、独立 Profile 隔离、渲染进程自愈。
+ * 下载/上传/权限、可选独立 Profile 隔离（config.profileId）、渲染进程自愈。
  * 设计约束：必须在主线程创建与使用（WebView 要求）。
  * 对外暴露 [view]（装入布局）与 [webView]（WebView 能力）。
  */
@@ -43,6 +43,18 @@ class ShellWebView internal constructor(
     val sessionId: String = config.sessionId ?: "anon-${System.nanoTime()}"
 
     var listener: ShellListener? = null
+
+    /**
+     * 持久监听者：随会话存活，不随 Compose 组合摘除（ShellWebViewHost 出组合只清 listener）。
+     * 由 ViewModel 层注册/注销，承载按会话归属的状态写回（标题/URL/进度/返回栈）。
+     */
+    var sessionListener: ShellListener? = null
+
+    /** 事件分发：先持久 sessionListener，后临时 UI listener */
+    private inline fun notifyListeners(block: ShellListener.() -> Unit) {
+        sessionListener?.block()
+        listener?.block()
+    }
 
     private val assetLoader: WebViewAssetLoaderHolder = WebViewAssetLoaderHolder(context)
 
@@ -95,14 +107,13 @@ class ShellWebView internal constructor(
         }
 
         CookieManager.getInstance().setAcceptCookie(true)
-        if (config.thirdPartyCookies) {
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-        }
+        // 显式双向设置：true/false 都调用，避免跨实例状态泄漏（CookieManager 进程级共享）
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, config.thirdPartyCookies)
     }
 
     fun setDesktopMode(enabled: Boolean) {
         webView.settings.userAgentString =
-            if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else null
+            if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else WebEngineDefaults.MOBILE_USER_AGENT
         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
             runCatching {
                 WebSettingsCompat.setUserAgentMetadata(
@@ -120,11 +131,12 @@ class ShellWebView internal constructor(
     }
 
     private fun applyProfile() {
-        val sessionId = config.sessionId ?: return
+        // profileId 为 null 时使用 WebView 默认共享 Profile（不做任何切换）
+        val profileId = config.profileId ?: return
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
         runCatching {
-            androidx.webkit.ProfileStore.getInstance().getOrCreateProfile(sessionId)
-            WebViewCompat.setProfile(webView, sessionId)
+            androidx.webkit.ProfileStore.getInstance().getOrCreateProfile(profileId)
+            WebViewCompat.setProfile(webView, profileId)
         }
     }
 
@@ -170,22 +182,22 @@ class ShellWebView internal constructor(
         ): Boolean = routeUrl(request.url.toString())
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-            listener?.onPageStarted(url)
+            notifyListeners { onPageStarted(url) }
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
-            listener?.onCanGoBackChanged(view.canGoBack())
-            listener?.onCanGoForwardChanged(view.canGoForward())
+            notifyListeners { onCanGoBackChanged(view.canGoBack()) }
+            notifyListeners { onCanGoForwardChanged(view.canGoForward()) }
             super.doUpdateVisitedHistory(view, url, isReload)
         }
 
         override fun onPageCommitVisible(view: WebView, url: String) {
             reapplyInsetsIfNeeded()
-            listener?.onFirstPaint(url)
+            notifyListeners { onFirstPaint(url) }
         }
 
         override fun onPageFinished(view: WebView, url: String) {
-            listener?.onPageFinished(url)
+            notifyListeners { onPageFinished(url) }
             CookieManager.getInstance().flush()
         }
 
@@ -195,14 +207,14 @@ class ShellWebView internal constructor(
             error: WebResourceError,
         ) {
             if (request.isForMainFrame) {
-                listener?.onPageFinished(request.url.toString())
+                notifyListeners { onPageFinished(request.url.toString()) }
             }
         }
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
             // 不静默放行：拒绝并回调宿主展示拦截页，由用户显式决定
             handler.cancel()
-            listener?.onSslError(view.url ?: "", error.primaryError.toString()) { handler.proceed() }
+            notifyListeners { onSslError(view.url ?: "", error.primaryError.toString()) { handler.proceed() } }
         }
 
         override fun shouldInterceptRequest(
@@ -219,7 +231,7 @@ class ShellWebView internal constructor(
         ): Boolean {
             // 官方建议：不让宿主进程陪葬。记录 URL，标记恢复，宿主重建会话。
             pendingRecoveryUrl = view.url
-            listener?.onRenderProcessRecovered()
+            notifyListeners { onRenderProcessRecovered() }
             return true
         }
     }
@@ -227,11 +239,11 @@ class ShellWebView internal constructor(
     private inner class ShellChromeClient : WebChromeClient() {
 
         override fun onProgressChanged(view: WebView, newProgress: Int) {
-            listener?.onProgress(newProgress)
+            notifyListeners { onProgress(newProgress) }
         }
 
         override fun onReceivedTitle(view: WebView, title: String) {
-            listener?.onTitleReceived(title)
+            notifyListeners { onTitleReceived(title) }
         }
 
         override fun onCreateWindow(
@@ -248,7 +260,7 @@ class ShellWebView internal constructor(
                     v: WebView,
                     request: WebResourceRequest,
                 ): Boolean {
-                    listener?.onNewWindow(request.url.toString())
+                    notifyListeners { onNewWindow(request.url.toString()) }
                     return true
                 }
             }
@@ -269,21 +281,21 @@ class ShellWebView internal constructor(
             filePathCallback: ValueCallback<Array<Uri>>,
             fileChooserParams: FileChooserParams,
         ): Boolean {
-            listener?.onFileChooserRequested(fileChooserParams, filePathCallback)
+            notifyListeners { onFileChooserRequested(fileChooserParams, filePathCallback) }
             return true
         }
 
         override fun onPermissionRequest(request: PermissionRequest) {
-            listener?.onPermissionRequested(request)
+            notifyListeners { onPermissionRequested(request) }
         }
 
         override fun onGeolocationPermissionsShowPrompt(
             origin: String,
             callback: android.webkit.GeolocationPermissions.Callback,
         ) {
-            listener?.onGeolocationPrompt(origin) { allow, retain ->
+            notifyListeners { onGeolocationPrompt(origin) { allow, retain ->
                 callback.invoke(origin, allow, retain)
-            }
+            } }
         }
     }
 
@@ -318,14 +330,14 @@ class ShellWebView internal constructor(
     private fun launchExternal(url: String) {
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-        }.onFailure { listener?.onExternalLaunchFailed(url) }
+        }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
     }
 
     private fun launchIntentUri(url: String): Boolean {
         runCatching {
             val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
             context.startActivity(intent)
-        }.onFailure { listener?.onExternalLaunchFailed(url) }
+        }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
         return true
     }
 
@@ -336,7 +348,7 @@ class ShellWebView internal constructor(
         mimeType: String?,
     ) {
         if (url.startsWith("blob:")) {
-            listener?.onDownloadStarted("(blob)")
+            notifyListeners { onDownloadStarted("(blob)") }
             return
         }
         runCatching {
@@ -349,8 +361,8 @@ class ShellWebView internal constructor(
                 .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
                 .addRequestHeader("User-Agent", userAgent)
             context.getSystemService(DownloadManager::class.java).enqueue(request)
-            listener?.onDownloadStarted(fileName)
-        }.onFailure { listener?.onExternalLaunchFailed(url) }
+            notifyListeners { onDownloadStarted(fileName) }
+        }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
     }
 
     // ---------------------------------------------------------------- find in page
@@ -430,9 +442,16 @@ class ShellWebView internal constructor(
 
     fun currentUrl(): String? = webView.url
 
+    /** 直接加载 URL（供 onNewWindow 等场景复用当前会话） */
+    fun load(url: String) {
+        webView.loadUrl(url)
+    }
+
     fun goBack(): Boolean = if (webView.canGoBack()) {
         webView.goBack(); true
     } else false
+
+    fun canGoBack(): Boolean = webView.canGoBack()
 
     fun goForward(): Boolean = if (webView.canGoForward()) {
         webView.goForward(); true

@@ -54,7 +54,8 @@ fun ShellWebViewHost(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            // 会话保持在池中（保活/恢复的基础）；仅解除监听器
+            // 会话保持在池中（保活/恢复的基础）；仅解除临时 UI 监听器。
+            // sessionListener 是持久监听者，生命周期由 ViewModel 层管理，这里不动。
             shell.listener = null
         }
     }

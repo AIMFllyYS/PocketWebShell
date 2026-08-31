@@ -36,6 +36,7 @@ class ShellSessionController @Inject constructor(
         }
         return ShellConfig(
             sessionId = app.id,
+            profileId = app.id, // 网页应用壳保持独立 Profile 隔离（站点间互不串号）
             startUrl = renderUrl,
             desktopMode = app.desktopMode,
             algorithmicDark = app.darkMode,
