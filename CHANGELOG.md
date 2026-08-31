@@ -2,6 +2,72 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.6] - 2026-08-31
+
+### Fixed
+
+- Free placement finally works like a real launcher: with 自动整理桌面 off, a dragged icon stays on the exact grid slot it was dropped on (slot 2 → slot 12/9/4/7 stays there) instead of snapping back to the compacted front positions. The home grid is now a sparse model — every cell keeps its persisted `(page, slot)`, empty slots are real placeholders, and drops resolve to the nearest registered slot bounds (including empty ones).
+- Context-menu direction was inverted in some cases: the menu now anchors on the actual finger press point and opens toward the side with more room (icon at slot 1 on the left edge opens the menu to its right), computed from the four-direction free space around the press point with edge clamping.
+- Custom local-icon paths (starting with `/`) were rejected when saving an app, losing the uploaded icon.
+
+### Added
+
+- 主页布局新增「自动整理桌面」开关（默认关闭 = 自由摆放，对齐主流 Android 桌面；开启后恢复压实排列）。设置项为兼容性契约，旧设备默认进入自由摆放。
+- Free-placement drag semantics: dropping on an empty slot moves there directly; dropping on an occupied slot swaps the two cells (folders swap as a whole); new apps append to the first empty slot of the last page instead of always compacting.
+- Folder dissolve / remove-from-folder in free-placement mode: the first member keeps the folder's slot, remaining members fill the following empty slots in order; a removed member is placed in the first empty slot near the folder.
+- Unit tests for `buildSparse`, `resolveSlotMove`, dissolve and remove-from-folder slot allocation (`HomePagesTest`).
+
+## [0.1.5] - 2026-08-31
+
+### Fixed
+
+- Drag-layer shadow truly follows the icon's large corner radius now: the shadow is cast inside `AppIcon` with the rounded shape and `clip=false`, instead of an outer `graphicsLayer { clip = true }` that clipped the rounded shadow into a square (the recurring "square shadow" on long-press/drag).
+- Context-menu horizontal avoidance is now intelligent: an icon on the left half of the screen pops the menu from its right side, and vice versa (previously it only centered near the icon).
+- Removed the ugly whole-cell "grid highlight" when tapping an app/folder: the default ripple is disabled and replaced by a subtle press-scale on the icon itself.
+- Letter-fallback icons are readable in every theme: the tile color is picked from a high-contrast palette by title hash with near-black text, replacing the low-contrast `primaryContainer` pair.
+
+### Added
+
+- Drag-to-reorder now snaps to the nearest grid slot: the drop target resolves to the closest grid slot (hovered cell, nearest cell center, or page end) and the app snaps there on release instead of jumping back, like a real launcher/desktop.
+- Pinch-to-edit gesture rewritten with `awaitEachGesture` two-finger distance tracking (the old `detectTransformGestures` was swallowed by the pager), so pinch-in reliably enters edit mode and pinch-out exits.
+- Folder open is redesigned as a HyperOS-style full-screen expanded page: dimmed backdrop, folder name + member count, and a 3-column grid of rounded member icons, replacing the plain AlertDialog list.
+- Custom app icon upload in the add flow: pick a local image (copied to the private icons dir) when a site has no logo, with the home grid rendering local file icons edge-to-edge.
+- Page-transition style setting under 外观与主题: 滑入 / 淡入 / 缩放 / 无动画 presets, wired through `LocalTransitionStyle` into 我的 sections and the developer center.
+
+## [0.1.4] - 2026-08-31
+
+### Fixed
+
+- Drag-layer shadow now follows the icon's large corner radius instead of rendering as an ugly square rectangle (long-press / drag no longer shows a right-angled shadow).
+
+### Changed
+
+- `AppContextMenu` rebuilt as an anchored floating panel (HyperOS/iOS home-screen style): a `Popup` anchored beside the long-pressed icon with smart vertical flipping, replacing the previous full-screen centered dialog with a giant title and icon grid.
+- Context-menu actions are now a vertical list — circular icon badge (primary / errorContainer) + short label, with the destructive action in red at the bottom — and use a semi-transparent frosted surface (no extra live blur, per PERFORMANCE.md).
+- Menu pop animation unified via `AppMotion.popupEnter/popupExit` (scale 0.92→1 + fade, anchored to the icon side).
+
+### Added
+
+- Edit (jiggle) mode on the home screen: pinch-in with two fingers enters edit mode (icons wiggle iOS-style, circular selection badges on their top-start corner, a translucent "完成" capsule top-end, and a bottom action row with select-all/clear); pinch-out, the done button or the back gesture exits. Tapping toggles selection instead of launching.
+- Unified motion system in `AppMotion`: main-tab `Crossfade`, detail-page `enterDetail/exitDetail` (slide-in-from-right + fade) wired into 我的 sections and the developer center's third-level pages via `AnimatedContent`, and shared popup specs.
+- Design Playbook motion section now demonstrates spring, detail slide-in and popup transitions; DESIGN.md §6.2–6.5 updated for the anchored menu, edit mode and unified motion.
+
+## [0.1.3] - 2026-08-31
+
+### Added
+
+- iOS-style home-screen icons: icon bodies now sit directly on the wallpaper with no pedestal card; corner radius is clipped by the icon body itself (sites, letter fallbacks, folders, add cell as outlined ghost).
+- `AppContextMenu` design-system component: iOS home-screen context menu with blurred scrim, spring pop-in, optional icon preview, 4-column action grid and separated destructive actions (semi-opaque solid + hairline instead of a second live blur, per `docs/PERFORMANCE.md`).
+- Long-press interaction reordered to the iOS sequence: press first opens the menu; dragging past touch-slop fades the menu out and moves the icon into drag mode; releasing in place keeps the menu.
+- Developer center is now a full-screen first-level page (我的 → 开发者选项): app/WebView/device info, log viewer, icon cache clear, design Playbook entry.
+- In-memory ring-buffer log (`AppLog`, 500 entries, tag filter, copy/share export, auto-cleared when the process dies; no browsing content, cookies or credentials are ever logged).
+- Design Playbook gains a context-menu demo section for visual acceptance.
+
+### Changed
+
+- Favorite border thickened to 2dp; folder preview keeps the unified corner radius.
+- Home grid long-press logging hooks (`HomeViewModel`) and Me settings logging hooks (`MeViewModel`) feed the new log viewer.
+
 ## [0.1.2] - 2026-08-31
 
 ### Changed
