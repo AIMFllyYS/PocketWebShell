@@ -1,6 +1,8 @@
 package com.webshell.feature.me
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -59,7 +61,9 @@ import com.webshell.core.designsystem.components.AppCard
 import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.AppSectionHeader
+import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.AppSpacing
+import com.webshell.core.designsystem.theme.LocalTransitionStyle
 
 /** “我的”一级菜单入口；点击进入对应二级页面。 */
 private enum class MeSection {
@@ -93,38 +97,49 @@ fun MeScreen(
 
     BackHandler(enabled = section != null) { section = null }
 
-    when (section) {
-        null -> MeHome(
-            state = state,
-            onStopSession = viewModel::stopSession,
-            onOpenSection = { section = it },
-        )
-        MeSection.APPEARANCE -> AppearanceSettingsPage(
-            settings = settingsState,
-            viewModel = viewModel,
-            onBack = { section = null },
-        )
-        MeSection.LAYOUT -> LayoutSettingsPage(
-            settings = settingsState,
-            viewModel = viewModel,
-            onBack = { section = null },
-        )
-        MeSection.BACKGROUND -> BackgroundSettingsPage(
-            state = state,
-            keepAliveEnabled = settingsState.keepAliveServiceEnabled,
-            onKeepAliveChanged = {
-                viewModel.setKeepAliveServiceEnabled(it)
-                onKeepAliveServiceChanged(it)
-            },
-            onBatteryState = viewModel::refreshBatteryState,
-            onBack = { section = null },
-        )
-        MeSection.ENGINE -> EngineInfoPage(
-            capabilities = state.capabilities,
-            onBack = { section = null },
-        )
-        MeSection.UPDATE_LOG -> UpdateLogPage(onBack = { section = null })
-        MeSection.DEVELOPER -> DesignPlaybookPage(onBack = { section = null })
+    // 二级页面进入/退出：按用户选择的动效风格（外观与主题可切换 slide/fade/scale/none）。
+    val transitionStyle = LocalTransitionStyle.current
+    AnimatedContent(
+        targetState = section,
+        transitionSpec = {
+            AppMotion.detailEnterFor(transitionStyle) togetherWith
+                AppMotion.detailExitFor(transitionStyle)
+        },
+        label = "me-section",
+    ) { target ->
+        when (target) {
+            null -> MeHome(
+                state = state,
+                onStopSession = viewModel::stopSession,
+                onOpenSection = { section = it },
+            )
+            MeSection.APPEARANCE -> AppearanceSettingsPage(
+                settings = settingsState,
+                viewModel = viewModel,
+                onBack = { section = null },
+            )
+            MeSection.LAYOUT -> LayoutSettingsPage(
+                settings = settingsState,
+                viewModel = viewModel,
+                onBack = { section = null },
+            )
+            MeSection.BACKGROUND -> BackgroundSettingsPage(
+                state = state,
+                keepAliveEnabled = settingsState.keepAliveServiceEnabled,
+                onKeepAliveChanged = {
+                    viewModel.setKeepAliveServiceEnabled(it)
+                    onKeepAliveServiceChanged(it)
+                },
+                onBatteryState = viewModel::refreshBatteryState,
+                onBack = { section = null },
+            )
+            MeSection.ENGINE -> EngineInfoPage(
+                capabilities = state.capabilities,
+                onBack = { section = null },
+            )
+            MeSection.UPDATE_LOG -> UpdateLogPage(onBack = { section = null })
+            MeSection.DEVELOPER -> DeveloperCenterPage(onBack = { section = null })
+        }
     }
 }
 
@@ -239,7 +254,7 @@ private fun MeHome(
             MenuEntry(
                 icon = Icons.Filled.DeveloperMode,
                 title = "开发者选项",
-                subtitle = "设计 Playbook：组件、配色、字体与动效预览",
+                subtitle = "应用信息、日志查看与设计 Playbook",
                 onClick = { onOpenSection(MeSection.DEVELOPER) },
             )
         }

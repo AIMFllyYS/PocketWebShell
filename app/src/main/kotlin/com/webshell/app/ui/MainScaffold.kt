@@ -1,8 +1,10 @@
 package com.webshell.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -41,6 +43,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.webshell.app.shell.ShellScreen
 import com.webshell.app.ui.MainScaffoldViewModel
 import com.webshell.core.designsystem.components.glassSurface
+import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.feature.add.AddScreen
 import com.webshell.feature.browser.BrowserScreen
 import com.webshell.feature.home.HomeScreen
@@ -97,20 +100,27 @@ fun MainScaffold(
                     bottom = 96.dp,
                 ),
         ) {
-            when (selectedTab) {
-                MainTab.HOME -> HomeScreen(
-                    onLaunch = { appId, _ ->
-                        viewModel.launchApp(appId) { url -> openedUrl = url }
-                    },
-                    onAddRequested = { selectedTab = MainTab.ADD },
-                )
-                MainTab.ADD -> AddScreen(
-                    onCreated = { selectedTab = MainTab.HOME },
-                )
-                MainTab.BROWSE -> BrowserScreen()
-                MainTab.ME -> MeScreen(
-                    onKeepAliveServiceChanged = viewModel::setKeepAliveServiceEnabled,
-                )
+            // 主 Tab 切换：统一淡入淡出过渡（不改变布局尺寸）。
+            Crossfade(
+                targetState = selectedTab,
+                animationSpec = tween(AppMotion.NormalMs),
+                label = "main-tab",
+            ) { tab ->
+                when (tab) {
+                    MainTab.HOME -> HomeScreen(
+                        onLaunch = { appId, _ ->
+                            viewModel.launchApp(appId) { url -> openedUrl = url }
+                        },
+                        onAddRequested = { selectedTab = MainTab.ADD },
+                    )
+                    MainTab.ADD -> AddScreen(
+                        onCreated = { selectedTab = MainTab.HOME },
+                    )
+                    MainTab.BROWSE -> BrowserScreen()
+                    MainTab.ME -> MeScreen(
+                        onKeepAliveServiceChanged = viewModel::setKeepAliveServiceEnabled,
+                    )
+                }
             }
         }
     }

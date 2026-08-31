@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.KeepAliveRegistry
 import com.webshell.core.webengine.WebViewCapabilities
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -76,9 +77,14 @@ class MeViewModel @Inject constructor(
         settingsRepository.setShowPageIndicator(value)
     }
 
+    fun setAutoArrangeHome(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setAutoArrangeHome(value)
+    }
+
     fun setKeepAliveServiceEnabled(value: Boolean) {
         _uiState.value = _uiState.value.copy(keepAliveServiceEnabled = value)
         viewModelScope.launch { settingsRepository.setKeepAliveServiceEnabled(value) }
+        AppLog.log("me", "增强保活${if (value) "开启" else "关闭"}")
     }
 
     fun refreshBatteryState(whitelisted: Boolean) {
@@ -88,6 +94,7 @@ class MeViewModel @Inject constructor(
     fun stopSession(sessionId: String) {
         KeepAliveRegistry.unregister(sessionId)
         _uiState.value = _uiState.value.copy(runningSessions = KeepAliveRegistry.entries)
+        AppLog.log("me", "结束后台会话 $sessionId")
     }
 
     fun refreshSessions() {
@@ -96,6 +103,12 @@ class MeViewModel @Inject constructor(
 
     fun setThemeMode(mode: String) = viewModelScope.launch {
         settingsRepository.setThemeMode(mode)
+        AppLog.log("me", "主题切换：$mode")
+    }
+
+    fun setTransitionStyle(style: String) = viewModelScope.launch {
+        settingsRepository.setTransitionStyle(style)
+        AppLog.log("me", "页面切换动效：$style")
     }
 
     /** 把用户挑选的照片复制到应用私有目录并持久化路径（IO 在后台线程）。 */

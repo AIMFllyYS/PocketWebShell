@@ -16,9 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Launch
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -45,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppBadge
 import com.webshell.core.designsystem.components.AppCard
 import com.webshell.core.designsystem.components.AppConfirmDialog
+import com.webshell.core.designsystem.components.AppContextMenu
+import com.webshell.core.designsystem.components.AppContextMenuItem
 import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.glassSurface
@@ -69,6 +76,8 @@ internal fun DesignPlaybookPage(onBack: () -> Unit) {
         ComponentSection()
         Spacer(Modifier.height(AppSpacing.xl))
         DialogSection()
+        Spacer(Modifier.height(AppSpacing.xl))
+        ContextMenuSection()
         Spacer(Modifier.height(AppSpacing.xl))
         GlassSection()
         Spacer(Modifier.height(AppSpacing.xl))
@@ -288,6 +297,34 @@ private fun DialogSection() {
     }
 }
 
+// ---------- 情境菜单 ----------
+
+@Composable
+private fun ContextMenuSection() {
+    var show by remember { mutableStateOf(false) }
+    SectionCard(title = "情境菜单 AppContextMenu", edgeToEdge = false) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)) {
+            Text(
+                "HyperOS/iOS 主屏长按菜单：锚点浮窗 + 纵向列表（圆形图标底），破坏性操作红色置底；主页长按图标体验同款。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = { show = true }) { Text("预览情境菜单") }
+        }
+    }
+    if (show) {
+        AppContextMenu(
+            items = listOf(
+                AppContextMenuItem("打开", Icons.Filled.Launch) {},
+                AppContextMenuItem("桌面版网页", Icons.Filled.DesktopWindows) {},
+                AppContextMenuItem("开启后台保活", Icons.Filled.Bedtime) {},
+                AppContextMenuItem("删除", Icons.Filled.Delete, destructive = true) {},
+            ),
+            onDismiss = { show = false },
+        )
+    }
+}
+
 // ---------- 玻璃材质 ----------
 
 @Composable
@@ -336,6 +373,7 @@ private fun GlassSection() {
 @Composable
 private fun MotionSection() {
     var expanded by remember { mutableStateOf(false) }
+    var showDetail by remember { mutableStateOf(false) }
     val offsetX by animateDpAsState(
         targetValue = if (expanded) 180.dp else 0.dp,
         animationSpec = AppMotion.spring(),
@@ -350,24 +388,72 @@ private fun MotionSection() {
         animationSpec = AppMotion.fade(),
         label = "motionDemoColor",
     )
-    SectionCard(title = "动效 Motion（spring + fade）", edgeToEdge = false) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(64.dp),
-        ) {
+    SectionCard(title = "动效 Motion（统一规格）", edgeToEdge = false) {
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.sm)) {
+            Text(
+                "spring（位移/颜色）、enterDetail（二级页滑入）、popup（菜单弹出）。全局页面与菜单过渡复用同一组规格。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Box(
                 Modifier
-                    .offset(x = offsetX)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(tint)
-                    .align(Alignment.CenterStart),
-            )
-        }
-        Spacer(Modifier.height(AppSpacing.sm))
-        Button(onClick = { expanded = !expanded }) {
-            Text(if (expanded) "复位" else "播放动效")
+                    .fillMaxWidth()
+                    .height(56.dp),
+            ) {
+                Box(
+                    Modifier
+                        .offset(x = offsetX)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(tint)
+                        .align(Alignment.CenterStart),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.sm)) {
+                Button(onClick = { expanded = !expanded }) {
+                    Text(if (expanded) "复位" else "spring")
+                }
+                OutlinedButton(onClick = { showDetail = !showDetail }) {
+                    Text(if (showDetail) "收起二级页" else "滑入二级页")
+                }
+            }
+            // 二级页滑入过渡演示：右侧滑入 + 淡入。
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(72.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showDetail,
+                    enter = AppMotion.enterDetail,
+                    exit = AppMotion.exitDetail,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(0.6f)
+                            .height(72.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "二级页（滑入 + 淡入）",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+                if (!showDetail) {
+                    Text(
+                        "点击「滑入二级页」查看 enterDetail 过渡",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+            }
         }
     }
 }
