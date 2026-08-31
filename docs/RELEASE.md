@@ -37,7 +37,36 @@ If either file already exists, stop and verify ownership before proceeding. Neve
    .\gradlew.bat testDebugUnitTest :app:assembleDebug
    ```
 
-4. Synchronize the reviewed release commit to `main` and verify the working tree is clean.
+4. Push the reviewed release commits to `dev`. Actually publishing to `main` happens through a pull request, never by direct push (the `main` branch protection requires it).
+
+## Merge to `main` through a pull request
+
+The `main` branch is protected by this repository. To keep every change reviewable and the history linear, release commits enter `main` only via a pull request that is merged with **rebase** (GitHub's "Rebase and merge"). A direct `git push` to `main` or a `--no-ff` merge commit will be rejected by the following rules:
+
+- `Require a pull request before merging` — changes must go through a PR.
+- `Require linear history` — `main` must not contain merge commits.
+- `Require status checks to pass` — the `test-and-build` check (`.github/workflows/android-ci.yml`) must pass before merging.
+
+Create the PR from `dev` into `main`:
+
+```powershell
+gh pr create --base main --head dev --title "Release 0.1.2" --body "Publish 0.1.2."
+```
+
+Wait for the `test-and-build` check to pass, then merge with rebase:
+
+```powershell
+gh pr merge --rebase
+```
+
+After the merge, check out a clean `main` and verify it is linear and up to date:
+
+```powershell
+git fetch origin
+git checkout main
+git reset --hard origin/main
+git log --oneline --graph -5
+```
 
 ## Build, sign and verify
 

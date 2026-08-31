@@ -24,6 +24,184 @@ object HomePages {
         minPages: Int = 1,
         pageCapacity: Int = Int.MAX_VALUE,
     ): List<List<HomeCell>> {
+        val ordered = aggregateCells(apps)
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val pages = if (capacity == Int.MAX_VALUE) {
+            ordered.groupBy { it.app.homePage }
+                .let { map ->
+                    val maxPage = (map.keys.maxOrNull() ?: 0).coerceAtLeast(minPages - 1)
+                    (0..maxPage).map { page -> map[page].orEmpty() }
+                }
+        } else {
+            ordered.chunked(capacity).ifEmpty { listOf(emptyList()) }.toMutableList().apply {
+                // 最后一屏始终给“添加”入口留一个格子，避免满屏时纵向溢出。
+                if (lastOrNull()?.size == capacity) add(emptyList())
+                while (size < minPages) add(emptyList())
+            }
+        }
+        return pages
+    }
+
+    /**
+     * 自由摆放（稀疏）分页：每个 cell 保持自己持久的 (homePage, homeCellIndex)，
+     * 空槽以 null 占位 —— 拖到哪儿就停在哪儿，绝不自动压实。
+     * - homeCellIndex 无效（-1/越界/槽位冲突）按“追加”处理：最后一页首个空槽，末页已满则开新页；
+     * - 页数 = 最大占用页 + 1（自动裁掉尾部空页）；
+     * - 末页全满时额外补一页全空页，给“添加”入口留槽位（与密集模式一致）。
+     */
+    fun buildSparse(
+        apps: List<WebAppEntity>,
+        pageCapacity: Int,
+        minPages: Int = 1,
+    ): List<List<HomeCell?>> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val cells = aggregateCells(apps)
+        val pages = mutableListOf<MutableList<HomeCell?>>()
+        fun ensurePage(page: Int) {
+            while (pages.size <= page) {
+                pages += MutableList<HomeCell?>(capacity) { null }
+            }
+        }
+        fun placeAppend(cell: HomeCell) {
+            var target = pages.size - 1
+            var slot = pages[target].indexOfFirst { it == null }
+            if (slot < 0) {
+                ensurePage(target + 1)
+                target += 1
+                slot = 0
+            }
+            pages[target][slot] = cell
+        }
+        val maxPage = cells.maxOfOrNull { it.app.homePage.coerceAtLeast(0) } ?: 0
+        ensurePage(maxOf(maxPage, minPages - 1))
+        // 先放有明确槽位的（按 页/槽/创建时间 的顺序，冲突时先来先得，后到追加，保证确定性）
+        val (placed, appended) = cells.partition { it.app.homeCellIndex in 0 until capacity }
+        placed.forEach { cell ->
+            val page = cell.app.homePage.coerceAtLeast(0)
+            ensurePage(page)
+            val slot = cell.app.homeCellIndex
+            if (pages[page][slot] == null) pages[page][slot] = cell else placeAppend(cell)
+        }
+        appended.forEach { placeAppend(it) }
+        if (pages.last().all { it != null }) {
+            pages += MutableList<HomeCell?>(capacity) { null }
+        }
+        return pages
+    }
+
+    /**
+     * 自由摆放落子：把 [draggedKey] 移动到 (toPage, toSlot)。
+     * 目标槽为空 → 直接落子；被占用 → 双方交换槽位（文件夹整体交换）。
+     * 返回需要落库的实体列表；空列表 = 无操作（原地松手等）。
+     */
+    fun resolveSlotMove(
+        apps: List<WebAppEntity>,
+        draggedKey: String,
+        toPage: Int,
+        toSlot: Int,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        if (toPage < 0 || toSlot !in 0 until capacity) return emptyList()
+        val sparse = buildSparse(apps, capacity)
+        val positions = HashMap<String, Pair<Int, Int>>()
+        val cellsByKey = HashMap<String, HomeCell>()
+        sparse.forEachIndexed { page, slots ->
+            slots.forEachIndexed { slot, cell ->
+                if (cell != null) {
+                    positions[cell.key] = page to slot
+                    cellsByKey[cell.key] = cell
+                }
+            }
+        }
+        val from = positions[draggedKey] ?: return emptyList()
+        if (from == toPage to toSlot) return emptyList()
+        val dragged = cellsByKey.getValue(draggedKey)
+        val occupant = cellsByKey.values.firstOrNull {
+            it.key != draggedKey && positions[it.key] == toPage to toSlot
+        }
+        val updates = ArrayList<WebAppEntity>()
+        val draggedEntities = if (dragged.isFolder) dragged.folderMembers else listOf(dragged.app)
+        draggedEntities.mapTo(updates) { it.copy(homePage = toPage, homeCellIndex = toSlot) }
+        if (occupant != null) {
+            val occupantEntities = if (occupant.isFolder) occupant.folderMembers else listOf(occupant.app)
+            occupantEntities.mapTo(updates) {
+                it.copy(homePage = from.first, homeCellIndex = from.second)
+            }
+        }
+        return updates
+    }
+
+    /**
+     * 自由摆放解散文件夹：首个成员占文件夹原槽位，其余成员从该槽位起顺序占空槽。
+     * 返回需要落库的实体列表（folderId 已置空）。
+     */
+    fun resolveDissolve(
+        apps: List<WebAppEntity>,
+        folderId: String,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val members = apps.filter { it.folderId == folderId }.sortedWith(entityOrder())
+        if (members.isEmpty()) return emptyList()
+        val sparse = buildSparse(apps, capacity)
+        val occupied = HashSet<Pair<Int, Int>>()
+        var folderSlot = 0
+        sparse.forEachIndexed { page, slots ->
+            slots.forEachIndexed { slot, cell ->
+                if (cell != null) {
+                    occupied += page to slot
+                    if (cell.key == "folder-$folderId") folderSlot = page * capacity + slot
+                }
+            }
+        }
+        // 文件夹自身槽位释放给首个成员
+        occupied -= folderSlot / capacity to folderSlot % capacity
+        val updates = ArrayList<WebAppEntity>(members.size)
+        var cursor = folderSlot
+        members.forEach { member ->
+            while ((cursor / capacity to cursor % capacity) in occupied) cursor++
+            occupied += cursor / capacity to cursor % capacity
+            updates += member.copy(
+                folderId = null,
+                homePage = cursor / capacity,
+                homeCellIndex = cursor % capacity,
+            )
+            cursor++
+        }
+        return updates
+    }
+
+    /** 自由摆放移出文件夹：从文件夹槽位起取第一个空槽。 */
+    fun resolveRemoveFromFolder(
+        apps: List<WebAppEntity>,
+        appId: String,
+        pageCapacity: Int,
+    ): WebAppEntity? {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val app = apps.firstOrNull { it.id == appId } ?: return null
+        val folderId = app.folderId ?: return null
+        val sparse = buildSparse(apps, capacity)
+        val occupied = HashSet<Pair<Int, Int>>()
+        var cursor = 0
+        sparse.forEachIndexed { page, slots ->
+            slots.forEachIndexed { slot, cell ->
+                if (cell != null) {
+                    occupied += page to slot
+                    if (cell.key == "folder-$folderId") cursor = page * capacity + slot
+                }
+            }
+        }
+        while ((cursor / capacity to cursor % capacity) in occupied) cursor++
+        return app.copy(
+            folderId = null,
+            homePage = cursor / capacity,
+            homeCellIndex = cursor % capacity,
+        )
+    }
+
+    /** 根级应用 + 文件夹聚合为 cell 列表，按 (页, 槽, 创建时间) 排序。 */
+    private fun aggregateCells(apps: List<WebAppEntity>): List<HomeCell> {
         val byId = apps.associateBy { it.id }
 
         val folderGroups = apps.filter { it.folderId != null && byId.containsKey(it.id) }
@@ -42,26 +220,11 @@ object HomePages {
         val rootCells = apps.filter { it.folderId == null }
             .map { HomeCell(key = it.id, app = it) }
 
-        val ordered = (rootCells + folderCells).sortedWith(
+        return (rootCells + folderCells).sortedWith(
             compareBy<HomeCell> { it.app.homePage }
                 .thenBy { orderKey(it.app) }
                 .thenBy { it.app.createdAt },
         )
-        val capacity = pageCapacity.coerceAtLeast(1)
-        val pages = if (capacity == Int.MAX_VALUE) {
-            ordered.groupBy { it.app.homePage }
-                .let { map ->
-                    val maxPage = (map.keys.maxOrNull() ?: 0).coerceAtLeast(minPages - 1)
-                    (0..maxPage).map { page -> map[page].orEmpty() }
-                }
-        } else {
-            ordered.chunked(capacity).ifEmpty { listOf(emptyList()) }.toMutableList().apply {
-                // 最后一屏始终给“添加”入口留一个格子，避免满屏时纵向溢出。
-                if (lastOrNull()?.size == capacity) add(emptyList())
-                while (size < minPages) add(emptyList())
-            }
-        }
-        return pages
     }
 
     private fun entityOrder(): Comparator<WebAppEntity> =

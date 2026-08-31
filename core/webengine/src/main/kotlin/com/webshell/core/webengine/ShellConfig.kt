@@ -2,11 +2,15 @@ package com.webshell.core.webengine
 
 /**
  * 一个"网页应用壳"会话的配置。
- * @param sessionId 唯一会话 ID；非空时启用独立 Profile（cookie/存储/HTTP 缓存/SW 全隔离），
- *   相同 sessionId 的两次打开共享登录态——这是"输入网址=做出一个应用"的数据基础。
+ * @param sessionId 唯一会话 ID，仅用于池内实例复用（切 tab/主页往返不丢状态）。
+ * @param profileId 独立 WebView Profile ID；null = 使用 WebView 默认共享 Profile
+ *   （浏览器多标签走默认 Profile，cookie/登录态全标签共享）；非空时启用独立 Profile
+ *   （cookie/存储/HTTP 缓存/SW 全隔离）——网页应用壳用 app.id 保持站点间互不串号。
  */
 data class ShellConfig(
     val sessionId: String? = null,
+    /** 独立 Profile ID；null = 默认共享 Profile */
+    val profileId: String? = null,
     val startUrl: String = "about:blank",
     /** 桌面模式：桌面 UA + UA-CH + 宽视口 */
     val desktopMode: Boolean = false,

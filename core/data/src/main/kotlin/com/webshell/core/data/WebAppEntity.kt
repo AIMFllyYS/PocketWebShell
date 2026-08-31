@@ -28,3 +28,23 @@ data class WebAppEntity(
     /** 页面文本缩放百分比（80–130，100 = 不缩放） */
     val textZoomPercent: Int = 100,
 )
+
+/** 自由摆放模式下的槽位分配：与 feature/home 的稀疏分页规则保持一致。 */
+object HomeSlotAllocator {
+
+    /**
+     * 新应用的“追加”槽位：最后一页的首个空槽；末页已满则新页首槽。
+     * 文件夹成员与文件夹同槽，因此按 (page, index) 去重即为占用集合。
+     */
+    fun appendSlot(apps: List<WebAppEntity>, pageCapacity: Int): Pair<Int, Int> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val occupied = apps.filter { it.homeCellIndex >= 0 }
+            .mapTo(HashSet()) { it.homePage.coerceAtLeast(0) to it.homeCellIndex }
+        if (occupied.isEmpty()) return 0 to 0
+        val lastPage = apps.maxOf { it.homePage.coerceAtLeast(0) }
+        for (slot in 0 until capacity) {
+            if ((lastPage to slot) !in occupied) return lastPage to slot
+        }
+        return (lastPage + 1) to 0
+    }
+}

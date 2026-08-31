@@ -70,15 +70,16 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -117,13 +118,9 @@ fun BrowserScreen(
     val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
     val desktopModes by viewModel.desktopModes.collectAsStateWithLifecycle()
 
-    var urlInput by remember { mutableStateOf("") }
-    var progress by remember { mutableIntStateOf(0) }
-    var loading by remember { mutableStateOf(false) }
-    var canGoBack by remember { mutableStateOf(false) }
-    var canGoForward by remember { mutableStateOf(false) }
-    var pageTitle by remember { mutableStateOf("") }
-    var pageUrl by remember { mutableStateOf("") }
+    var urlInput by rememberSaveable { mutableStateOf("") }
+    /** 地址栏是否处于焦点编辑中：编辑中不被页面回调覆盖输入 */
+    var editing by rememberSaveable { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     var showTabSwitcher by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
@@ -160,11 +157,44 @@ fun BrowserScreen(
     val activeSessionId = activeTabId?.let { "browser-$it" }
     val activeTab = tabs.firstOrNull { it.tabId == activeTabId }
 
-    // 切 tab 时同步地址栏与当前页 URL（书标/历史以此为准）
+    // 进度/加载/返回前进/标题/URL 全部从激活 tab 的 per-tab 字段派生，切 tab 天然不串台
+    val progress = activeTab?.progress ?: 0
+    val loading = activeTab?.loading ?: false
+    val canGoBack = activeTab?.canGoBack == true
+    val canGoForward = activeTab?.canGoForward == true
+    val pageTitle = activeTab?.title.orEmpty()
+
+    // 切 tab 时地址栏从 activeTab.url 重置（无论是否在编辑）
     LaunchedEffect(activeTabId) {
-        val tab = tabs.firstOrNull { it.tabId == activeTabId }
-        pageUrl = tab?.url.orEmpty()
-        urlInput = tab?.url.orEmpty().stripScheme()
+        editing = false
+        urlInput = activeTab?.url.orEmpty().stripScheme()
+    }
+
+    // 页面导航时地址栏跟随 tab URL；编辑中（焦点在地址栏）不覆盖用户输入
+    LaunchedEffect(activeTab?.url) {
+        if (!editing) urlInput = activeTab?.url.orEmpty().stripScheme()
+    }
+
+    // 切 tab：暂停切走会话的渲染/媒体，恢复新会话并标记激活保护；
+    // 切回时主动向 shell 查询刷新 per-tab 导航状态（后台期间的尾部回调可能已错过）
+    var previousSessionId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(activeSessionId) {
+        previousSessionId?.takeIf { it != activeSessionId }?.let { WebViewPool.suspendSession(it) }
+        val sid = activeSessionId
+        val tabId = activeTabId
+        if (sid != null && tabId != null) {
+            WebViewPool.resumeSession(sid)
+            WebViewPool.activeSessionId = sid
+            WebViewPool.get(sid)?.let { shell ->
+                shell.currentUrl()?.let { viewModel.updateTabMeta(tabId, url = it) }
+                viewModel.updateTabNav(
+                    tabId,
+                    canGoBack = shell.canGoBack(),
+                    canGoForward = shell.canGoForward(),
+                )
+            }
+        }
+        previousSessionId = activeSessionId
     }
 
     // 新会话首装：池中刚创建（currentUrl 为空/about:blank）时加载 tab 携带的起始 URL。
@@ -189,41 +219,11 @@ fun BrowserScreen(
         onDispose { shell?.onFindResult = null }
     }
 
-    val currentActiveTabId by rememberUpdatedState(activeTabId)
-    val currentPageTitle by rememberUpdatedState(pageTitle)
+    // UI 临时监听器：只承载对话框/toast/文件选择/权限/新窗口等 UI 交互。
+    // 状态写回类回调（标题/URL/进度/返回栈/历史）由 ViewModel 的 sessionListener
+    // 按各自 tabId 持久承担，这里不再重复写，避免双写与串台。
     val listener = remember {
         object : ShellListener {
-            override fun onPageStarted(url: String) {
-                loading = true
-                pageUrl = url
-                urlInput = url.stripScheme()
-                currentActiveTabId?.let { viewModel.updateTabMeta(it, url = url) }
-            }
-
-            override fun onProgress(value: Int) {
-                progress = value
-                loading = value < 100
-            }
-
-            override fun onPageFinished(url: String) {
-                loading = false
-                // 入历史（同 URL 合并为最新一条）
-                currentActiveTabId?.let { viewModel.recordHistory(url, currentPageTitle) }
-            }
-
-            override fun onTitleReceived(title: String) {
-                pageTitle = title
-                currentActiveTabId?.let { viewModel.updateTabMeta(it, title = title) }
-            }
-
-            override fun onCanGoBackChanged(value: Boolean) {
-                canGoBack = value
-            }
-
-            override fun onCanGoForwardChanged(value: Boolean) {
-                canGoForward = value
-            }
-
             override fun onNewWindow(url: String) {
                 // target=_blank / window.open：后台开新标签并前置，会话由池接管
                 viewModel.createTab(url, activate = true)
@@ -305,7 +305,7 @@ fun BrowserScreen(
         }
     }
 
-    val currentUrl = pageUrl.ifBlank { activeTab?.url.orEmpty() }
+    val currentUrl = activeTab?.url.orEmpty()
     val isBookmarked = currentUrl in bookmarkedUrls
     val desktopOn = activeSessionId != null && desktopModes[activeSessionId] == true
 
@@ -313,6 +313,7 @@ fun BrowserScreen(
         BrowserTopBar(
             urlInput = urlInput,
             onUrlInputChanged = { urlInput = it },
+            onEditingChanged = { editing = it },
             onGo = {
                 val normalized = normalizeUrl(urlInput)
                 if (normalized.isNotEmpty()) {
@@ -395,6 +396,12 @@ fun BrowserScreen(
                     },
                     listener = listener,
                 )
+                // 持久监听者随会话存活（出组合不摘除）：后台 tab 的标题/URL/进度
+                // 回调由 ViewModel 按 tabId 写回 per-tab 状态；closeTab 时统一清除
+                SideEffect {
+                    WebViewPool.get(activeSessionId)?.sessionListener =
+                        viewModel.listenerFor(activeSessionId)
+                }
             } else {
                 EmptyTabsPrompt(
                     modifier = Modifier.fillMaxSize(),
@@ -515,6 +522,7 @@ internal fun normalizeUrl(raw: String): String {
 private fun BrowserTopBar(
     urlInput: String,
     onUrlInputChanged: (String) -> Unit,
+    onEditingChanged: (Boolean) -> Unit,
     onGo: () -> Unit,
     canGoBack: Boolean,
     onBack: () -> Unit,
@@ -582,7 +590,9 @@ private fun BrowserTopBar(
                         BasicTextField(
                             value = urlInput,
                             onValueChange = onUrlInputChanged,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { onEditingChanged(it.isFocused) },
                             singleLine = true,
                             textStyle = MaterialTheme.typography.bodyMedium.copy(
                                 color = MaterialTheme.colorScheme.onSurface,

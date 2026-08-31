@@ -55,7 +55,10 @@ fun WebShellTheme(
         baseScheme.copy(primary = seed)
     } ?: baseScheme
 
-    CompositionLocalProvider(LocalPhotoWallpaperPath provides wallpaperPath) {
+    CompositionLocalProvider(
+        LocalPhotoWallpaperPath provides wallpaperPath,
+        LocalTransitionStyle provides settings.transitionStyle,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = WebShellTypography,

@@ -26,6 +26,12 @@ data class HomeSettings(
     val batteryWhitelistAcknowledged: Boolean = false,
     val themeMode: String = THEME_MODE_SYSTEM,
     val photoWallpaperPath: String? = null,
+    val transitionStyle: String = TRANSITION_SLIDE,
+    /**
+     * 桌面自动整理：开启 = 图标压实排列（传统行为）；
+     * 关闭（默认）= 自由摆放，图标拖到哪个网格位就停在哪个网格位（对齐主流安卓桌面）。
+     */
+    val autoArrangeHome: Boolean = false,
 )
 
 /** 主题模式取值，见 docs/DESIGN.md */
@@ -33,6 +39,12 @@ const val THEME_MODE_SYSTEM = "system"
 const val THEME_MODE_LIGHT = "light"
 const val THEME_MODE_DARK = "dark"
 const val THEME_MODE_PHOTO = "photo"
+
+/** 页面切换动效取值，见 docs/DESIGN.md */
+const val TRANSITION_SLIDE = "slide"
+const val TRANSITION_FADE = "fade"
+const val TRANSITION_SCALE = "scale"
+const val TRANSITION_NONE = "none"
 
 @Singleton
 class SettingsRepository @Inject constructor(
@@ -49,6 +61,8 @@ class SettingsRepository @Inject constructor(
         val BATTERY_ACK = booleanPreferencesKey("battery_whitelist_ack")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val PHOTO_WALLPAPER = stringPreferencesKey("photo_wallpaper_path")
+        val TRANSITION_STYLE = stringPreferencesKey("transition_style")
+        val AUTO_ARRANGE_HOME = booleanPreferencesKey("auto_arrange_home")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
@@ -63,6 +77,8 @@ class SettingsRepository @Inject constructor(
             batteryWhitelistAcknowledged = prefs[Keys.BATTERY_ACK] ?: false,
             themeMode = prefs[Keys.THEME_MODE] ?: THEME_MODE_SYSTEM,
             photoWallpaperPath = prefs[Keys.PHOTO_WALLPAPER],
+            transitionStyle = prefs[Keys.TRANSITION_STYLE] ?: TRANSITION_SLIDE,
+            autoArrangeHome = prefs[Keys.AUTO_ARRANGE_HOME] ?: false,
         )
     }
 
@@ -92,6 +108,12 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setThemeMode(value: String) =
         context.settingsStore.edit { it[Keys.THEME_MODE] = value }
+
+    suspend fun setTransitionStyle(value: String) =
+        context.settingsStore.edit { it[Keys.TRANSITION_STYLE] = value }
+
+    suspend fun setAutoArrangeHome(value: Boolean) =
+        context.settingsStore.edit { it[Keys.AUTO_ARRANGE_HOME] = value }
 
     suspend fun setPhotoWallpaperPath(value: String?) =
         context.settingsStore.edit {

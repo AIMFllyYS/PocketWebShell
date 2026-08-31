@@ -51,6 +51,10 @@ import com.webshell.core.data.THEME_MODE_DARK
 import com.webshell.core.data.THEME_MODE_LIGHT
 import com.webshell.core.data.THEME_MODE_PHOTO
 import com.webshell.core.data.THEME_MODE_SYSTEM
+import com.webshell.core.data.TRANSITION_FADE
+import com.webshell.core.data.TRANSITION_NONE
+import com.webshell.core.data.TRANSITION_SCALE
+import com.webshell.core.data.TRANSITION_SLIDE
 import com.webshell.core.webengine.WebViewCapabilities
 import java.io.File
 
@@ -76,6 +80,19 @@ internal fun LayoutSettingsPage(
                 value = settings.gridRows,
                 range = 4..7,
                 onValue = viewModel::setRows,
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        SectionCard(title = "桌面整理") {
+            ToggleRow(
+                title = "自动整理桌面",
+                subtitle = if (settings.autoArrangeHome) {
+                    "图标自动压实排列"
+                } else {
+                    "自由摆放：图标拖到哪个网格位就停在哪个网格位"
+                },
+                checked = settings.autoArrangeHome,
+                onCheckedChange = viewModel::setAutoArrangeHome,
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -283,6 +300,33 @@ internal fun AppearanceSettingsPage(
                         viewModel.setThemeMode(THEME_MODE_PHOTO)
                     }
                 },
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        SectionCard(title = "页面切换动效") {
+            ThemeModeRow(
+                title = "滑入",
+                subtitle = "新页面从右侧滑入（默认）",
+                selected = settings.transitionStyle == TRANSITION_SLIDE,
+                onClick = { viewModel.setTransitionStyle(TRANSITION_SLIDE) },
+            )
+            ThemeModeRow(
+                title = "淡入",
+                subtitle = "新页面平滑淡入",
+                selected = settings.transitionStyle == TRANSITION_FADE,
+                onClick = { viewModel.setTransitionStyle(TRANSITION_FADE) },
+            )
+            ThemeModeRow(
+                title = "缩放",
+                subtitle = "新页面从轻缩放大进入",
+                selected = settings.transitionStyle == TRANSITION_SCALE,
+                onClick = { viewModel.setTransitionStyle(TRANSITION_SCALE) },
+            )
+            ThemeModeRow(
+                title = "无动画",
+                subtitle = "直接切换，最省电",
+                selected = settings.transitionStyle == TRANSITION_NONE,
+                onClick = { viewModel.setTransitionStyle(TRANSITION_NONE) },
             )
         }
         Spacer(Modifier.height(16.dp))

@@ -10,7 +10,7 @@ Protect these product properties in every change:
 
 1. The home grid has deterministic geometry at every supported width.
 2. Drag visuals never participate in grid measurement.
-3. Browser callbacks always update the current tab/session.
+3. Browser callbacks are attributed by sessionId and update that session's own per-tab state.
 4. WebView and foreground-service claims match Android's actual lifecycle limits.
 5. Release signing material never enters source control or logs.
 
@@ -101,7 +101,7 @@ When changing paging or ordering, add/update unit tests in `feature/home/src/tes
 - Restrict privileged JavaScript bridges. Do not expose Android objects to arbitrary remote origins.
 - External schemes and downloads must be validated before handing them to another app.
 - Clear or isolate data deliberately; understand that some CookieManager/WebView behaviors are process-global.
-- WebView callbacks must not mutate a tab/session that is no longer active.
+- WebView callbacks are attributed by sessionId and update that session's per-tab state; the ephemeral UI listener must not write another tab's state.
 
 ## Data and migrations
 

@@ -7,6 +7,7 @@ import com.webshell.core.data.BookmarkDao
 import com.webshell.core.data.BookmarkEntity
 import com.webshell.core.data.HistoryDao
 import com.webshell.core.data.HistoryEntity
+import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.WebViewPool
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
@@ -24,6 +25,11 @@ data class BrowserTab(
     val title: String,
     val url: String,
     val thumbnail: Bitmap? = null,
+    /** 加载进度 0..100（per-tab，切 tab 不串台） */
+    val progress: Int = 0,
+    val loading: Boolean = false,
+    val canGoBack: Boolean = false,
+    val canGoForward: Boolean = false,
 )
 
 /** 页面内查找状态 */
@@ -71,13 +77,66 @@ class BrowserViewModel @Inject constructor(
     private val _desktopModes = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val desktopModes: StateFlow<Map<String, Boolean>> = _desktopModes.asStateFlow()
 
+    /**
+     * sessionId → 持久会话监听者（随会话存活，不随 Compose 组合摘除）。
+     * 所有状态写回类回调（标题/URL/进度/返回栈）按自己的 tabId 写入 per-tab 状态，
+     * 不依赖"当前激活 tab"——后台 tab 的回调不再丢失、不再串台。
+     */
+    private val sessionListeners = mutableMapOf<String, ShellListener>()
+
     init {
         viewModelScope.launch {
             bookmarkDao.observeAll().collect { list ->
                 _bookmarkedUrls.value = list.map { it.url }.toSet()
             }
         }
+        // 池满淘汰时同步移除对应 tab（实例已被池销毁并留存快照，这里不重复 destroy）
+        WebViewPool.onSessionEvicted = { sessionId ->
+            if (sessionId.startsWith("browser-")) {
+                removeTabState(sessionId.removePrefix("browser-"))
+            }
+        }
     }
+
+    override fun onCleared() {
+        WebViewPool.onSessionEvicted = null
+        super.onCleared()
+    }
+
+    /** 取（或建）指定会话的持久监听者；由 BrowserScreen 挂到 ShellWebView.sessionListener */
+    fun listenerFor(sessionId: String): ShellListener =
+        sessionListeners.getOrPut(sessionId) {
+            val tabId = sessionId.removePrefix("browser-")
+            object : ShellListener {
+                override fun onPageStarted(url: String) {
+                    updateTabMeta(tabId, url = url)
+                    updateTabNav(tabId, progress = 0, loading = true)
+                }
+
+                override fun onProgress(progress: Int) {
+                    updateTabNav(tabId, progress = progress, loading = progress < 100)
+                }
+
+                override fun onTitleReceived(title: String) {
+                    updateTabMeta(tabId, title = title)
+                }
+
+                override fun onPageFinished(url: String) {
+                    updateTabNav(tabId, progress = 100, loading = false)
+                    // 入历史（同 URL 合并为最新一条），标题取该 tab 自己的最新值
+                    val title = _tabs.value.firstOrNull { it.tabId == tabId }?.title.orEmpty()
+                    recordHistory(url, title)
+                }
+
+                override fun onCanGoBackChanged(canGoBack: Boolean) {
+                    updateTabNav(tabId, canGoBack = canGoBack)
+                }
+
+                override fun onCanGoForwardChanged(canGoForward: Boolean) {
+                    updateTabNav(tabId, canGoForward = canGoForward)
+                }
+            }
+        }
 
     /** 打开新标签；activate=false 时留在后台（供 target=_blank 备用） */
     fun createTab(startUrl: String, activate: Boolean): String {
@@ -87,14 +146,20 @@ class BrowserViewModel @Inject constructor(
             title = if (startUrl == "about:blank") "" else startUrl,
             url = startUrl,
         )
-        if (activate) _activeTabId.value = tabId
+        if (activate) setActive(tabId)
         return tabId
     }
 
     fun activateTab(tabId: String) {
         if (_tabs.value.any { it.tabId == tabId }) {
-            _activeTabId.value = tabId
+            setActive(tabId)
         }
+    }
+
+    /** 激活 tab 切换的唯一出口：同步池的激活保护（激活会话不被淘汰） */
+    private fun setActive(tabId: String?) {
+        _activeTabId.value = tabId
+        WebViewPool.activeSessionId = tabId?.let { "browser-$it" }
     }
 
     /** 切走前由 Screen 先截缩略图，再调这里更新卡片 */
@@ -118,27 +183,68 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    /** 关闭标签：销毁池中会话；若关的是激活 tab 则向前继/后续补位 */
+    /** 更新指定 tab 的导航状态（进度/加载中/返回前进），参数为 null 表示不变 */
+    fun updateTabNav(
+        tabId: String,
+        progress: Int? = null,
+        loading: Boolean? = null,
+        canGoBack: Boolean? = null,
+        canGoForward: Boolean? = null,
+    ) {
+        _tabs.value = _tabs.value.map { tab ->
+            if (tab.tabId == tabId) {
+                tab.copy(
+                    progress = progress ?: tab.progress,
+                    loading = loading ?: tab.loading,
+                    canGoBack = canGoBack ?: tab.canGoBack,
+                    canGoForward = canGoForward ?: tab.canGoForward,
+                )
+            } else {
+                tab
+            }
+        }
+    }
+
+    /** 关闭标签：彻底销毁池中会话（不留快照），并清理会话监听者与桌面模式记忆 */
     fun closeTab(tabId: String) {
+        val sessionId = "browser-$tabId"
+        WebViewPool.get(sessionId)?.sessionListener = null
+        sessionListeners.remove(sessionId)
+        WebViewPool.destroyAndForget(sessionId)
+        removeTabState(tabId)
+    }
+
+    fun closeAllTabs() {
+        _tabs.value.forEach { tab ->
+            val sessionId = "browser-${tab.tabId}"
+            WebViewPool.get(sessionId)?.sessionListener = null
+            sessionListeners.remove(sessionId)
+            WebViewPool.destroyAndForget(sessionId)
+        }
+        _desktopModes.value = emptyMap()
+        _tabs.value = emptyList()
+        setActive(null)
+        _findState.value = FindState()
+    }
+
+    /**
+     * 移除 tab 的 UI 状态（不动池实例）：closeTab 在 destroy 后调用，
+     * 池淘汰回调在实例已销毁后调用；若关的是激活 tab 则向前继/后续补位。
+     */
+    private fun removeTabState(tabId: String) {
         val current = _tabs.value
         val index = current.indexOfFirst { it.tabId == tabId }
         if (index < 0) return
         val remaining = current.filterNot { it.tabId == tabId }
         _tabs.value = remaining
-        WebViewPool.destroy("browser-$tabId")
+        sessionListeners.remove("browser-$tabId")
+        _desktopModes.value = _desktopModes.value - "browser-$tabId"
         if (_activeTabId.value == tabId) {
-            _activeTabId.value = remaining.getOrNull(index.coerceAtMost(remaining.size - 1))?.tabId
+            setActive(remaining.getOrNull(index.coerceAtMost(remaining.size - 1))?.tabId)
         }
         if (remaining.isEmpty()) {
             _findState.value = FindState()
         }
-    }
-
-    fun closeAllTabs() {
-        _tabs.value.forEach { WebViewPool.destroy("browser-${it.tabId}") }
-        _tabs.value = emptyList()
-        _activeTabId.value = null
-        _findState.value = FindState()
     }
 
     // ---------------------------------------------------------------- find in page

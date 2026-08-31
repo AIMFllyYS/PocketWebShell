@@ -2,6 +2,8 @@ package com.webshell.feature.add
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webshell.core.data.HomeSlotAllocator
+import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.webengine.LocalWebHost
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** 第二步（编辑属性）的草稿状态；fetch 失败时也用它做纯手动录入 */
@@ -48,6 +51,7 @@ class AddViewModel @Inject constructor(
     private val fetcher: SiteMetadataFetcher,
     private val importer: LocalAppImporter,
     private val dao: WebAppDao,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<AddUiState>(AddUiState.Input)
@@ -130,20 +134,31 @@ class AddViewModel @Inject constructor(
         val current = _state.value as? AddUiState.Edit ?: return
         viewModelScope.launch {
             val d = current.draft
+            val settings = settingsRepository.settings.first()
+            // 自由摆放：直接落在最后一页的首个空槽；自动整理：-1 追加末尾后压实。
+            val (homePage, homeCellIndex) = if (settings.autoArrangeHome) {
+                0 to -1
+            } else {
+                HomeSlotAllocator.appendSlot(
+                    apps = dao.observeAll().first(),
+                    pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
+                )
+            }
             dao.upsert(
                 WebAppEntity(
                     id = d.appId.ifBlank { newAppId() },
                     title = d.title.trim().ifBlank { hostLabel(d.url) },
                     url = d.url,
                     iconUrl = d.iconUrl.trim().takeIf {
-                        it.startsWith("http://") || it.startsWith("https://")
+                        // 远端 favicon 或用户上传的本地图片（应用私有目录绝对路径）
+                        it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/")
                     },
                     desktopMode = d.desktopMode,
                     darkMode = d.darkMode,
                     keepAlive = d.keepAlive,
                     isFavorite = false,
-                    homePage = 0,
-                    homeCellIndex = -1, // 自动追加到主页末尾
+                    homePage = homePage,
+                    homeCellIndex = homeCellIndex,
                     folderId = null,
                     createdAt = System.currentTimeMillis(),
                     isLocal = d.isLocal,
