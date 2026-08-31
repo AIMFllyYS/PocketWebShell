@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.7] - 2026-09-01
+
+### Fixed
+
+- 标签页串台：浏览器进度/加载/返回前进/标题/URL 从屏幕级单一状态改为 per-tab 状态，WebView 回调按 sessionId 归属写回自己的标签，开多标签互切不再互相污染。
+- 后台标签回调丢失：`ShellWebView` 新增随会话存活的持久 `sessionListener`（不随 Compose 组合摘除），后台标签加载完成后的标题/URL/历史记录不再丢失。
+- 池淘汰失控：`WebViewPool` 从插入序 FIFO 改为真 LRU（access-order），激活会话受保护永不淘汰；淘汰/重建通过池级快照保留返回栈；淘汰时回调通知浏览器同步移除标签。
+- 登录态不共享：浏览器标签统一使用 WebView 默认共享 Profile（原先每个会话独立 Profile，cookie/token 互不共享）；网页应用壳保留独立 Profile 隔离。
+- 移动模式 UA 改为不含 `Version/4.0` 与 `wv` 标记的 Chrome Android UA，修复部分站点（Google 登录、若干移动站）拒绝/降级服务。
+- ShellScreen 新窗口会话泄漏：`onNewWindow` 复用当前会话加载 URL，不再遗留无人销毁的 `browse-*` 孤儿会话。
+
+### Changed
+
+- 切走的后台标签 `onPause` 暂停渲染与媒体，切回 `onResume`（后台音视频不再继续播放）。
+- 关闭标签改为彻底销毁（不留会话快照），并同步清理桌面模式记忆与会话监听器。
+- `thirdPartyCookies` 显式双向设置，避免跨实例状态泄漏。
+- 引擎诊断与选型决策沉淀为 `docs/ENGINE.md`：引擎维持 Chromium（Android System WebView），本版本重构集成层。
+
 ## [0.1.6] - 2026-08-31
 
 ### Fixed

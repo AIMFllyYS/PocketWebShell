@@ -23,6 +23,19 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.7",
+        date = "2026-09-01",
+        highlights = listOf(
+            "修复标签页串台：进度/标题/返回状态改为按标签独立记录，多标签互切不再互相污染",
+            "修复后台标签回调丢失：新增随会话存活的持久监听器，后台加载的标题/历史不再丢",
+            "会话池改真 LRU 且激活标签受保护：不再误杀正在显示的标签，淘汰后返回栈可恢复",
+            "浏览器标签统一共享登录 Profile：cookie/登录态全标签互通（网页应用壳仍独立隔离）",
+            "移动版 UA 换成标准 Chrome Android：修复 Google 登录等站点拒绝服务的问题",
+            "切走的后台标签暂停音视频播放；关闭标签彻底清理会话与桌面模式记忆",
+            "修复新窗口会话泄漏：不再遗留无人销毁的孤儿会话",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.6",
         date = "2026-08-31",
         highlights = listOf(
