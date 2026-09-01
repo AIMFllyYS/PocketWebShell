@@ -29,6 +29,8 @@ If either file already exists, stop and verify ownership before proceeding. Neve
 
 ## Prepare a release
 
+This procedure is gated on explicit user approval of a debug build (see `docs/VERSIONING.md` §5, rules W1/W2). Do not start it until the user has tested the debug APK carrying this exact `versionCode`/`versionName` and approved it. Debug iterations that were rejected must already have consumed their own version numbers (W3).
+
 1. Update `versionCode` and `versionName` in `app/build.gradle.kts`.
 2. Move the version section in `CHANGELOG.md` out of Unreleased and set the date.
 3. On `dev`, run:
@@ -107,6 +109,8 @@ gh release create v0.1.0 `
   --notes-file .\docs\release-notes-v0.1.0.md
 ```
 
+The release notes must cover every version since the previous published release, including versions that only ever shipped as debug builds, because those numbers have no standalone entry on the Releases page (`docs/VERSIONING.md` W5). Merge consecutive versions that fixed the same issue into one statement; list distinct issues side by side; an "X to Y" range summary is also acceptable.
+
 ## Post-publish verification
 
 ```powershell
@@ -115,6 +119,19 @@ git ls-remote --heads --tags origin
 ```
 
 Download the published APK into a clean directory and verify it again with the same `apksigner` command. Confirm the SHA-256 matches the uploaded checksum and the certificate digest matches the prior release.
+
+## Return to dev
+
+After the release is published, bring every local and remote branch and tag up to date, then resume work on `dev` (`docs/VERSIONING.md` W6, steps 3–4):
+
+```powershell
+git fetch origin
+git checkout dev
+git merge origin/main --no-edit
+git push origin dev
+```
+
+Development continues on `dev`; the next iteration starts a fresh version number per `docs/VERSIONING.md`.
 
 ## References
 
