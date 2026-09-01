@@ -58,12 +58,13 @@ data class AppContextMenuItem(
 
 /**
  * 锚点浮窗情境菜单（对齐 HyperOS/iOS 主屏长按效果）：
- * - 以按压点为准心做四向空间避让（[anchorPoint] 为手指在根布局中的像素坐标）：
- *   分别计算按压点距屏幕上下左右的可用空间，水平/垂直各取空间更大的一侧弹出，
- *   菜单贴近按压点的那个角即为弹出锚角（与主流安卓/iOS 桌面长按逻辑一致）；
+ * - 以按压点为准心（[anchorPoint] 为手指在根布局中的像素坐标）：
+ *   水平以按压点居中展开；垂直优先向按压点上方展开，上方放不下且下方空间更大时
+ *   翻转到下方（Launcher3 `ArrowPopup.orientAboutObject` 的本地化取舍，见
+ *   [PressPointMenuPositionProvider]）；四边以屏幕边距钳制，任何位置都不被截断；
  * - 纵向列表项：圆形图标底 + 短标签；破坏性操作红色、分隔后置底；
  * - 半透明磨砂材质（复用主题 surface 高透明），不新增第二处实时模糊，见 docs/PERFORMANCE.md；
- * - 弹出动画统一走 [AppMotion.popupEnter]，锚点为靠近按压点一侧的角。
+ * - 弹出动画统一走 [AppMotion.popupEnter]，锚点为靠近按压点的一侧。
  */
 @Composable
 fun AppContextMenu(
@@ -214,19 +215,23 @@ private fun RowDivider() {
 }
 
 /**
- * 按压点四向定位：
- * 1. 以按压点为准心，计算它距屏幕 上/下/左/右 四个方向的可用空间；
- * 2. 水平取空间更大的一侧（右侧大 → 菜单从按压点向右展开，反之向左）；
- * 3. 垂直同理（下方大 → 向下展开，反之向上）；
- * 4. 菜单与按压点保留半个屏幕边距的间隙，最终收进屏幕安全边距内。
- * 例如左上角 1 号位：右、下空间最大 → 菜单以按压点为左上角向右下方弹出。
+ * 按压点定位（Launcher3 `ArrowPopup.orientAboutObject` 的本地化派生）：
+ * 1. 垂直：`spaceAbove = pressY`、`spaceBelow = windowH - pressY`；上方放得下
+ *    （`spaceAbove >= menuH + gap`）或上方空间更大时向上展开，否则向下展开，
+ *    菜单与按压点保留半个屏幕边距的间隙（gap = marginPx / 2）；
+ * 2. 水平：以按压点为中心（`x = pressX - menuW/2`）；
+ * 3. 两轴最终都 clamp 进 [margin, window - menu - margin]，任何边缘位置不截断；
+ * 4. `transformOrigin` 的 pivot 始终落在按压点一侧（clamp 后重算），
+ *    弹出动画从按压点展开，对应 Launcher3 的 `setPivotY(mIsAboveIcon ? height : 0)`。
+ * 与 Launcher3 的差异：不画箭头、不做左/右对齐递归重试——固定宽度菜单下
+ * "按压点居中 + clamp" 等价覆盖其分支，且为纯函数、更适合 Compose。
  */
 private class PressPointMenuPositionProvider(
     private val pressPoint: IntOffset?,
     private val marginPx: Int,
 ) : PopupPositionProvider {
 
-    /** 弹出缩放锚点：靠近按压点的那个角。 */
+    /** 弹出缩放锚点：靠近按压点的那条边。 */
     var transformOrigin: TransformOrigin = TransformOrigin.Center
         private set
 
@@ -237,37 +242,29 @@ private class PressPointMenuPositionProvider(
         popupContentSize: IntSize,
     ): IntOffset {
         val point = pressPoint ?: IntOffset(windowSize.width / 2, windowSize.height / 2)
+        val menuW = popupContentSize.width
+        val menuH = popupContentSize.height
         val gap = marginPx / 2
 
-        // 水平：哪侧空间大就往哪侧展开
-        val spaceLeft = point.x
-        val spaceRight = windowSize.width - point.x
-        val openRight = spaceRight >= spaceLeft
-        val rawX = if (openRight) {
-            point.x + gap
-        } else {
-            point.x - popupContentSize.width - gap
-        }
-        // 垂直：同理
-        val spaceTop = point.y
-        val spaceBottom = windowSize.height - point.y
-        val openDown = spaceBottom >= spaceTop
-        val rawY = if (openDown) {
-            point.y + gap
-        } else {
-            point.y - popupContentSize.height - gap
-        }
+        // 垂直：默认上方，上方放不下且下方空间更大时翻转到下方
+        val spaceAbove = point.y
+        val spaceBelow = windowSize.height - point.y
+        val openUp = spaceAbove >= menuH + gap || spaceAbove >= spaceBelow
+        val rawY = if (openUp) point.y - gap - menuH else point.y + gap
 
-        val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
-        val maxY = (windowSize.height - popupContentSize.height - marginPx).coerceAtLeast(marginPx)
+        // 水平：按压点居中
+        val rawX = point.x - menuW / 2
+
+        val maxX = (windowSize.width - menuW - marginPx).coerceAtLeast(marginPx)
+        val maxY = (windowSize.height - menuH - marginPx).coerceAtLeast(marginPx)
+        val x = rawX.coerceIn(marginPx, maxX)
+        val y = rawY.coerceIn(marginPx, maxY)
         transformOrigin = TransformOrigin(
-            pivotFractionX = if (openRight) 0f else 1f,
-            pivotFractionY = if (openDown) 0f else 1f,
+            // clamp 后按压点可能不在菜单正中央，pivotX 需按实际偏移重算
+            pivotFractionX = ((point.x - x).toFloat() / menuW).coerceIn(0f, 1f),
+            pivotFractionY = if (openUp) 1f else 0f,
         )
-        return IntOffset(
-            x = rawX.coerceIn(marginPx, maxX),
-            y = rawY.coerceIn(marginPx, maxY),
-        )
+        return IntOffset(x = x, y = y)
     }
 }
 
