@@ -23,6 +23,14 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.9",
+        date = "2026-09-01",
+        highlights = listOf(
+            "修复长按菜单永远钉在左上角：Popup 里的全屏遮罩把内容尺寸撑成整个屏幕，定位钳制失效；移除内置遮罩，改用 Popup 自带的外部点击关闭",
+            "菜单现在稳定地以按压点为中心、在图标附近弹出",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.8",
         date = "2026-09-01",
         highlights = listOf(

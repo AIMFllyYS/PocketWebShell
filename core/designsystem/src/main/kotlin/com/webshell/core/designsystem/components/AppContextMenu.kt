@@ -4,12 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -80,21 +78,15 @@ fun AppContextMenu(
         PressPointMenuPositionProvider(anchorPoint, marginPx)
     }
 
+    // 注意：Popup 内容只能是菜单面板本体。不要把全屏 scrim 放进 Popup ——
+    // 那会把 popupContentSize 撑成整个窗口，定位公式的 clamp 会把菜单永远
+    // 钉死在 (margin, margin) 左上角。外部点击关闭由 focusable Popup 自带的
+    // outside-touch → onDismissRequest 承担。
     Popup(
         popupPositionProvider = positionProvider,
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
-        // 全屏 scrim 捕捉外部点击（置于菜单之下）。
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { onDismiss() },
-        )
-
         var visible by remember { mutableStateOf(false) }
         androidx.compose.runtime.LaunchedEffect(Unit) { visible = true }
 
