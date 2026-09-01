@@ -1,6 +1,6 @@
-package com.webshell.feature.add.di
+package com.webshell.core.data.di
 
-import com.webshell.feature.add.metadata.SiteMetadataFetcher
+import com.webshell.core.data.metadata.SiteMetadataFetcher
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

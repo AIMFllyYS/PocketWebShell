@@ -103,23 +103,23 @@
 对齐 iOS 主屏：图标本体直接落在壁纸上，**禁止底座/卡片容器**。
 
 - 圆角由图标本体自行裁剪（`RoundedCornerShape(cornerRadiusPercent)`，默认 26%，用户可调）；
-- favicon 白底即图标本体，兜底透明 PNG 在壁纸上的可读性；
-- 无 favicon 时用 `primaryContainer` 首字母色块；
+- favicon/官方 logo 以白底衬底（兼容透明 PNG）+ `ContentScale.Crop` 等比放大贴满圆角边界，不内缩加边距；加载失败回退首字母色块（不留白底空块）；
+- 首字母兜底按标题 hash 取高对比配色：浅色主题 pastel 底 + 深色字，深色主题深饱和底 + 近白字（不用 `primaryContainer`，对比度不足）；
 - 文件夹 = `surfaceContainerLow` 实底容器 + 1dp `outlineVariant` 发丝描边 + 2×2 成员预览（不引入第二处实时模糊）；
 - 收藏应用用 2dp `primary` 边框标识；
 - 添加入口 = 1.5dp `outlineVariant` 描边空心容器，明确"非应用"的从属身份。
 
 ### 6.2 情境菜单（`AppContextMenu`）
 
-长按图标的交互遵循 iOS 顺序：**长按先弹菜单 → 按住移动超过 touchSlop 后菜单淡出、图标跟手进入拖拽 → 松手原地则菜单保留**。
+长按图标的交互遵循 iOS 顺序，由**单通道手势状态机**实现（`awaitEachGesture`，长按与点击互斥）：**长按先弹菜单 → 按住继续移动累计位移超过 16dp（Launcher3 `deep_shortcuts_start_drag_threshold`）后菜单淡出、图标跟手进入拖拽 → ≤16dp 松手则菜单保留**；长按确认前位移超 touchSlop 则取消并交还 pager 滚动。
 
 菜单对齐 HyperOS/iOS 主屏长按的**锚点浮窗**样式（非全屏居中面板）：
 
-- 以**手指按压点**为定位基准：分别计算按压点距屏幕上下左右四向的剩余空间，水平往空间更大的一侧展开（左半屏图标菜单从右侧弹出，反之亦然），垂直同理；四边以屏幕边距钳制，任何边缘位置菜单都不被截断；
+- 以**手指按压点**为定位基准（Launcher3 `ArrowPopup.orientAboutObject` 的本地化派生）：**垂直**优先向按压点上方展开，上方放不下且下方空间更大时翻转到下方；**水平**以按压点居中展开；四边以屏幕边距钳制（clamp），任何边缘位置菜单都不被截断；弹出动画锚点（`transformOrigin`）始终指向按压点；
 - 菜单体：宽 208dp、16dp 圆角、`surfaceContainerHigh` 94% 半透明磨砂 + 1dp `outlineVariant` 描边（不新增第二处实时模糊，见 PERFORMANCE.md）；
 - 动作项为**纵向列表**：左侧 34dp 圆形图标底（常规 `primary`、破坏性 `errorContainer`）+ `bodyMedium` 短标签，行间细分隔线；
 - 破坏性操作（删除）`error` 红色文字、与常规项以整分隔线隔开置底；
-- 弹出动画统一走 `AppMotion.popupEnter`（scale 0.92→1 + 淡入，锚点为靠近图标一侧），点击外部 scrim 关闭。
+- 弹出动画统一走 `AppMotion.popupEnter`（scale 0.92→1 + 淡入，锚点指向按压点），点击外部 scrim 关闭。
 
 ### 6.3 编辑（jiggle）模式
 

@@ -1,4 +1,4 @@
-package com.webshell.feature.add.metadata
+package com.webshell.core.data.metadata
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

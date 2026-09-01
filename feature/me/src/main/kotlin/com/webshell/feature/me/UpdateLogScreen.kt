@@ -23,6 +23,18 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.8",
+        date = "2026-09-01",
+        highlights = listOf(
+            "修复长按图标误触打开应用：手势重构为单通道状态机，长按与点击互斥，长按原地松手只弹菜单",
+            "长按弹菜单后移动超过 16dp 才进入拖拽（对齐 Launcher3 两段式阈值），小位移松手菜单保留",
+            "修复远端 logo 加载失败只剩白底无字：失败时回退首字母色块，首字母配色适配深色主题",
+            "官方 logo 贴边裁剪：等比放大铺满圆角图标，不再内缩留白边",
+            "长按菜单新增「重命名」「更改图标」「强制刷新」（支持上传本地图片作图标）",
+            "情境菜单定位重写：以按压点居中展开、垂直优先向上，边缘自动钳制，动画锚点指向按压点",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.7",
         date = "2026-09-01",
         highlights = listOf(

@@ -1,4 +1,4 @@
-package com.webshell.feature.add.metadata
+package com.webshell.core.data.metadata
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,6 +21,7 @@ data class SiteMetadata(
 /**
  * 单个站点的元数据抓取器：HTML → 标题 / 主题色 / 图标。
  * 纯 JVM（OkHttp + jsoup + org.json），可注入 OkHttpClient 便于测试与全局复用。
+ * 位于 core/data：feature/add（新增）与 feature/home（强制刷新）共用。
  */
 class SiteMetadataFetcher @javax.inject.Inject constructor(
     private val client: OkHttpClient,

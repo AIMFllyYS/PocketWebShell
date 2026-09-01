@@ -37,6 +37,12 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.core.ktx)
 
+    // 站点元数据抓取（feature/add 新增与 feature/home 强制刷新共用）
+    implementation(libs.okhttp)
+    implementation(libs.jsoup)
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    testImplementation(libs.junit)
 }
