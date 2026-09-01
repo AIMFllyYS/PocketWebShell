@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.8] - 2026-09-01
+
+### Fixed
+
+- 长按图标误触打开应用：旧实现 clickable 与 detectDragGesturesAfterLongPress 双通道并存，长按原地松手会同时弹菜单并打开应用。图标手势重构为单通道 `awaitEachGesture` 状态机——长按与点击天然互斥，超时前松手算点击、超时前位移超 touchSlop 取消交还 pager；长按弹菜单后继续移动累计位移超过 16dp（Launcher3 `deep_shortcuts_start_drag_threshold`）才进入拖拽，≤16dp 松手菜单保持打开。
+- 首字母兜底图标白底无字：远端 logo 加载失败（404/网络拦截/格式不支持）时回退首字母色块（`SubcomposeAsyncImage` error 兜底），不再只剩白底空块；首字母色板新增深色主题配色（深饱和底 + 近白字）。
+
+### Added
+
+- 主页长按菜单新增「重命名」「更改图标」「强制刷新」：重命名走对话框；更改图标支持输入地址或上传本地图片（复制到应用私有 icons 目录）；强制刷新重新抓取站点标题与 logo，结果轻量 toast 提示。
+
+### Changed
+
+- 官方 logo 贴边裁剪：远端 logo 以 `ContentScale.Crop` 等比放大铺满圆角方块（四边贴到圆角边缘），不再内缩留白边。
+- 情境菜单定位重写为 Launcher3 派生公式：垂直优先向按压点上方展开（上方放不下且下方空间更大时翻转到下方），水平以按压点居中，四边 clamp 屏幕边距，弹出动画锚点（transformOrigin）始终指向按压点。
+- `SiteMetadataFetcher` 从 feature/add 迁至 core/data（含 Hilt 模块、单测与 okhttp/jsoup 依赖），feature/add 与 feature/home 强制刷新共用。
+
 ## [0.1.7] - 2026-09-01
 
 ### Fixed

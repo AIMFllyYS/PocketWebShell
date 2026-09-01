@@ -77,6 +77,7 @@ Do not run a release build for publication unless the release credential describ
 Changes in `feature/home` must preserve all of the following:
 
 - Page capacity is `gridRows * gridColumns`, minimum 1.
+- Icon gestures are a single-channel `awaitEachGesture` state machine: tap and long-press are mutually exclusive; after the long-press menu opens, only accumulated movement beyond 16dp (`DRAG_START_THRESHOLD`, Launcher3 `deep_shortcuts_start_drag_threshold`) enters drag, and releasing within 16dp keeps the menu open.
 - The Add cell occupies a real slot on the final page; a full final page creates a new page.
 - A dragged source cell retains its measured place and only changes visual treatment.
 - The floating drag icon is rendered outside `HorizontalPager`/`LazyVerticalGrid` measurement.
