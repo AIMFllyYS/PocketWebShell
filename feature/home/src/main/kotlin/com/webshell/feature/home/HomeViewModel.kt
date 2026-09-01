@@ -6,11 +6,15 @@ import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.data.metadata.SiteMetadataFetcher
 import com.webshell.core.model.AppLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -20,6 +24,7 @@ import kotlinx.coroutines.withContext
 class HomeViewModel @Inject constructor(
     private val dao: WebAppDao,
     private val settingsRepository: SettingsRepository,
+    private val fetcher: SiteMetadataFetcher,
 ) : ViewModel() {
 
     val apps: StateFlow<List<WebAppEntity>> = dao.observeAll()
@@ -27,6 +32,10 @@ class HomeViewModel @Inject constructor(
 
     val settings: StateFlow<HomeSettings> = settingsRepository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeSettings())
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    /** 轻量提示（toast 浮层）：刷新成功/失败等一次性消息。 */
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
 
     /**
      * 自由摆放落子：把 cell（应用或文件夹）移动到 (toPage, toSlot)；
@@ -182,6 +191,55 @@ class HomeViewModel @Inject constructor(
                 dao.upsert(it.copy(keepAlive = !it.keepAlive))
                 AppLog.log("home", "「${it.title}」${if (!it.keepAlive) "开启" else "关闭"}后台保活")
             }
+        }
+    }
+
+    /** 重命名：空白输入直接忽略。 */
+    fun rename(appId: String, newTitle: String) {
+        val title = newTitle.trim()
+        if (title.isEmpty()) return
+        viewModelScope.launch {
+            apps.value.firstOrNull { it.id == appId }?.let {
+                dao.upsert(it.copy(title = title))
+                AppLog.log("home", "「${it.title}」重命名为「$title」")
+            }
+        }
+    }
+
+    /**
+     * 更改图标：接受 http(s) 远端地址或 "/" 开头的本地路径；
+     * null/空白 = 清除图标，回退首字母兜底。
+     */
+    fun updateIcon(appId: String, iconUrl: String?) {
+        val cleaned = iconUrl?.trim()?.takeIf {
+            it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/")
+        }
+        viewModelScope.launch {
+            apps.value.firstOrNull { it.id == appId }?.let {
+                dao.upsert(it.copy(iconUrl = cleaned))
+                AppLog.log("home", "「${it.title}」${if (cleaned != null) "更换图标" else "清除自定义图标"}")
+            }
+        }
+    }
+
+    /** 强制刷新站点元数据：成功时把非空的 iconUrl/title 写回实体，失败仅提示。 */
+    fun refreshMetadata(appId: String) {
+        viewModelScope.launch {
+            val app = apps.value.firstOrNull { it.id == appId } ?: return@launch
+            fetcher.fetch(app.url)
+                .onSuccess { metadata ->
+                    val updated = app.copy(
+                        title = metadata.title.ifBlank { app.title },
+                        iconUrl = metadata.iconUrl ?: app.iconUrl,
+                    )
+                    dao.upsert(updated)
+                    AppLog.log("home", "刷新「${updated.title}」站点信息成功")
+                    _messages.tryEmit("已刷新「${updated.title}」")
+                }
+                .onFailure { e ->
+                    AppLog.log("home", "刷新「${app.title}」站点信息失败：${e.message}")
+                    _messages.tryEmit("刷新失败：${e.message ?: "未知错误"}")
+                }
         }
     }
 
