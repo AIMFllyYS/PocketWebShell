@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.9] - 2026-09-01
+
+### Fixed
+
+- 长按菜单永远钉在左上角：Popup 内部的全屏 scrim 把 popupContentSize 撑成整个窗口，定位公式的 clamp 把所有结果压到 (margin, margin)。移除内置 scrim——外部点击关闭由 focusable Popup 的 outside-touch → onDismissRequest 承担（该 scrim 本身无视觉背景，无观感损失）。菜单恢复以按压点为中心、在图标附近弹出。
+
 ## [0.1.8] - 2026-09-01
 
 ### Fixed
