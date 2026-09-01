@@ -7,8 +7,8 @@ import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.webengine.LocalWebHost
-import com.webshell.feature.add.metadata.SiteMetadata
-import com.webshell.feature.add.metadata.SiteMetadataFetcher
+import com.webshell.core.data.metadata.SiteMetadata
+import com.webshell.core.data.metadata.SiteMetadataFetcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
