@@ -158,7 +158,7 @@ Do not claim success if a required check was skipped. State exactly what ran and
 
 ## Release rules
 
-Follow `docs/RELEASE.md` exactly:
+Follow `docs/RELEASE.md` exactly. A release is gated on explicit user approval of a debug build carrying the same version number (`docs/VERSIONING.md` §5); never start this flow before that approval:
 
 1. Update `versionCode`, `versionName` and `CHANGELOG.md`.
 2. Ensure `dev` is clean and all required checks pass.
@@ -166,8 +166,9 @@ Follow `docs/RELEASE.md` exactly:
 4. Build with the repository script and the canonical external credential.
 5. Verify APK signatures and checksum before upload.
 6. Create and push an annotated tag.
-7. Create a GitHub Release and attach APK, checksum and public certificate.
+7. Create a GitHub Release whose notes cover every version since the previous published release, and attach APK, checksum and public certificate.
 8. Verify remote branches, tag, release assets and local final branch.
+9. Sync `dev` with `main`, push, and resume development on `dev`.
 
 Never modify an APK after signing. Never publish an unsigned or debug-signed APK as a production Release asset.
 
@@ -187,7 +188,7 @@ A change is complete only when:
 The following documents are authoritative and apply to every change in their domain:
 
 - `docs/DESIGN.md`: visual design baseline — Apple-style pure white/pure black color system, theme modes (system/light/dark/photo wallpaper), iOS Liquid Glass baseline for bottom navigation and floating layers, and the component-library selection principle (prefer mature open-source libraries, one unified library per capability, no reinventing the wheel).
-- `docs/VERSIONING.md`: version numbering rules — counting restarted from 0.0.0 (versionCode 1); the default and ONLY automatic increment is the third digit +1, with no carry (0.1.1000 → 0.1.1001); the first and second digits change ONLY on explicit user instruction; every version change must sync `CHANGELOG.md` and the in-app update log page.
+- `docs/VERSIONING.md`: version numbering rules — counting restarted from 0.0.0 (versionCode 1); the default and ONLY automatic increment is the third digit +1, with no carry (0.1.1000 → 0.1.1001); the first and second digits change ONLY on explicit user instruction; every version change must sync `CHANGELOG.md` and the in-app update log page. Releases follow the debug-first workflow (§5): a release ships only after the user approves the debug build of that exact version, rejected debug iterations consume their numbers permanently, and the GitHub Release notes must aggregate every version since the previous published release.
 - `docs/PERFORMANCE.md`: performance budgets — at most one live blur backdrop (the bottom bar), blur radius ≤ 24dp equivalent, glass/wallpaper layers never affect measurement, background-thread image decoding and palette extraction, graceful degradation on API 29–32.
 
 ## Normative references
