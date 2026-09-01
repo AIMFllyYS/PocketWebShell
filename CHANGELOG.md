@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.10] - 2026-09-01
+
+### Added
+
+- 应用内日志持久化：`AppLog` 新增 INFO/WARN/ERROR 级别与可插拔持久化汇，日志经 Room（新增 `app_log` 表，v2→v3 显式迁移，不丢存量数据）落盘，进程结束后仍可回看。
+- 崩溃捕获：接管未捕获异常，把崩溃堆栈作为 ERROR 级「crash」日志在进程死亡前同步写入数据库，再转发原默认 handler。
+- 监测点扩展：页面加载/加载完成/加载失败/SSL 错误（只记 host）、浏览器标签新建/切换/关闭、网页应用会话打开/关闭、前台保活服务启停、添加网站成功与失败（含失败原因）、应用启动版本号。
+- 日志查看页新增红色清空按钮（二次确认弹窗），清空全部持久化日志。
+
+### Changed
+
+- 日志查看页重构：从 Room 倒序分页读取（每页 30 条，滚动到底自动加载更多，不再受内存环形缓冲 500 条上限约束），标签过滤走数据库查询。
+- 复制/分享改为完整导出：含导出头部（导出时间、应用版本、设备型号、Android SDK、条目总数）与当前过滤条件下的全部条目；分享生成 TXT 文件经 FileProvider 以 `EXTRA_STREAM` 发出。
+
 ## [0.1.9] - 2026-09-01
 
 ### Fixed

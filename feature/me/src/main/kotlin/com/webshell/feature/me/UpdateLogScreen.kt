@@ -23,6 +23,18 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.10",
+        date = "2026-09-01",
+        highlights = listOf(
+            "日志改为 Room 持久化存储：进程结束后仍可回看，数据库 v2→v3 显式迁移不影响存量数据",
+            "日志分 INFO/WARN/ERROR 三级，新增崩溃捕获：未捕获异常堆栈自动落盘（crash 标签）",
+            "新增监测点：页面加载与失败、SSL 错误（只记 host）、标签新建/切换/关闭、会话开关、保活服务启停、添加网站成败、应用启动版本",
+            "日志查看页重构：滚动到底自动加载更多（每页 30 条），不再受 500 条内存上限约束",
+            "复制/分享升级为完整导出：带版本与设备信息头部，分享生成 TXT 文件经 FileProvider 发出",
+            "查看页新增红色清空按钮（二次确认），一键清空全部日志",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.9",
         date = "2026-09-01",
         highlights = listOf(
