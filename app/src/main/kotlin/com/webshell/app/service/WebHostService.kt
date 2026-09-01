@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.KeepAliveRegistry
 import com.webshell.app.MainActivity
 import com.webshell.app.R
@@ -30,6 +31,7 @@ class WebHostService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        AppLog.log("service", "保活服务 onCreate")
         createChannel()
     }
 
@@ -100,6 +102,7 @@ class WebHostService : Service() {
 
     override fun onDestroy() {
         running.value = false
+        AppLog.log("service", "保活服务 onDestroy")
         super.onDestroy()
     }
 }

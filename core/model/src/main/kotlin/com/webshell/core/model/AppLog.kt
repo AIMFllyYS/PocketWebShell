@@ -7,23 +7,44 @@ package com.webshell.core.model
  */
 object AppLog {
 
+    /** 日志级别：操作用 INFO，可恢复的降级/异常用 WARN，失败/崩溃用 ERROR。 */
+    enum class Level { INFO, WARN, ERROR }
+
     /** 单条日志：时间戳 + 标签 + 消息（标签用于日志页过滤）。 */
     data class Entry(
         val timeMillis: Long,
         val tag: String,
         val message: String,
+        val level: Level = Level.INFO,
     )
 
     const val CAPACITY = 500
+
+    /**
+     * 可插拔持久化汇（由 core/data 的 AppLogSinkInstaller 赋值，写入 Room）。
+     * 在锁外调用；sink 抛出的任何异常都会被吞掉——日志系统绝不能搞崩业务。
+     */
+    @Volatile
+    var entrySink: ((Entry) -> Unit)? = null
 
     private val buffer = ArrayDeque<Entry>(CAPACITY)
     private val lock = Any()
 
     /** 追加一条日志；超过容量时淘汰最旧记录。线程安全。 */
-    fun log(tag: String, message: String) {
+    fun log(tag: String, message: String) = append(Level.INFO, tag, message)
+
+    fun warn(tag: String, message: String) = append(Level.WARN, tag, message)
+
+    fun error(tag: String, message: String) = append(Level.ERROR, tag, message)
+
+    private fun append(level: Level, tag: String, message: String) {
+        val entry = Entry(System.currentTimeMillis(), tag, message, level)
         synchronized(lock) {
-            buffer.addLast(Entry(System.currentTimeMillis(), tag, message))
+            buffer.addLast(entry)
             while (buffer.size > CAPACITY) buffer.removeFirst()
+        }
+        entrySink?.let { sink ->
+            runCatching { sink(entry) }
         }
     }
 

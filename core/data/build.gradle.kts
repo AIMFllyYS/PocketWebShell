@@ -36,6 +36,7 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.kotlinx.coroutines.android)
 
     // 站点元数据抓取（feature/add 新增与 feature/home 强制刷新共用）
     implementation(libs.okhttp)

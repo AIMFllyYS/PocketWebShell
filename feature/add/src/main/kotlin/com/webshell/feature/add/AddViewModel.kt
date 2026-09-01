@@ -6,6 +6,7 @@ import com.webshell.core.data.HomeSlotAllocator
 import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
+import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.LocalWebHost
 import com.webshell.core.data.metadata.SiteMetadata
 import com.webshell.core.data.metadata.SiteMetadataFetcher
@@ -75,6 +76,7 @@ class AddViewModel @Inject constructor(
             val metadata: SiteMetadata? = fetcher.fetch(normalized).getOrNull()
             when {
                 metadata == null -> {
+                    AppLog.warn("add", "元数据抓取失败，转手动录入 ${hostLabel(normalized)}")
                     _state.value = AddUiState.Edit(
                         draft = AddDraft(appId = newAppId(), url = normalized, title = hostLabel(normalized)),
                         fetchFailed = true,
@@ -116,6 +118,7 @@ class AddViewModel @Inject constructor(
                     ),
                 )
             }.onFailure { e ->
+                AppLog.error("add", "本地导入失败：${e.message ?: "未知错误"}")
                 _state.value = AddUiState.Input
                 _messages.tryEmit("导入失败：${e.message ?: "未知错误"}")
             }
@@ -134,41 +137,48 @@ class AddViewModel @Inject constructor(
         val current = _state.value as? AddUiState.Edit ?: return
         viewModelScope.launch {
             val d = current.draft
-            val settings = settingsRepository.settings.first()
-            // 自由摆放：直接落在最后一页的首个空槽；自动整理：-1 追加末尾后压实。
-            val (homePage, homeCellIndex) = if (settings.autoArrangeHome) {
-                0 to -1
-            } else {
-                HomeSlotAllocator.appendSlot(
-                    apps = dao.observeAll().first(),
-                    pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
+            runCatching {
+                val settings = settingsRepository.settings.first()
+                // 自由摆放：直接落在最后一页的首个空槽；自动整理：-1 追加末尾后压实。
+                val (homePage, homeCellIndex) = if (settings.autoArrangeHome) {
+                    0 to -1
+                } else {
+                    HomeSlotAllocator.appendSlot(
+                        apps = dao.observeAll().first(),
+                        pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
+                    )
+                }
+                dao.upsert(
+                    WebAppEntity(
+                        id = d.appId.ifBlank { newAppId() },
+                        title = d.title.trim().ifBlank { hostLabel(d.url) },
+                        url = d.url,
+                        iconUrl = d.iconUrl.trim().takeIf {
+                            // 远端 favicon 或用户上传的本地图片（应用私有目录绝对路径）
+                            it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/")
+                        },
+                        desktopMode = d.desktopMode,
+                        darkMode = d.darkMode,
+                        keepAlive = d.keepAlive,
+                        isFavorite = false,
+                        homePage = homePage,
+                        homeCellIndex = homeCellIndex,
+                        folderId = null,
+                        createdAt = System.currentTimeMillis(),
+                        isLocal = d.isLocal,
+                        externalLinksToBrowser = d.externalLinksToBrowser,
+                        textZoomPercent = d.textZoomPercent,
+                    ),
                 )
+            }.onSuccess {
+                AppLog.log("add", "添加网站「${d.title.trim().ifBlank { hostLabel(d.url) }}」(${hostLabel(d.url)})")
+                _messages.tryEmit("已添加到主页")
+                _created.tryEmit(Unit)
+                _state.value = AddUiState.Input
+            }.onFailure { e ->
+                AppLog.error("add", "添加网站失败 ${hostLabel(d.url)}：${e.message ?: "未知错误"}")
+                _messages.tryEmit("添加失败：${e.message ?: "未知错误"}")
             }
-            dao.upsert(
-                WebAppEntity(
-                    id = d.appId.ifBlank { newAppId() },
-                    title = d.title.trim().ifBlank { hostLabel(d.url) },
-                    url = d.url,
-                    iconUrl = d.iconUrl.trim().takeIf {
-                        // 远端 favicon 或用户上传的本地图片（应用私有目录绝对路径）
-                        it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/")
-                    },
-                    desktopMode = d.desktopMode,
-                    darkMode = d.darkMode,
-                    keepAlive = d.keepAlive,
-                    isFavorite = false,
-                    homePage = homePage,
-                    homeCellIndex = homeCellIndex,
-                    folderId = null,
-                    createdAt = System.currentTimeMillis(),
-                    isLocal = d.isLocal,
-                    externalLinksToBrowser = d.externalLinksToBrowser,
-                    textZoomPercent = d.textZoomPercent,
-                ),
-            )
-            _messages.tryEmit("已添加到主页")
-            _created.tryEmit(Unit)
-            _state.value = AddUiState.Input
         }
     }
 
