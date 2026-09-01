@@ -2,6 +2,7 @@ package com.webshell.feature.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -21,6 +22,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.compose.SubcomposeAsyncImage
 import com.webshell.core.data.WebAppEntity
 import java.io.File
 
@@ -80,7 +82,7 @@ fun AppIcon(
     }
 }
 
-/** 网站图标：网络 favicon 白底兜底；本地上传图直接铺满裁圆角；无图标走首字母兜底。 */
+/** 网站图标：本地上传图直接铺满裁圆角；远端 logo 等比放大贴满圆角边界；加载失败/无图标走首字母兜底。 */
 @Composable
 private fun SiteIcon(app: WebAppEntity, iconSize: Dp, shape: Shape) {
     val iconUrl = app.iconUrl
@@ -101,19 +103,23 @@ private fun SiteIcon(app: WebAppEntity, iconSize: Dp, shape: Shape) {
             )
         }
         isRemote -> {
+            // 官方 logo 通常不是正方形：白底衬底（兼容透明 PNG），ContentScale.Crop 等比放大
+            // 到完全覆盖圆角方块（四条边贴到圆角边缘），不内缩加边距。
+            // 关键兜底：logo 加载失败（404/网络拦截/格式不支持）时回退首字母色块，
+            // 否则只剩白底空块（"白底无字" bug 根因）。
             Box(
                 modifier = Modifier
                     .size(iconSize)
                     .background(Color.White, shape)
-                    .clip(shape)
-                    .padding((iconSize * 0.10f).coerceAtMost(6.dp)),
+                    .clip(shape),
                 contentAlignment = Alignment.Center,
             ) {
-                AsyncImage(
+                SubcomposeAsyncImage(
                     model = iconUrl,
                     contentDescription = app.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
+                    error = { IconFallback(title = app.title, size = iconSize, shape = shape) },
                 )
             }
         }
@@ -157,12 +163,14 @@ private fun FolderPreview(
 }
 
 /**
- * 首字母兜底：按标题 hash 从一组高对比配色中取色块，文字用深色，
- * 保证浅色/深色主题下首字母都清晰可读（区别于 primaryContainer 低对比问题）。
+ * 首字母兜底：按标题 hash 从一组高对比配色中取色块，随主题取色 ——
+ * 浅色主题用 pastel 底 + 深色字，深色主题用深饱和底 + 近白字，
+ * 保证浅色/深色主题下首字母都清晰可读（≥4.5:1，区别于 primaryContainer 低对比问题）。
  */
 @Composable
 private fun IconFallback(title: String, size: Dp, shape: Shape) {
-    val palette = remember(title) { fallbackColorsFor(title) }
+    val darkTheme = isSystemInDarkTheme()
+    val palette = remember(title, darkTheme) { fallbackColorsFor(title, darkTheme) }
     Box(
         modifier = Modifier
             .size(size)
@@ -180,8 +188,8 @@ private fun IconFallback(title: String, size: Dp, shape: Shape) {
 
 private data class FallbackColors(val container: Color, val content: Color)
 
-/** 一组饱和底色 + 近黑文字，确保任何主题下 ≥7:1 对比度。 */
-private val fallbackPalette = listOf(
+/** 浅色主题：pastel 底色 + 近黑文字，确保 ≥7:1 对比度。 */
+private val fallbackPaletteLight = listOf(
     FallbackColors(Color(0xFFDCE9FF), Color(0xFF0B3D91)), // 蓝
     FallbackColors(Color(0xFFDDF3E4), Color(0xFF0B5D3B)), // 绿
     FallbackColors(Color(0xFFFCE3EC), Color(0xFF8A1B4E)), // 品红
@@ -190,8 +198,19 @@ private val fallbackPalette = listOf(
     FallbackColors(Color(0xFFDDF1F4), Color(0xFF0B5563)), // 青
 )
 
-private fun fallbackColorsFor(title: String): FallbackColors {
+/** 深色主题：深饱和底色 + 近白文字，确保 ≥4.5:1 对比度（与浅色 palette 同序同 hue）。 */
+private val fallbackPaletteDark = listOf(
+    FallbackColors(Color(0xFF1D3A6E), Color(0xFFD6E4FF)), // 蓝
+    FallbackColors(Color(0xFF14532D), Color(0xFFD9F2E3)), // 绿
+    FallbackColors(Color(0xFF6B1B41), Color(0xFFFBDCE8)), // 品红
+    FallbackColors(Color(0xFF7A4A00), Color(0xFFFFE9C2)), // 橙
+    FallbackColors(Color(0xFF3B2A73), Color(0xFFE6DFFC)), // 紫
+    FallbackColors(Color(0xFF0E4A55), Color(0xFFD3EEF3)), // 青
+)
+
+private fun fallbackColorsFor(title: String, darkTheme: Boolean): FallbackColors {
+    val palette = if (darkTheme) fallbackPaletteDark else fallbackPaletteLight
     val key = title.trim().ifEmpty { "?" }
-    val index = (key.first().code % fallbackPalette.size + fallbackPalette.size) % fallbackPalette.size
-    return fallbackPalette[index]
+    val index = (key.first().code % palette.size + palette.size) % palette.size
+    return palette[index]
 }
