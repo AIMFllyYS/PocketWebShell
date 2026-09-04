@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.13] - 2026-09-02
+
+### Fixed
+
+- 翻页模式拖到右缘/左缘悬停开新屏"没反应"的根因修复（端测截图 + 日志实证）：拖拽跟踪协程此前挂在被拖图标的 composable 上，翻页动画落定后源页被 Pager 移出组合，协程被一并取消——状态清零、临时屏回弹、落子丢失。拖拽会话主循环上移到根级容器（对齐 Launcher3 DragController 分层），翻页/开新屏后源 cell 被 dispose 也不再影响会话。
+- 临时屏创建同帧立即滚动会被旧 pageCount 钳制回 0（pageCount 随重组才生效）：写 `tempPageSide` 后等重组帧再翻页。
+- 边缘悬停翻页改为单 `snapshotFlow` 循环状态机：旧实现依赖 `LaunchedEffect` key 重启，翻页后 finally 同帧重算的边缘方向（1→0→1）对组合期 key 不可见，二次翻页/连续跳页永远不会发生。
+
+### Changed
+
+- feature/home 交互层拆分重构：新增 `HomeInteractionState`（集中持有拖拽/菜单/编辑模式会话状态与布局注册表，手势协程只捕获该稳定持有者，杜绝组合期快照过期）与 `HomeGestures.kt`（`homeCellGesture` cell 手势检测、`homeDragSession` 根级拖拽会话、`homeBlankAreaMenu` 空白长按菜单、`homePinchEditMode` 双指捏合、`HomeDragEffects` 边缘悬停状态机）；`HomeScreen.kt` 只保留组合根、网格容器与菜单/对话框浮层。
+- 新增主页手势仪表化测试 `HomeGestureInstrumentedTest`（真实 MotionEvent 注入 + Room 落库断言）：页内交换拖拽、长按菜单、右缘/左缘开新屏、空白长按菜单、编辑模式即按即拖、全部应用抽屉共 7 条验收路径。
+
+## [0.1.12] - 2026-09-02
+
+### Fixed
+
+- 拖到末屏右边缘无法开新屏：临时屏状态是翻页 `LaunchedEffect` 的 key，写入瞬间 effect 自我取消、正在执行的翻页动画被掐死，随后进入"已有临时屏"分支永久卡住。改为状态不作为 effect key（Launcher3 extra empty screen 语义不变：松手未落子自动裁掉）。
+- 拖拽中的页号映射改用现算偏移：组合期捕获的偏移快照在临时屏插入后会过期，导致落点解析/落子页号错误。
+
+### Added
+
+- 首屏左边缘开新屏：拖拽中停在首屏左缘约 900ms 在左侧插入临时空白屏，落子后被拖图标落到新首屏，其余页面整体后移一页（`HomePages.resolvePrependMove`）；右缘行为保持末屏追加。
+- 编辑（jiggle）模式即按即拖：图标位移超触摸阈值（touchSlop）直接进入拖拽，原地松手仍为勾选切换，全程不弹长按菜单（对齐 iOS/HyperOS jiggle）。
+
+## [0.1.11] - 2026-09-02
+
+### Added
+
+- 桌面滑动模式设置（主页布局 → 桌面滑动）：左右翻页（默认，现状行为）/ 上下滚动两种模式可切。上下滚动模式把所有页摊平成一条纵向列表（自由摆放保留空槽占位），数据模型不变——落子时全局下标换算回 `(homePage, homeCellIndex)`；拖拽中手指悬停顶部/底部边缘自动滚动并重解析落点；页码指示器仅在该模式隐藏。
+- 左右翻页模式：拖拽中手指停在最后一屏右边缘约 900ms 自动追加临时空白页并翻过去，可直接落子；松手未落子则临时页自动裁掉，「默认只有一屏」不被破坏。
+- 「全部应用」浮动入口：主屏右下角半透明圆角图标（可自由拖动，位置归一化持久化），点按打开全部应用抽屉，长按弹菜单可隐藏；主页布局新增「显示全部应用入口」开关，空白处长按菜单亦可切换显隐。
+- 全部应用抽屉：按标题首字符分区（ASCII 字母大写，汉字经 pinyin4j 取拼音首字母，其余归 #），A→Z、# 殿后；右侧字母索引条支持点按与按住滑动连续跳转，当前字母放大气泡提示，无应用分区置灰不可点。
+- 空白处长按菜单（Initial pass 手势通道，不与图标/pager 手势竞争）：「编辑模式」进入 jiggle 批量整理；「隐藏/显示全部应用入口」。
+
 ## [0.1.10] - 2026-09-01
 
 ### Added
