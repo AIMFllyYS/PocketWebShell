@@ -21,7 +21,7 @@ Protect these product properties in every change:
 - `core/data/`: Room entities/DAO, DataStore preferences, repositories, persistence migrations.
 - `core/designsystem/`: Material 3 theme and reusable visual primitives.
 - `core/webengine/`: WebView ownership, configuration, pooling, profiles, local asset loading, callbacks.
-- `feature/home/`: launcher pages, folders, fixed grid, DragLayer and persisted ordering.
+- `feature/home/`: launcher pages, folders, fixed grid, DragLayer and persisted ordering. Interaction layer split: `HomeInteractionState.kt` (centralized drag/menu/edit session state holder) and `HomeGestures.kt` (cell gesture detection, root drag session, blank-area long-press, pinch edit mode, edge-hover page-turn state machine); `HomeScreen.kt` keeps composition root, grid containers, menus/dialogs and overlays. Instrumented gesture tests: `app/src/androidTest/.../HomeGestureInstrumentedTest.kt`（`:app:connectedDebugAndroidTest`，真机/模拟器回归主页手势验收路径）。
 - `feature/add/`: URL normalization, metadata parsing, icon discovery and app editing.
 - `feature/browser/`: browser chrome, tabs and tab switcher.
 - `feature/me/`: settings, Android permission/status surfaces and running-session presentation.
@@ -84,7 +84,12 @@ Changes in `feature/home` must preserve all of the following:
 - The drag registration point remains stable; the icon must not jump its center under the finger.
 - Pager gestures are disabled during an active drag.
 - A normal drop reorders; the centered, timed hotspot creates/adds to a folder.
-- Edge-hover page changes clear stale target state.
+- Edge-hover page changes clear stale target state; hovering the last page's right edge or the first page's left edge (~900ms) inserts a temporary blank page on that side (dropping on the left one prepends a new first page via `HomePages.resolvePrependMove`, shifting every other entity's `homePage` by +1) that is discarded on drop/cancel if nothing lands on it.
+- The drag tracking/drop session loop lives at the root container layer (`homeDragSession` in `HomeGestures.kt`), never on the cell composable: cells are disposed when their pager page leaves composition, and a gesture coroutine hosted on a cell would be cancelled mid-drag (state wipe + temp-page bounce-back).
+- All interaction session state lives in `HomeInteractionState`; gesture lambdas/coroutines capture only that stable holder (no stale composition snapshots). After writing `tempPageSide`, wait for recomposition frames (`withFrameNanos`) before scrolling the pager — `pageCount` only takes effect after recomposition and a same-frame scroll is coerced back to the old range.
+- The edge-hover page-turn state machine is a single internal loop observing `edgeDirection` via `snapshotFlow` (in `HomeDragEffects`), not a key-restarted `LaunchedEffect` — a synchronously re-armed direction is invisible to composition keys, so a restart-based effect never fires twice.
+- Edit (jiggle) mode never shows the long-press menu: icons enter drag immediately once movement passes touchSlop, and a release without drag toggles the selection checkmark.
+- The home screen supports two scroll modes switchable in settings (`homeScrollMode`): horizontal pager (default) and a single vertical scrolling list. Both modes share the same `(homePage, homeCellIndex)` data model (vertical mode maps flat indices back via `page = index / capacity`, `slot = index % capacity`) and the same drag invariants (floating layer, gesture mutual exclusion, drop-state cleanup).
 - Drop/cancel clears every drag state value.
 - Persisted `page/index` values are dense and deterministic after a move.
 
