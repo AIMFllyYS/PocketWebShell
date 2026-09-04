@@ -47,6 +47,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import coil3.compose.AsyncImage
 import com.webshell.core.data.HomeSettings
+import com.webshell.core.data.SCROLL_MODE_PAGER
+import com.webshell.core.data.SCROLL_MODE_VERTICAL
 import com.webshell.core.data.THEME_MODE_DARK
 import com.webshell.core.data.THEME_MODE_LIGHT
 import com.webshell.core.data.THEME_MODE_PHOTO
@@ -83,6 +85,21 @@ internal fun LayoutSettingsPage(
             )
         }
         Spacer(Modifier.height(16.dp))
+        SectionCard(title = "桌面滑动") {
+            ThemeModeRow(
+                title = "左右翻页",
+                subtitle = "一屏一页横向切换（默认）",
+                selected = settings.homeScrollMode == SCROLL_MODE_PAGER,
+                onClick = { viewModel.setHomeScrollMode(SCROLL_MODE_PAGER) },
+            )
+            ThemeModeRow(
+                title = "上下滚动",
+                subtitle = "所有页摊平成一条纵向列表连续滚动",
+                selected = settings.homeScrollMode == SCROLL_MODE_VERTICAL,
+                onClick = { viewModel.setHomeScrollMode(SCROLL_MODE_VERTICAL) },
+            )
+        }
+        Spacer(Modifier.height(16.dp))
         SectionCard(title = "桌面整理") {
             ToggleRow(
                 title = "自动整理桌面",
@@ -93,6 +110,12 @@ internal fun LayoutSettingsPage(
                 },
                 checked = settings.autoArrangeHome,
                 onCheckedChange = viewModel::setAutoArrangeHome,
+            )
+            ToggleRow(
+                title = "显示全部应用入口",
+                subtitle = "主屏右下角浮动图标，点按打开全部应用抽屉",
+                checked = settings.allAppsEntryVisible,
+                onCheckedChange = viewModel::setAllAppsEntryVisible,
             )
         }
         Spacer(Modifier.height(16.dp))

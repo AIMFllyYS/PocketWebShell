@@ -237,4 +237,104 @@ class HomePagesTest {
         assertEquals(0, updated.homePage)
         assertEquals(6, updated.homeCellIndex)
     }
+
+    // ---------- 上下滚动模式：分页摊平 ----------
+
+    @Test
+    fun `flatten pads each page to full capacity`() {
+        val sparse = HomePages.buildSparse(
+            apps = listOf(
+                app("a", page = 0, cell = 0),
+                app("b", page = 0, cell = 2),
+                app("c", page = 1, cell = 1),
+            ),
+            pageCapacity = 4,
+        )
+        val flat = HomePages.flatten(sparse, pageCapacity = 4)
+        // 页 0：[a, null, b, null]；页 1：[null, c, null, null]
+        assertEquals(8, flat.size)
+        assertEquals(listOf("a", null, "b", null, null, "c", null, null), flat.map { it?.key })
+    }
+
+    @Test
+    fun `flatten global index maps back to page and slot`() {
+        val sparse = HomePages.buildSparse(
+            apps = listOf(app("x", page = 2, cell = 3)),
+            pageCapacity = 4,
+        )
+        val flat = HomePages.flatten(sparse, pageCapacity = 4)
+        // x 落在全局下标 2 * 4 + 3 = 11，换算回 (page = 11 / 4, slot = 11 % 4)
+        val index = flat.indexOfFirst { it?.key == "x" }
+        assertEquals(11, index)
+        assertEquals(2, index / 4)
+        assertEquals(3, index % 4)
+    }
+
+    @Test
+    fun `flatten of short dense pages keeps slot positions stable`() {
+        // 自动整理的密集页（长度 < 容量）补空槽后，页内相对槽位不变
+        val flat = HomePages.flatten(
+            pages = listOf(
+                listOf(HomeCell(key = "a", app = app("a")), HomeCell(key = "b", app = app("b"))),
+                listOf(HomeCell(key = "c", app = app("c"))),
+            ),
+            pageCapacity = 4,
+        )
+        assertEquals(listOf("a", "b", null, null, "c", null, null, null), flat.map { it?.key })
+    }
+
+    @Test
+    fun `prepend move lands dragged cell on new first page and shifts others`() {
+        val updates = HomePages.resolvePrependMove(
+            apps = listOf(
+                app("a", page = 0, cell = 2),
+                app("b", page = 1, cell = 5),
+                app("c", page = 1, cell = 7),
+            ),
+            draggedKey = "a",
+            toSlot = 9,
+            pageCapacity = 20,
+        ).associateBy { it.id }
+        assertEquals(0, updates.getValue("a").homePage)
+        assertEquals(9, updates.getValue("a").homeCellIndex)
+        // 其余应用页号 +1，槽位不变
+        assertEquals(2, updates.getValue("b").homePage)
+        assertEquals(5, updates.getValue("b").homeCellIndex)
+        assertEquals(2, updates.getValue("c").homePage)
+        assertEquals(7, updates.getValue("c").homeCellIndex)
+    }
+
+    @Test
+    fun `prepend move carries whole folder to new first page`() {
+        val updates = HomePages.resolvePrependMove(
+            apps = listOf(
+                app("x", page = 0, cell = 2, folder = "f1"),
+                app("y", page = 0, cell = 2, folder = "f1"),
+                app("a", page = 0, cell = 0),
+            ),
+            draggedKey = "folder-f1",
+            toSlot = 4,
+            pageCapacity = 20,
+        ).associateBy { it.id }
+        // 文件夹全部成员落到新首屏同一槽位
+        assertEquals(0, updates.getValue("x").homePage)
+        assertEquals(4, updates.getValue("x").homeCellIndex)
+        assertEquals(0, updates.getValue("y").homePage)
+        assertEquals(4, updates.getValue("y").homeCellIndex)
+        assertEquals(1, updates.getValue("a").homePage)
+        assertEquals(0, updates.getValue("a").homeCellIndex)
+    }
+
+    @Test
+    fun `prepend move rejects invalid slot and unknown key`() {
+        val apps = listOf(app("a", page = 0, cell = 0))
+        assertEquals(
+            emptyList<WebAppEntity>(),
+            HomePages.resolvePrependMove(apps, "a", toSlot = 20, pageCapacity = 20),
+        )
+        assertEquals(
+            emptyList<WebAppEntity>(),
+            HomePages.resolvePrependMove(apps, "missing", toSlot = 0, pageCapacity = 20),
+        )
+    }
 }

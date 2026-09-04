@@ -19,10 +19,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,12 +38,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
@@ -68,8 +67,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -81,10 +78,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.changedToUp
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -103,6 +96,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.webshell.core.data.HomeSettings
+import com.webshell.core.data.SCROLL_MODE_VERTICAL
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.designsystem.components.AppContextMenu
 import com.webshell.core.designsystem.components.AppContextMenuItem
@@ -113,22 +107,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-
-private const val FOLDER_HOVER_MILLIS = 500L
-private const val EDGE_HOVER_MILLIS = 450L
-private const val PINCH_IN_THRESHOLD = 0.86f
-private const val PINCH_OUT_THRESHOLD = 1.16f
-// 长按弹菜单后转为拖拽的累计位移阈值：Launcher3
-// deep_shortcuts_start_drag_threshold = 16dp（大于 touchSlop 8dp 的两段式阈值，
-// ≤16dp 松手菜单保持打开，>16dp 才进入拖拽）。
-private val DRAG_START_THRESHOLD = 16.dp
 
 /**
  * 手机桌面式主页。
  *
- * 拖拽采用与 Launcher3 相同的分层思路：网格只保留占位，独立浮动层绘制跟手图标。
+ * 拖拽采用与 Launcher3 相同的分层思路：网格只保留占位，独立浮动层绘制跟手图标，
  * 因此拖动不会参与 LazyGrid 测量，也不会把整页撑大或缩小。
+ *
+ * 交互层拆分（见同包文件）：
+ * - [HomeInteractionState]：全部拖拽/菜单/编辑模式会话状态的集中持有者；
+ * - [HomeGesturesKt]（HomeGestures.kt）：cell 手势检测、根级拖拽会话、空白长按、
+ *   双指捏合、边缘悬停翻页等手势板块。本文件只保留组合根、网格容器、
+ *   菜单/对话框与浮层。
  */
 @Composable
 fun HomeScreen(
@@ -156,27 +146,58 @@ fun HomeScreen(
     } else {
         -1
     }
-    val pagerState = rememberPagerState(pageCount = { pages.size.coerceAtLeast(1) })
+    // 交互会话状态（拖拽/菜单/编辑模式/布局注册表）集中在 HomeInteractionState：
+    // 手势协程只捕获这个稳定对象，读写落到同一份快照状态（历史上两个 P0 缺陷
+    // 都源于状态散落在数十个 remember 中被手势闭包按值捕获，见该类的文档）。
+    // 这里用属性委托把各字段别名为本地变量，下方组合代码的读写无需改动。
+    val ui = rememberHomeInteractionState()
+    var tempPageSide by ui::tempPageSide
+    val pagerState = rememberPagerState(
+        pageCount = { (pages.size + if (tempPageSide != 0) 1 else 0).coerceAtLeast(1) },
+    )
+    // pager 页号 → 数据页号的左偏移：左侧临时屏存在时数据页 = pager 页 - 1。
+    val tempLeftOffset = ui.tempLeftOffset
+    // 上下滚动模式：所有页摊平成一条 LazyVerticalGrid（数据模型不变，
+    // 落子时全局下标换算回 page = index / capacity、slot = index % capacity）。
+    val verticalMode = settings.homeScrollMode == SCROLL_MODE_VERTICAL
+    val lazyGridState = rememberLazyGridState()
+    val flatCells: List<HomeCell?> = remember(pages, pageCapacity) {
+        HomePages.flatten(pages, pageCapacity)
+    }
+    // “添加”入口在摊平列表中的下标：末页第一个空槽（自由摆放用 addSlotIndex；
+    // 自动整理的末页图标压实靠左，首个空槽即 pages.last().size）。
+    val addFlatIndex = remember(pages, addSlotIndex, freePlacement, pageCapacity) {
+        val lastPageStart = (pages.size - 1).coerceAtLeast(0) * pageCapacity
+        val slotInPage = if (freePlacement) {
+            addSlotIndex
+        } else {
+            pages.lastOrNull()?.size ?: 0
+        }
+        if (slotInPage in 0 until pageCapacity) lastPageStart + slotInPage else -1
+    }
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
 
-    val cellBounds = remember { mutableStateMapOf<String, Rect>() }
-    // 全部网格槽（含空槽）的屏幕区域："page:slot" → Rect，用于松手吸附最近槽位。
-    val slotBounds = remember { mutableStateMapOf<String, Rect>() }
-    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
-    var draggingKey by remember { mutableStateOf<String?>(null) }
-    var dragPosition by remember { mutableStateOf(Offset.Zero) }
-    var dragRegistration by remember { mutableStateOf(Offset.Zero) }
-    var dragHoverTarget by remember { mutableStateOf<String?>(null) }
-    // 拖拽吸附的最近网格插槽（当前页内 cellIndex，可为末尾追加位）。
-    var dragTargetCellIndex by remember { mutableStateOf(-1) }
-    var folderCandidate by remember { mutableStateOf<String?>(null) }
-    var folderArmed by remember { mutableStateOf(false) }
-    var edgeDirection by remember { mutableIntStateOf(0) }
+    val cellBounds = ui.cellBounds
+    val slotBounds = ui.slotBounds
+    var rootOrigin by ui::rootOrigin
+    var draggingKey by ui::draggingKey
+    var dragPosition by ui::dragPosition
+    var dragRegistration by ui::dragRegistration
+    var dragHoverTarget by ui::dragHoverTarget
+    var dragTargetCellIndex by ui::dragTargetCellIndex
+    var dragTargetPage by ui::dragTargetPage
+    var folderCandidate by ui::folderCandidate
+    var folderArmed by ui::folderArmed
+    var edgeDirection by ui::edgeDirection
+    var verticalEdgeDirection by ui::verticalEdgeDirection
     // iOS 顺序：长按先弹情境菜单；按住并移动超过 16dp 后菜单淡出、图标跟手。
-    var menuFor by remember { mutableStateOf<HomeCell?>(null) }
-    // 长按按压点（根布局坐标）：情境菜单以此为定位准心。
-    var menuPressPoint by remember { mutableStateOf<Offset?>(null) }
+    var menuFor by ui::menuFor
+    var menuPressPoint by ui::menuPressPoint
+    var blankMenuPoint by ui::blankMenuPoint
+    var allAppsEntryRect by ui::allAppsEntryRect
+    // 「全部应用」抽屉开关。
+    var allAppsOpen by remember { mutableStateOf(false) }
     var folderOpenFor by remember { mutableStateOf<String?>(null) }
     var confirmDeleteFor by remember { mutableStateOf<HomeCell?>(null) }
     var renameFor by remember { mutableStateOf<HomeCell?>(null) }
@@ -184,8 +205,8 @@ fun HomeScreen(
     // ViewModel 一次性消息（刷新成功/失败等）的轻量 toast 浮层。
     var toast by remember { mutableStateOf<String?>(null) }
     // 编辑（jiggle）模式：双指捏合进入，点选图标做批量整理。
-    var editMode by remember { mutableStateOf(false) }
-    val editSelection = remember { mutableStateMapOf<String, Boolean>() }
+    var editMode by ui::editMode
+    val editSelection = ui.editSelection
 
     val draggedCell = remember(pages, draggingKey) {
         pages.flatten().firstOrNull { it?.key == draggingKey }
@@ -206,59 +227,28 @@ fun HomeScreen(
         viewModel.messages.collect { toast = it }
     }
 
-    LaunchedEffect(draggingKey, folderCandidate) {
-        folderArmed = false
-        val candidate = folderCandidate ?: return@LaunchedEffect
-        if (draggingKey == null || candidate == draggingKey) return@LaunchedEffect
-        delay(FOLDER_HOVER_MILLIS)
-        if (folderCandidate == candidate && draggingKey != null) {
-            folderArmed = true
-            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-    }
+    // 落子动作：手势层不直接依赖 ViewModel，动作在此装配绑定（pageCapacity 随
+    // 设置变化，手势工厂内以 rememberUpdatedState 保持最新）。
+    val dropActions = HomeDropActions(
+        createFolder = viewModel::createFolder,
+        prependPageMove = { key, slot ->
+            viewModel.prependPageMove(key, slot, pageCapacity)
+        },
+        moveCellToSlot = { key, page, slot ->
+            viewModel.moveCellToSlot(key, page, slot, pageCapacity)
+        },
+        moveApp = viewModel::moveApp,
+        moveCell = { from, target -> viewModel.moveCell(from, target, pageCapacity) },
+    )
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { rootOrigin = it.positionInRoot() }
-            // 双指捏合（内划）进入编辑模式；外扩退出。仅在非拖拽时响应，
-            // 与单指长按拖拽手势互不干扰（不同 pointerInput 通道）。
-            .pointerInput(Unit) {
-                // 手动跟踪双指间距变化：比 detectTransformGestures 更可靠，
-                // 且不被 HorizontalPager 的单指拖动手势抢占。
-                awaitEachGesture {
-                    var startDistance = 0f
-                    var triggered = false
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val pressed = event.changes.filter { it.pressed }
-                        if (pressed.size < 2) {
-                            // 双指抬起，复位等待下一次捏合
-                            startDistance = 0f
-                            triggered = false
-                            break
-                        }
-                        if (draggingKey != null) break
-                        val d = (pressed[0].position - pressed[1].position).getDistance()
-                        if (startDistance == 0f) {
-                            startDistance = d
-                            continue
-                        }
-                        val ratio = d / startDistance
-                        if (!triggered && ratio < PINCH_IN_THRESHOLD && !editMode) {
-                            triggered = true
-                            editMode = true
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        } else if (!triggered && ratio > PINCH_OUT_THRESHOLD && editMode) {
-                            triggered = true
-                            exitEditMode()
-                        }
-                        if (triggered) {
-                            pressed.forEach { it.consume() }
-                        }
-                    }
-                }
-            },
+            // 空白处长按菜单（Initial pass）与双指捏合编辑模式：手势板块见
+            // HomeGestures.kt，状态全部落在 ui（HomeInteractionState）。
+            .homeBlankAreaMenu(ui, haptics)
+            .homePinchEditMode(ui, haptics),
     ) {
         // 照片壁纸主题：壁纸铺底 + 可读性 scrim；不参与网格测量，见 docs/DESIGN.md
         val wallpaperPath = LocalPhotoWallpaperPath.current
@@ -280,355 +270,213 @@ fun HomeScreen(
         }
 
         val widthPx = with(density) { maxWidth.toPx() }
+        val heightPx = with(density) { maxHeight.toPx() }
         val iconSize = settings.iconSizeDp.dp.coerceAtMost(
             ((maxWidth - 24.dp) / settings.gridColumns) - 12.dp,
         ).coerceAtLeast(40.dp)
         val cellHeight = iconSize + if (settings.showLabels) 30.dp else 16.dp
 
-        fun updateDropTargets(position: Offset) {
-            val currentPageCells = pages.getOrNull(pagerState.currentPage).orEmpty()
-            val currentKeys = currentPageCells.asSequence().mapNotNull { it?.key }.toHashSet()
-            val target = cellBounds.entries.firstOrNull { (key, rect) ->
-                key != draggingKey && key in currentKeys &&
-                    rect.contains(position.x.toInt(), position.y.toInt())
-            }
-            val targetKey = target?.key
-            if (targetKey != dragHoverTarget) {
-                dragHoverTarget = targetKey
-                if (targetKey != null) {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                }
-            }
-            // 网格吸附：在当前页全部网格槽（含空槽）中取几何中心距手指最近的槽。
-            // 与真实安卓桌面一致——空槽也是合法落点，松手即停在最近网格位。
-            val slotPrefix = "${pagerState.currentPage}:"
-            dragTargetCellIndex = slotBounds.entries
-                .filter { (key, _) -> key.startsWith(slotPrefix) }
-                .minByOrNull { (_, rect) ->
-                    val dx = rect.exactCenterX() - position.x
-                    val dy = rect.exactCenterY() - position.y
-                    dx * dx + dy * dy
-                }
-                ?.key?.substringAfter(':')?.toIntOrNull() ?: -1
-            val inFolderHotspot = target?.value?.let { rect ->
-                val centerX = rect.exactCenterX()
-                val centerY = rect.top + with(density) { iconSize.toPx() } / 2f
-                val radius = with(density) { iconSize.toPx() } * 0.55f
-                val dx = position.x - centerX
-                val dy = position.y - centerY
-                dx * dx + dy * dy <= radius * radius
-            } == true
-            // Do not depend on [draggedCell] here: it is derived during recomposition,
-            // while the first MOVE event can arrive before that recomposition has run.
-            // A launcher must be able to arm a folder even when the pointer enters the
-            // target in a single movement and then remains still.
-            val sourceCanMerge = pages.asSequence()
-                .flatten()
-                .firstOrNull { it?.key == draggingKey }
-                ?.isFolder == false
-            folderCandidate = targetKey.takeIf { inFolderHotspot && sourceCanMerge }
-
-            val localX = position.x - rootOrigin.x
-            val edgeZone = widthPx.coerceAtLeast(1f) * 0.10f
-            edgeDirection = when {
-                localX < edgeZone && pagerState.currentPage > 0 -> -1
-                localX > widthPx - edgeZone && pagerState.currentPage < pages.lastIndex -> 1
-                else -> 0
-            }
+        // 落点/悬停解析入口：手势层每个 MOVE 事件回调这里。pagerState.currentPage
+        // 在调用瞬间现读（组合期快照在拖拽中会过期）；本 lambda 随重组重建，
+        // 手势工厂内以 rememberUpdatedState 包装，协程始终调用最新版本。
+        val onDragMoved: (Offset) -> Unit = { position ->
+            ui.updateDropTargets(
+                position = position,
+                pages = pages,
+                currentPage = pagerState.currentPage,
+                verticalMode = verticalMode,
+                containerWidthPx = widthPx,
+                containerHeightPx = heightPx,
+                iconSize = iconSize,
+                density = density,
+                haptics = haptics,
+            )
         }
 
-        // 边缘悬停翻页：翻页后按最后手指位置重新解析最近网格槽，
-        // 避免松手时用上页的槽位索引落子。
-        LaunchedEffect(draggingKey, edgeDirection, pagerState.currentPage) {
-            val direction = edgeDirection
-            if (draggingKey == null || direction == 0) return@LaunchedEffect
-            val targetPage = (pagerState.currentPage + direction).coerceIn(0, pages.lastIndex)
-            if (targetPage == pagerState.currentPage) return@LaunchedEffect
-            delay(EDGE_HOVER_MILLIS)
-            if (draggingKey != null && edgeDirection == direction) {
-                pagerState.animateScrollToPage(targetPage)
-                dragHoverTarget = null
-                folderCandidate = null
-                folderArmed = false
-                edgeDirection = 0
-                updateDropTargets(dragPosition)
-            }
-        }
+        // 拖拽悬停效果：文件夹合并计时、边缘翻页/开新屏状态机、上下滚动自动滚动。
+        HomeDragEffects(
+            state = ui,
+            pagerState = pagerState,
+            lazyGridState = lazyGridState,
+            pages = pages,
+            verticalMode = verticalMode,
+            haptics = haptics,
+            onDragMoved = onDragMoved,
+        )
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = draggingKey == null,
-        ) { page ->
+        // 单个网格槽的渲染（pager 每页 / 上下滚动摊平列表共用）：空槽注册落点区域，
+        // 占用槽渲染 LauncherCell + 单通道手势状态机。
+        val gridCellContent: @Composable (page: Int, slot: Int, cell: HomeCell?, isAddSlot: Boolean) -> Unit =
+            { page, slot, cell, isAddSlot ->
+                val slotKey = "$page:$slot"
+                DisposableEffect(slotKey) {
+                    onDispose { slotBounds.remove(slotKey) }
+                }
+                if (cell == null) {
+                    // 自由摆放的空槽：末页首个空槽渲染“添加”入口，其余纯占位。
+                    // 空槽同样注册区域，是合法的拖拽落点。
+                    val slotModifier = Modifier
+                        .fillMaxWidth()
+                        .height(cellHeight)
+                        .onGloballyPositioned { coords ->
+                            val topLeft = coords.positionInRoot()
+                            slotBounds[slotKey] = Rect(
+                                topLeft.x.toInt(),
+                                topLeft.y.toInt(),
+                                (topLeft.x + coords.size.width).toInt(),
+                                (topLeft.y + coords.size.height).toInt(),
+                            )
+                        }
+                    if (isAddSlot) {
+                        AddCell(
+                            iconSize = iconSize,
+                            showLabel = settings.showLabels,
+                            cornerRadiusPercent = settings.iconCornerRadiusPercent,
+                            modifier = slotModifier.clickable(onClick = onAddRequested),
+                        )
+                    } else {
+                        Spacer(slotModifier)
+                    }
+                } else {
+                DisposableEffect(cell.key) {
+                    onDispose { cellBounds.remove(cell.key) }
+                }
+                val cellInteraction = remember { MutableInteractionSource() }
+                val cellPressed by cellInteraction.collectIsPressedAsState()
+                LauncherCell(
+                    cell = cell,
+                    iconSize = iconSize,
+                    settings = settings,
+                    isSource = draggingKey == cell.key,
+                    isMergeTarget = folderArmed && folderCandidate == cell.key,
+                    isReorderTarget = dragHoverTarget == cell.key && !folderArmed,
+                    isEditMode = editMode,
+                    isEditSelected = editSelection[cell.key] == true,
+                    isPressed = cellPressed,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(cellHeight)
+                        .onGloballyPositioned { coords ->
+                            val topLeft = coords.positionInRoot()
+                            val rect = Rect(
+                                topLeft.x.toInt(),
+                                topLeft.y.toInt(),
+                                (topLeft.x + coords.size.width).toInt(),
+                                (topLeft.y + coords.size.height).toInt(),
+                            )
+                            cellBounds[cell.key] = rect
+                            slotBounds[slotKey] = rect
+                        }
+                        // 单通道手势状态机已抽到 HomeGestures.kt（tap/长按菜单/
+                        // 编辑即拖检测，拖拽条件满足后置位 draggingKey 并交接给
+                        // 下方的根级拖拽会话层）。
+                        .homeCellGesture(
+                            state = ui,
+                            cell = cell,
+                            iconSize = iconSize,
+                            interactionSource = cellInteraction,
+                            haptics = haptics,
+                            onLaunch = onLaunch,
+                            onFolderOpen = { folderOpenFor = it },
+                            onDragMoved = onDragMoved,
+                        ),
+                )
+                }
+            }
+
+        // 拖拽会话层（根级，对齐 Launcher3 DragController）：包住 pager/列表的
+        // 容器承载拖拽会话主循环（实现见 HomeGestures.kt 的 homeDragSession）。
+        // 会话必须活在 cell 之上：翻页/开新屏后源 cell 随旧页被 Pager 移出组合，
+        // 挂在 cell 上的协程会被一并取消——状态清零、临时屏回弹，表现为
+        // “翻页/开新屏没反应”（本层即为该缺陷的修复）。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .homeDragSession(
+                    state = ui,
+                    pages = pages,
+                    verticalMode = verticalMode,
+                    autoArrangeHome = settings.autoArrangeHome,
+                    dropActions = dropActions,
+                    onDragMoved = onDragMoved,
+                ),
+        ) {
+        if (verticalMode) {
+            // 上下滚动模式：所有页摊平成一条纵向列表，空槽保留 null 占位，
+            // 落点时全局下标换算回 (homePage, homeCellIndex)（数据模型不变）。
             LazyVerticalGrid(
                 columns = GridCells.Fixed(settings.gridColumns),
+                state = lazyGridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     top = 18.dp,
                     end = 12.dp,
-                    bottom = if (settings.showPageIndicator) 44.dp else 20.dp,
+                    bottom = 20.dp,
                 ),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                userScrollEnabled = false,
+                // 拖拽中禁用列表手势（与 pager 模式一致的不变量）
+                userScrollEnabled = draggingKey == null,
             ) {
                 itemsIndexed(
-                    items = pages[page],
-                    key = { slot, cell -> cell?.key ?: "slot-$page-$slot" },
-                ) { slot, cell ->
-                    val slotKey = "$page:$slot"
-                    DisposableEffect(slotKey) {
-                        onDispose { slotBounds.remove(slotKey) }
+                    items = flatCells,
+                    key = { index, cell -> cell?.key ?: "vslot-$index" },
+                ) { index, cell ->
+                    gridCellContent(index / pageCapacity, index % pageCapacity, cell, index == addFlatIndex)
+                }
+            }
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = draggingKey == null,
+            ) { page ->
+                // 临时空白屏（拖拽到末屏右缘/首屏左缘触发）：全空槽，可落子。
+                // 左侧临时屏存在时 pager 页 0 为临时屏，数据页 = pager 页 - 1。
+                val dataPage = page - tempLeftOffset
+                val pageCells = pages.getOrNull(dataPage) ?: List(pageCapacity) { null }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(settings.gridColumns),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 12.dp,
+                        top = 18.dp,
+                        end = 12.dp,
+                        bottom = if (settings.showPageIndicator) 44.dp else 20.dp,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    userScrollEnabled = false,
+                ) {
+                    itemsIndexed(
+                        items = pageCells,
+                        key = { slot, cell -> cell?.key ?: "slot-$page-$slot" },
+                    ) { slot, cell ->
+                        gridCellContent(page, slot, cell, dataPage == pages.lastIndex && slot == addSlotIndex)
                     }
-                    if (cell == null) {
-                        // 自由摆放的空槽：末页首个空槽渲染“添加”入口，其余纯占位。
-                        // 空槽同样注册区域，是合法的拖拽落点。
-                        val slotModifier = Modifier
-                            .fillMaxWidth()
-                            .height(cellHeight)
-                            .onGloballyPositioned { coords ->
-                                val topLeft = coords.positionInRoot()
-                                slotBounds[slotKey] = Rect(
-                                    topLeft.x.toInt(),
-                                    topLeft.y.toInt(),
-                                    (topLeft.x + coords.size.width).toInt(),
-                                    (topLeft.y + coords.size.height).toInt(),
-                                )
-                            }
-                        if (page == pages.lastIndex && slot == addSlotIndex) {
+                    // 自动整理模式：“添加”入口追加在末页最后一个图标之后；
+                    // 自由摆放模式已在首个空槽内渲染（见上方 itemsIndexed）。
+                    if (!freePlacement && dataPage == pages.lastIndex) {
+                        item(key = "__add__") {
                             AddCell(
                                 iconSize = iconSize,
                                 showLabel = settings.showLabels,
                                 cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                                modifier = slotModifier.clickable(onClick = onAddRequested),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(cellHeight)
+                                    .clickable(onClick = onAddRequested),
                             )
-                        } else {
-                            Spacer(slotModifier)
                         }
-                        return@itemsIndexed
-                    }
-                    DisposableEffect(cell.key) {
-                        onDispose { cellBounds.remove(cell.key) }
-                    }
-                    val cellInteraction = remember { MutableInteractionSource() }
-                    val cellPressed by cellInteraction.collectIsPressedAsState()
-                    LauncherCell(
-                        cell = cell,
-                        iconSize = iconSize,
-                        settings = settings,
-                        isSource = draggingKey == cell.key,
-                        isMergeTarget = folderArmed && folderCandidate == cell.key,
-                        isReorderTarget = dragHoverTarget == cell.key && !folderArmed,
-                        isEditMode = editMode,
-                        isEditSelected = editSelection[cell.key] == true,
-                        isPressed = cellPressed,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(cellHeight)
-                            .onGloballyPositioned { coords ->
-                                val topLeft = coords.positionInRoot()
-                                val rect = Rect(
-                                    topLeft.x.toInt(),
-                                    topLeft.y.toInt(),
-                                    (topLeft.x + coords.size.width).toInt(),
-                                    (topLeft.y + coords.size.height).toInt(),
-                                )
-                                cellBounds[cell.key] = rect
-                                slotBounds[slotKey] = rect
-                            }
-                            // 单通道手势状态机（对齐 Launcher3）：一个 pointerInput 内按
-                            // tap / 位移取消 / 长按 三分支编排，长按与点击天然互斥 ——
-                            // 长按触发后原地松手绝不触发打开应用（旧实现 clickable 与
-                            // detectDragGesturesAfterLongPress 双通道并存，长按原地松手
-                            // 会同时弹菜单并打开应用，模拟器鼠标必现）。
-                            .pointerInput(cell.key, iconSize) {
-                                val dragThresholdPx = DRAG_START_THRESHOLD.toPx()
-                                awaitEachGesture {
-                                    val down = awaitFirstDown()
-                                    // pressed 视觉：图标自身轻微回缩（沿用 cellInteraction）。
-                                    val press = PressInteraction.Press(down.position)
-                                    cellInteraction.tryEmit(press)
-                                    var pressEnded = false
-                                    fun endPress(cancel: Boolean = false) {
-                                        if (pressEnded) return
-                                        pressEnded = true
-                                        cellInteraction.tryEmit(
-                                            if (cancel) PressInteraction.Cancel(press)
-                                            else PressInteraction.Release(press),
-                                        )
-                                    }
-
-                                    // 长按超时窗口内跟踪同一 pointer：
-                                    // 提前松手 = tap；累计位移超 touchSlop = 取消（交还 pager 滚动）；
-                                    // 超时 = 长按。事件被其它手势（pager 等）消费同样视为取消。
-                                    var isTap = false
-                                    var isCancelled = false
-                                    val longPressTriggered = withTimeoutOrNull(
-                                        viewConfiguration.longPressTimeoutMillis,
-                                    ) {
-                                        var accumulated = Offset.Zero
-                                        while (true) {
-                                            val change = awaitPointerEvent()
-                                                .changes.firstOrNull { it.id == down.id }
-                                            if (change == null || change.isConsumed) {
-                                                isCancelled = true
-                                                return@withTimeoutOrNull
-                                            }
-                                            if (change.changedToUp()) {
-                                                isTap = true
-                                                return@withTimeoutOrNull
-                                            }
-                                            accumulated += change.positionChange()
-                                            if (accumulated.getDistance() > viewConfiguration.touchSlop) {
-                                                isCancelled = true
-                                                return@withTimeoutOrNull
-                                            }
-                                        }
-                                    } == null
-
-                                    when {
-                                        isTap -> {
-                                            endPress()
-                                            // 其它图标的拖拽进行中时不响应点按（原 clickable enabled 语义）。
-                                            if (draggingKey != null) return@awaitEachGesture
-                                            if (editMode) {
-                                                // 编辑模式：点按切换勾选，而非启动。
-                                                editSelection[cell.key] = !(editSelection[cell.key] ?: false)
-                                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            } else if (cell.isFolder) {
-                                                folderOpenFor = cell.app.folderId
-                                            } else {
-                                                onLaunch(cell.app.id, cell.app.url)
-                                            }
-                                        }
-                                        isCancelled -> endPress(cancel = true)
-                                        else -> {
-                                            // 长按确认：编辑模式不弹菜单（保持现状语义）。
-                                            if (editMode) {
-                                                while (true) {
-                                                    val change = awaitPointerEvent()
-                                                        .changes.firstOrNull { it.id == down.id }
-                                                    if (change == null || change.changedToUp()) break
-                                                    // 消费位移，阻止 pager 在按住期间滚动
-                                                    // （沿用原 detectDragGesturesAfterLongPress 语义）。
-                                                    change.consume()
-                                                }
-                                                endPress()
-                                                return@awaitEachGesture
-                                            }
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            menuFor = cell
-                                            // 记录按压点（根布局坐标）：菜单以此为定位准心。
-                                            menuPressPoint = cellBounds[cell.key]?.let { rect ->
-                                                Offset(rect.left + down.position.x, rect.top + down.position.y)
-                                            }
-                                            // 长按后继续跟踪同一 pointer，两段式拖拽阈值
-                                            // （DRAG_START_THRESHOLD = 16dp）：≤16dp 松手菜单保持打开；
-                                            // >16dp 关闭菜单并进入拖拽。全程消费位移事件，
-                                            // 阻止 pager 在菜单打开/拖拽期间滚动（沿用原
-                                            // detectDragGesturesAfterLongPress 的消费语义）。
-                                            var accumulated = Offset.Zero
-                                            var dragging = false
-                                            try {
-                                                while (true) {
-                                                    val change = awaitPointerEvent()
-                                                        .changes.firstOrNull { it.id == down.id }
-                                                        ?: break
-                                                    if (change.changedToUp()) break
-                                                    // 先取位移再消费（consume 后 positionChange 归零），
-                                                    // 消费用于阻止 pager 滚动。
-                                                    val delta = change.positionChange()
-                                                    change.consume()
-                                                    accumulated += delta
-                                                    if (!dragging && accumulated.getDistance() > dragThresholdPx) {
-                                                        val rect = cellBounds[cell.key] ?: break
-                                                        menuFor = null
-                                                        dragging = true
-                                                        draggingKey = cell.key
-                                                        // 拖拽注册点计算沿用原 onDragStart：
-                                                        // 锚定在按下点，图标中心不在手指下跳变。
-                                                        val iconPx = with(density) { iconSize.toPx() }
-                                                        val iconLeft = (rect.width() - iconPx) / 2f
-                                                        val local = down.position
-                                                        dragPosition = Offset(rect.left + local.x, rect.top + local.y)
-                                                        dragRegistration = Offset(
-                                                            x = (local.x - iconLeft).coerceIn(0f, iconPx),
-                                                            y = local.y.coerceIn(0f, iconPx),
-                                                        )
-                                                    }
-                                                    if (dragging) {
-                                                        dragPosition += delta
-                                                        updateDropTargets(dragPosition)
-                                                    }
-                                                }
-                                                if (dragging) {
-                                                    // 松手落子：逻辑与原 onDragEnd 的 when 分支一致。
-                                                    val from = draggingKey
-                                                    val target = dragHoverTarget
-                                                    val slotIndex = dragTargetCellIndex
-                                                    when {
-                                                        from != null && target != null && folderArmed ->
-                                                            viewModel.createFolder(from, target)
-                                                        // 自由摆放：落在最近网格槽（空槽直落，占用则交换）。
-                                                        from != null && slotIndex >= 0 && !settings.autoArrangeHome ->
-                                                            viewModel.moveCellToSlot(
-                                                                draggedKey = from,
-                                                                toPage = pagerState.currentPage,
-                                                                toSlot = slotIndex,
-                                                                pageCapacity = pageCapacity,
-                                                            )
-                                                        // 自动整理：保持压实重排语义。
-                                                        from != null && slotIndex >= 0 -> {
-                                                            val dragged = pages.flatten().firstOrNull { it?.key == from }
-                                                            if (dragged != null && !dragged.isFolder) {
-                                                                viewModel.moveApp(
-                                                                    appId = dragged.app.id,
-                                                                    toPage = pagerState.currentPage,
-                                                                    toCellIndex = slotIndex,
-                                                                )
-                                                            } else if (target != null) {
-                                                                viewModel.moveCell(from, target, pageCapacity)
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            } finally {
-                                                // drop/cancel 都清空全部拖拽状态（含协程被取消的路径），
-                                                // 与原 onDragEnd/onDragCancel 的清零一致。
-                                                endPress()
-                                                draggingKey = null
-                                                dragHoverTarget = null
-                                                dragTargetCellIndex = -1
-                                                folderCandidate = null
-                                                folderArmed = false
-                                                edgeDirection = 0
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                    )
-                }
-                // 自动整理模式：“添加”入口追加在末页最后一个图标之后；
-                // 自由摆放模式已在首个空槽内渲染（见上方 itemsIndexed）。
-                if (!freePlacement && page == pages.lastIndex) {
-                    item(key = "__add__") {
-                        AddCell(
-                            iconSize = iconSize,
-                            showLabel = settings.showLabels,
-                            cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(cellHeight)
-                                .clickable(onClick = onAddRequested),
-                        )
                     }
                 }
             }
         }
+        }
 
-        if (settings.showPageIndicator && pages.size > 1) {
+        // 页码指示器只在左右翻页模式显示
+        if (!verticalMode && settings.showPageIndicator && pages.size > 1) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -670,6 +518,25 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+
+        // 「全部应用」浮动入口：渲染在 Pager/Grid 之外的 overlay，不参与网格测量；
+        // 位于 DragLayer 之下，拖拽图标时浮层始终在最上。
+        if (settings.allAppsEntryVisible) {
+            AllAppsEntry(
+                iconSize = iconSize,
+                cornerRadiusPercent = settings.iconCornerRadiusPercent,
+                showLabel = settings.showLabels,
+                posX = settings.allAppsEntryPosX,
+                posY = settings.allAppsEntryPosY,
+                containerWidthPx = widthPx,
+                containerHeightPx = heightPx,
+                onOpen = { allAppsOpen = true },
+                onHide = { viewModel.setAllAppsEntryVisible(false) },
+                onPositionChange = { x, y -> viewModel.setAllAppsEntryPosition(x, y) },
+                onBoundsChanged = { allAppsEntryRect = it },
+                modifier = Modifier.align(Alignment.TopStart),
+            )
         }
 
         // 独立于 Pager/LazyGrid 的 DragLayer：只绘制，不参与网格测量。
@@ -747,6 +614,42 @@ fun HomeScreen(
                 toast = null
             }
         }
+    }
+
+    // 空白处长按菜单（锚定按压点）：编辑模式入口 + 「全部应用」入口显隐。
+    blankMenuPoint?.let { point ->
+        AppContextMenu(
+            items = listOf(
+                AppContextMenuItem("编辑模式", Icons.Filled.Edit) {
+                    editMode = true
+                },
+                AppContextMenuItem(
+                    if (settings.allAppsEntryVisible) "隐藏全部应用入口" else "显示全部应用入口",
+                    Icons.Filled.Apps,
+                ) {
+                    viewModel.setAllAppsEntryVisible(!settings.allAppsEntryVisible)
+                },
+            ),
+            onDismiss = { blankMenuPoint = null },
+            anchorPoint = IntOffset(point.x.roundToInt(), point.y.roundToInt()),
+        )
+    }
+
+    // 全部应用抽屉：首字母分区网格 + 右侧字母索引条。
+    if (allAppsOpen) {
+        // 拼音分组只在应用列表变化时重算（remember 缓存，避免每次重组全量转换）
+        val sections = remember(apps) { AllAppsIndex.buildSections(apps) }
+        AllAppsDrawer(
+            sections = sections,
+            columns = settings.gridColumns,
+            iconSize = settings.iconSizeDp.dp,
+            cornerRadiusPercent = settings.iconCornerRadiusPercent,
+            onLaunch = { id, url ->
+                allAppsOpen = false
+                onLaunch(id, url)
+            },
+            onDismiss = { allAppsOpen = false },
+        )
     }
 
     menuFor?.let { cell ->

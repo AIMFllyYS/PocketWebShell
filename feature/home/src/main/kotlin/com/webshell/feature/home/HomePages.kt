@@ -133,6 +133,31 @@ object HomePages {
     }
 
     /**
+     * 首屏左缘开新屏落子：被拖 cell 落到新首屏 (0, toSlot)，其余所有实体页号 +1
+     * （文件夹成员随 anchor 一起后移，相对槽位不变）。
+     * 返回需要落库的实体列表；空列表 = 无操作。
+     */
+    fun resolvePrependMove(
+        apps: List<WebAppEntity>,
+        draggedKey: String,
+        toSlot: Int,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        if (toSlot !in 0 until capacity) return emptyList()
+        val dragged = aggregateCells(apps).firstOrNull { it.key == draggedKey } ?: return emptyList()
+        val draggedIds = (if (dragged.isFolder) dragged.folderMembers else listOf(dragged.app))
+            .mapTo(HashSet()) { it.id }
+        return apps.map { entity ->
+            if (entity.id in draggedIds) {
+                entity.copy(homePage = 0, homeCellIndex = toSlot)
+            } else {
+                entity.copy(homePage = entity.homePage.coerceAtLeast(0) + 1)
+            }
+        }
+    }
+
+    /**
      * 自由摆放解散文件夹：首个成员占文件夹原槽位，其余成员从该槽位起顺序占空槽。
      * 返回需要落库的实体列表（folderId 已置空）。
      */
@@ -198,6 +223,21 @@ object HomePages {
             homePage = cursor / capacity,
             homeCellIndex = cursor % capacity,
         )
+    }
+
+    /**
+     * 纵向滚动模式：把分页网格摊平成一条列表 —— 每页补空槽到满容量后首尾相接。
+     * 全局下标与持久化坐标的换算固定为 page = index / capacity、slot = index % capacity，
+     * 落子仍走 (homePage, homeCellIndex)，数据模型不变。
+     */
+    fun flatten(pages: List<List<HomeCell?>>, pageCapacity: Int): List<HomeCell?> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val out = ArrayList<HomeCell?>(pages.size * capacity)
+        pages.forEach { page ->
+            out.addAll(page.take(capacity))
+            repeat((capacity - page.size).coerceAtLeast(0)) { out.add(null) }
+        }
+        return out
     }
 
     /** 根级应用 + 文件夹聚合为 cell 列表，按 (页, 槽, 创建时间) 排序。 */

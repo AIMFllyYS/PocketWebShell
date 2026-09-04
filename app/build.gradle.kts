@@ -32,6 +32,7 @@ android {
         // 版本计数已重置，规则见 docs/VERSIONING.md
         versionCode = 11
         versionName = "0.1.10"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -98,4 +99,9 @@ dependencies {
 
     implementation(libs.haze)
     implementation(libs.haze.materials)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.uiautomator)
+    androidTestImplementation(libs.junit)
 }
