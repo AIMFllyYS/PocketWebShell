@@ -53,4 +53,51 @@ class AppLogTest {
         assertTrue(AppLog.entries().isEmpty())
         assertTrue(AppLog.exportText().isEmpty())
     }
+
+    @Test
+    fun `log defaults to INFO level`() {
+        AppLog.log("home", "plain")
+
+        assertEquals(AppLog.Level.INFO, AppLog.entries().first().level)
+    }
+
+    @Test
+    fun `warn and error write their levels`() {
+        AppLog.warn("web", "degraded")
+        AppLog.error("web", "failed")
+
+        val entries = AppLog.entries()
+        assertEquals(AppLog.Level.WARN, entries[0].level)
+        assertEquals(AppLog.Level.ERROR, entries[1].level)
+    }
+
+    @Test
+    fun `entrySink receives appended entries`() {
+        val received = mutableListOf<AppLog.Entry>()
+        AppLog.entrySink = { received.add(it) }
+        try {
+            AppLog.log("app", "started")
+            AppLog.error("web", "boom")
+        } finally {
+            AppLog.entrySink = null
+        }
+
+        assertEquals(2, received.size)
+        assertEquals("started", received[0].message)
+        assertEquals(AppLog.Level.ERROR, received[1].level)
+    }
+
+    @Test
+    fun `throwing sink does not break log`() {
+        AppLog.entrySink = { error("sink exploded") }
+        try {
+            AppLog.log("app", "still works")
+        } finally {
+            AppLog.entrySink = null
+        }
+
+        val entries = AppLog.entries()
+        assertEquals(1, entries.size)
+        assertEquals("still works", entries.first().message)
+    }
 }

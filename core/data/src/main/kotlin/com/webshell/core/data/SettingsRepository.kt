@@ -3,6 +3,7 @@ package com.webshell.core.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -32,6 +33,16 @@ data class HomeSettings(
      * 关闭（默认）= 自由摆放，图标拖到哪个网格位就停在哪个网格位（对齐主流安卓桌面）。
      */
     val autoArrangeHome: Boolean = false,
+    /** 桌面滑动模式：左右翻页（默认）/ 上下滚动，见 SCROLL_MODE_* */
+    val homeScrollMode: String = SCROLL_MODE_PAGER,
+    /** 「全部应用」浮动入口是否显示 */
+    val allAppsEntryVisible: Boolean = true,
+    /**
+     * 「全部应用」浮动入口位置：归一化到主屏内容区的 0..1 中心坐标比例，
+     * 负值（默认）= 未拖动过，落在右下角默认位。
+     */
+    val allAppsEntryPosX: Float = -1f,
+    val allAppsEntryPosY: Float = -1f,
 )
 
 /** 主题模式取值，见 docs/DESIGN.md */
@@ -45,6 +56,10 @@ const val TRANSITION_SLIDE = "slide"
 const val TRANSITION_FADE = "fade"
 const val TRANSITION_SCALE = "scale"
 const val TRANSITION_NONE = "none"
+
+/** 桌面滑动模式取值：左右翻页（默认，现状行为）/ 上下滚动单列表 */
+const val SCROLL_MODE_PAGER = "pager"
+const val SCROLL_MODE_VERTICAL = "vertical"
 
 @Singleton
 class SettingsRepository @Inject constructor(
@@ -63,6 +78,10 @@ class SettingsRepository @Inject constructor(
         val PHOTO_WALLPAPER = stringPreferencesKey("photo_wallpaper_path")
         val TRANSITION_STYLE = stringPreferencesKey("transition_style")
         val AUTO_ARRANGE_HOME = booleanPreferencesKey("auto_arrange_home")
+        val HOME_SCROLL_MODE = stringPreferencesKey("home_scroll_mode")
+        val ALL_APPS_ENTRY_VISIBLE = booleanPreferencesKey("all_apps_entry_visible")
+        val ALL_APPS_ENTRY_X = floatPreferencesKey("all_apps_entry_x")
+        val ALL_APPS_ENTRY_Y = floatPreferencesKey("all_apps_entry_y")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
@@ -79,6 +98,10 @@ class SettingsRepository @Inject constructor(
             photoWallpaperPath = prefs[Keys.PHOTO_WALLPAPER],
             transitionStyle = prefs[Keys.TRANSITION_STYLE] ?: TRANSITION_SLIDE,
             autoArrangeHome = prefs[Keys.AUTO_ARRANGE_HOME] ?: false,
+            homeScrollMode = prefs[Keys.HOME_SCROLL_MODE] ?: SCROLL_MODE_PAGER,
+            allAppsEntryVisible = prefs[Keys.ALL_APPS_ENTRY_VISIBLE] ?: true,
+            allAppsEntryPosX = prefs[Keys.ALL_APPS_ENTRY_X] ?: -1f,
+            allAppsEntryPosY = prefs[Keys.ALL_APPS_ENTRY_Y] ?: -1f,
         )
     }
 
@@ -114,6 +137,23 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setAutoArrangeHome(value: Boolean) =
         context.settingsStore.edit { it[Keys.AUTO_ARRANGE_HOME] = value }
+
+    // 块体返回 Unit：避免把 DataStore 的 Preferences 类型泄漏到调用方模块的编译类路径
+    suspend fun setHomeScrollMode(value: String) {
+        context.settingsStore.edit { it[Keys.HOME_SCROLL_MODE] = value }
+    }
+
+    suspend fun setAllAppsEntryVisible(value: Boolean) {
+        context.settingsStore.edit { it[Keys.ALL_APPS_ENTRY_VISIBLE] = value }
+    }
+
+    /** 「全部应用」浮动入口位置：归一化 0..1 中心坐标，越界钳制后落库。 */
+    suspend fun setAllAppsEntryPosition(x: Float, y: Float) {
+        context.settingsStore.edit {
+            it[Keys.ALL_APPS_ENTRY_X] = x.coerceIn(0f, 1f)
+            it[Keys.ALL_APPS_ENTRY_Y] = y.coerceIn(0f, 1f)
+        }
+    }
 
     suspend fun setPhotoWallpaperPath(value: String?) =
         context.settingsStore.edit {

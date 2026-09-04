@@ -41,6 +41,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.coil.compose)
+    implementation(libs.pinyin4j)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

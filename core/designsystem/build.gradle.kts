@@ -36,6 +36,7 @@ dependencies {
     debugApi(libs.compose.ui.tooling)
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.palette.ktx)
     implementation(libs.coil.compose)

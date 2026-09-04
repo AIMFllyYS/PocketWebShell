@@ -81,6 +81,14 @@ class MeViewModel @Inject constructor(
         settingsRepository.setAutoArrangeHome(value)
     }
 
+    fun setHomeScrollMode(mode: String) = viewModelScope.launch {
+        settingsRepository.setHomeScrollMode(mode)
+    }
+
+    fun setAllAppsEntryVisible(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setAllAppsEntryVisible(value)
+    }
+
     fun setKeepAliveServiceEnabled(value: Boolean) {
         _uiState.value = _uiState.value.copy(keepAliveServiceEnabled = value)
         viewModelScope.launch { settingsRepository.setKeepAliveServiceEnabled(value) }

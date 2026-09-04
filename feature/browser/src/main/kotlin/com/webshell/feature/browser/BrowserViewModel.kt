@@ -7,6 +7,7 @@ import com.webshell.core.data.BookmarkDao
 import com.webshell.core.data.BookmarkEntity
 import com.webshell.core.data.HistoryDao
 import com.webshell.core.data.HistoryEntity
+import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.WebViewPool
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -146,12 +147,14 @@ class BrowserViewModel @Inject constructor(
             title = if (startUrl == "about:blank") "" else startUrl,
             url = startUrl,
         )
+        AppLog.log("browser", "新建标签 $tabId（共 ${_tabs.value.size} 个）")
         if (activate) setActive(tabId)
         return tabId
     }
 
     fun activateTab(tabId: String) {
         if (_tabs.value.any { it.tabId == tabId }) {
+            AppLog.log("browser", "切换标签 $tabId")
             setActive(tabId)
         }
     }
@@ -212,9 +215,11 @@ class BrowserViewModel @Inject constructor(
         sessionListeners.remove(sessionId)
         WebViewPool.destroyAndForget(sessionId)
         removeTabState(tabId)
+        AppLog.log("browser", "关闭标签 $tabId（剩 ${_tabs.value.size} 个）")
     }
 
     fun closeAllTabs() {
+        val count = _tabs.value.size
         _tabs.value.forEach { tab ->
             val sessionId = "browser-${tab.tabId}"
             WebViewPool.get(sessionId)?.sessionListener = null
@@ -225,6 +230,7 @@ class BrowserViewModel @Inject constructor(
         _tabs.value = emptyList()
         setActive(null)
         _findState.value = FindState()
+        AppLog.log("browser", "关闭全部标签（$count 个）")
     }
 
     /**

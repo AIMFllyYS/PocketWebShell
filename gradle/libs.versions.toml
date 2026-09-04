@@ -16,6 +16,7 @@ navigation3 = "1.1.7"
 coil = "3.6.0"
 okhttp = "5.5.0"
 jsoup = "1.23.2"
+pinyin4j = "2.5.1"
 work = "2.11.2"
 junit = "4.13.2"
 mockk = "1.14.11"
@@ -24,6 +25,9 @@ robolectric = "4.16.1"
 kotlinx-coroutines-test = "1.10.2"
 haze = "1.7.2"
 palette = "1.0.0"
+androidxTestExtJunit = "1.2.1"
+androidxTestRunner = "1.6.2"
+uiautomator = "2.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,6 +63,7 @@ coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref 
 coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp-android", version.ref = "okhttp" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+pinyin4j = { group = "com.belerweb", name = "pinyin4j", version.ref = "pinyin4j" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version = "1.10.2" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -69,6 +74,9 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
 haze-materials = { group = "dev.chrisbanes.haze", name = "haze-materials", version.ref = "haze" }
 androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

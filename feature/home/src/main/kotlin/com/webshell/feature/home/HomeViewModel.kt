@@ -58,6 +58,23 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** 首屏左缘开新屏：被拖 cell 落到新首屏 (0, toSlot)，其余所有应用页号 +1。 */
+    fun prependPageMove(draggedKey: String, toSlot: Int, pageCapacity: Int) {
+        viewModelScope.launch {
+            val updates = HomePages.resolvePrependMove(
+                apps = apps.value,
+                draggedKey = draggedKey,
+                toSlot = toSlot,
+                pageCapacity = pageCapacity,
+            )
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            val title = updates.firstOrNull { it.id == draggedKey || "folder-${it.folderId}" == draggedKey }?.title
+                ?: updates.first().title
+            AppLog.log("home", "移动「$title」到新的首屏第 ${toSlot + 1} 格")
+        }
+    }
+
     /** 把 app 移动到 (page, cellIndex)，并同页顺序压实 */
     fun moveApp(appId: String, toPage: Int, toCellIndex: Int) {
         viewModelScope.launch {
@@ -241,6 +258,16 @@ class HomeViewModel @Inject constructor(
                     _messages.tryEmit("刷新失败：${e.message ?: "未知错误"}")
                 }
         }
+    }
+
+    /** 「全部应用」浮动入口显隐（空白处长按菜单/设置页共用）。 */
+    fun setAllAppsEntryVisible(value: Boolean) {
+        viewModelScope.launch { settingsRepository.setAllAppsEntryVisible(value) }
+    }
+
+    /** 「全部应用」浮动入口拖动落点：归一化 0..1 中心坐标。 */
+    fun setAllAppsEntryPosition(x: Float, y: Float) {
+        viewModelScope.launch { settingsRepository.setAllAppsEntryPosition(x, y) }
     }
 
     fun delete(appId: String) {

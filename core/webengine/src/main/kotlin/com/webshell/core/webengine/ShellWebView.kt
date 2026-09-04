@@ -27,6 +27,7 @@ import androidx.core.net.toUri
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.webshell.core.model.AppLog
 
 /**
  * "原生感"网页壳引擎：零浏览器 UI、下拉刷新容器、SPA 返回、外链路由、
@@ -182,6 +183,7 @@ class ShellWebView internal constructor(
         ): Boolean = routeUrl(request.url.toString())
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            AppLog.log("web", "加载 ${logHost(url)}")
             notifyListeners { onPageStarted(url) }
         }
 
@@ -197,6 +199,7 @@ class ShellWebView internal constructor(
         }
 
         override fun onPageFinished(view: WebView, url: String) {
+            AppLog.log("web", "加载完成 ${logHost(url)}")
             notifyListeners { onPageFinished(url) }
             CookieManager.getInstance().flush()
         }
@@ -207,11 +210,16 @@ class ShellWebView internal constructor(
             error: WebResourceError,
         ) {
             if (request.isForMainFrame) {
+                AppLog.error(
+                    "web",
+                    "加载失败 ${logHost(request.url?.toString())}: ${error.errorCode} ${error.description}",
+                )
                 notifyListeners { onPageFinished(request.url.toString()) }
             }
         }
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
+            AppLog.error("web", "SSL 错误 ${logHost(view.url)}: ${error.primaryError}")
             // 不静默放行：拒绝并回调宿主展示拦截页，由用户显式决定
             handler.cancel()
             notifyListeners { onSslError(view.url ?: "", error.primaryError.toString()) { handler.proceed() } }
@@ -300,6 +308,16 @@ class ShellWebView internal constructor(
     }
 
     // ---------------------------------------------------------------- routing
+
+    /**
+     * 日志只记录 host（隐私纪律：不落完整 URL/查询串）；
+     * 解析失败时截断原串到 64 字符内兜底。
+     */
+    private fun logHost(url: String?): String {
+        if (url.isNullOrBlank()) return "(无 URL)"
+        val host = runCatching { Uri.parse(url).host?.takeIf { it.isNotBlank() } }.getOrNull()
+        return host ?: url.take(64)
+    }
 
     /** @return true 表示本引擎已处理（不交给 WebView 加载） */
     private fun routeUrl(url: String): Boolean {

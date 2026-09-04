@@ -128,7 +128,7 @@ Compose 的指针事件在首次命中后会沿既定 hit chain 分发，长按�
 - 以 `rows × columns` 为固定页容量重新生成桌面页；数据库旧位置只决定顺序，不再允许一页无限增长。
 - 最后一页满时额外建立空页放置“添加”，避免入口把最后一行挤出网格。
 - 使用 `BoxWithConstraints` 按当前可用宽度夹紧图标尺寸，窄屏不会溢出，宽屏也不会无上限放大。
-- LazyGrid 只作为固定 cell 容器，不在单页内部滚动。
+- LazyGrid 在翻页模式下只作为固定 cell 容器，不在单页内部滚动；上下滚动模式（0.1.11 起，设置可切）则把所有页摊平成一条可滚动的 LazyVerticalGrid，共享同一 `(homePage, homeCellIndex)` 数据模型。
 
 ### 5.2 Launcher 式拖动
 

@@ -128,7 +128,7 @@ private fun DeveloperHome(
             SettingRow(
                 icon = Icons.Filled.ReceiptLong,
                 title = "查看日志",
-                subtitle = "最近 ${AppLog.CAPACITY} 条应用内操作日志，可复制/分享",
+                subtitle = "持久化的应用内操作日志（含崩溃捕获），可复制/分享/清空",
                 onClick = { onOpenSub(DeveloperSub.LOGS) },
                 trailing = { Chevron() },
             )

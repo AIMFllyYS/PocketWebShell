@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.KeepAliveRegistry
 import com.webshell.core.webengine.LocalWebHost
 import com.webshell.core.webengine.ShellConfig
@@ -54,6 +55,7 @@ class ShellSessionController @Inject constructor(
 
     /** 打开一个网页应用会话（主页图标点击）：建会话 + 保活登记 + 前台服务 */
     suspend fun openSession(app: WebAppEntity) {
+        AppLog.log("session", "打开应用「${app.title}」(${hostOf(app.url)})")
         val config = configFor(app)
         val shell = WebViewPool.getOrCreate(context, app.id) { config }
         if (shell.currentUrl() == null || shell.currentUrl() == "about:blank") {
@@ -78,12 +80,14 @@ class ShellSessionController @Inject constructor(
 
     /** 会话被用户关闭/删除 */
     fun closeSession(sessionId: String) {
+        AppLog.log("session", "关闭会话 $sessionId")
         KeepAliveRegistry.unregister(sessionId)
         WebViewPool.suspendSession(sessionId)
         if (KeepAliveRegistry.entries.isEmpty()) stopService()
     }
 
     fun ensureServiceRunning() {
+        AppLog.log("session", "启动前台保活服务")
         val intent = Intent(context, WebHostService::class.java)
             .setAction(KeepAliveRegistry.ACTION_START)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -94,6 +98,7 @@ class ShellSessionController @Inject constructor(
     }
 
     fun stopService() {
+        AppLog.log("session", "停止前台保活服务")
         context.startService(
             Intent(context, WebHostService::class.java)
                 .setAction(KeepAliveRegistry.ACTION_STOP),
@@ -132,4 +137,9 @@ class ShellSessionController @Inject constructor(
     fun batteryOptimizationSettingsIntent(): Intent =
         Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /** 日志只落 host（隐私纪律），解析失败截断到 64 字符内兜底 */
+    private fun hostOf(url: String): String =
+        runCatching { Uri.parse(url).host?.takeIf { it.isNotBlank() } }.getOrNull()
+            ?: url.take(64)
 }

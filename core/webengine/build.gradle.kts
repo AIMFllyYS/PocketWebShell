@@ -30,6 +30,7 @@ dependencies {
     api(libs.androidx.swiperefreshlayout)
 
     implementation(project(":core:designsystem"))
+    implementation(project(":core:model"))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.androidx.lifecycle.runtime.compose)
