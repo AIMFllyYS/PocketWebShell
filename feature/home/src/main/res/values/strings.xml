@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_search">搜索</string>
+    <string name="home_search_apps">搜索应用或网址</string>
+    <string name="home_app_library">App 资源库</string>
+    <string name="home_cancel">取消</string>
+    <string name="home_close">关闭</string>
+    <string name="home_folder">文件夹</string>
+    <string name="home_folder_dissolve">解散文件夹</string>
+    <string name="home_add">添加</string>
+    <string name="home_selected">已选中</string>
+    <string name="home_selection_count">已选 %1$d / %2$d</string>
+    <string name="home_select_all">全选</string>
+    <string name="home_deselect_all">取消全选</string>
+    <string name="home_clear">清空</string>
+    <string name="home_done">完成</string>
+    <string name="home_empty_title">把喜欢的网站放在主屏幕</string>
+    <string name="home_empty_description">点按添加，轻触图标即可打开</string>
+    <string name="home_no_search_results">未找到相关应用</string>
+    <string name="home_all_apps">全部应用</string>
+    <string name="home_hide_all_apps_entry">隐藏全部应用入口</string>
+    <string name="home_page_description">第 %1$d 页，共 %2$d 页</string>
+</resources>

@@ -12,6 +12,7 @@
 - **中性灰统一冷调**：全站灰阶与品牌蓝同温区，杜绝"粉肉色"观感。
 - **强调色克制**：全局单一强调色，只用于选中态、关键操作与进度指示，不大面积铺色。
 - 不支持动态取色的设备同样遵守以上基底，不回退到彩色主题。
+- **主屏壁纸例外（0.1.14）**：主屏采用内置静态蓝色流线壁纸（深色模式对应低亮度版本），照片模式由用户照片替换；上述中性背景约束适用于添加、浏览器及设置等功能页面。壁纸不引入动态主题色，且无常驻动画。
 
 ## 2. 主题模式
 
@@ -39,7 +40,7 @@
 - 悬浮胶囊形态，大圆角，与内容之间留有间距；
 - 选中态指示器动画不得改变布局边界。
 
-实现统一使用 Haze 库（`dev.chrisbanes.haze`），高光/折射参数参考 Kyant0/AndroidLiquidGlass 调优。禁止自绘第二套模糊实现。
+实现统一使用 Haze 库（`dev.chrisbanes.haze`），禁止自绘第二套模糊实现。当前显式半径为 20dp；HazeStyle 浅/深色 tint 为 0.38/0.48，旧平台 fallback tint 为 0.88/0.90。`staticGlassSurface` 为其他浮层提供静态材质与边缘光，不含第二处实时模糊。Android 实现不等同于 Apple 私有的折射引擎。
 
 ## 4. 组件库选型原则
 
@@ -81,13 +82,15 @@
 
 | 组件 | 用途 |
 |---|---|
-| `AppCard` | 分组卡片：16dp 圆角、`surfaceContainerLow` 底（浅色纯白）、1dp `outlineVariant` 发丝描边、零阴影 |
-| `AppListRow` | 列表行：单行 ≥56dp、双行 ≥72dp；图标 24dp primary；副标题强制 `onSurfaceVariant` |
+| `AppCard` | 分组卡片：20dp 圆角、`surfaceContainerLow` 底（浅色纯白）、0.5dp 低透明度发丝描边、零阴影 |
+| `AppListRow` | 列表行：单行 ≥56dp、双行 ≥72dp；21dp 图标，可配 30dp 彩色圆角底；副标题强制 `onSurfaceVariant` |
 | `AppListDivider` | 卡片内分割线，左缩进对齐文字起点 |
 | `AppSectionHeader` | 分组标题，置于卡片上方（iOS 分组列表风格） |
-| `AppBadge` | 数字徽标（primary 底，最大 99） |
-| `AppConfirmDialog` | 确认弹窗（extraLarge 圆角，双按钮） |
+| `AppBadge` | 红色通知徽标（最大 99） |
+| `AppConfirmDialog` | 居中 304dp 最大宽度、28dp 圆角、等宽双按钮的确认框 |
 | `Modifier.glassSurface` | 玻璃材质修饰符（Haze 实时模糊 + 高光描边），底部导航等浮层唯一实现 |
+| `Modifier.staticGlassSurface` | 菜单、文件夹、搜索胶囊的缓存静态材质，无实时 blur |
+| `AppNavigationBar` / `AppSwitch` | 固定居中标题与返回入口 / 具有原生无障碍语义的绿色开关 |
 
 ### 5.3 页面结构约定
 
@@ -105,9 +108,11 @@
 - 圆角由图标本体自行裁剪（`RoundedCornerShape(cornerRadiusPercent)`，默认 26%，用户可调）；
 - favicon/官方 logo 以白底衬底（兼容透明 PNG）+ `ContentScale.Crop` 等比放大贴满圆角边界，不内缩加边距；加载失败回退首字母色块（不留白底空块）；
 - 首字母兜底按标题 hash 取高对比配色：浅色主题 pastel 底 + 深色字，深色主题深饱和底 + 近白字（不用 `primaryContainer`，对比度不足）；
-- 文件夹 = `surfaceContainerLow` 实底容器 + 1dp `outlineVariant` 发丝描边 + 2×2 成员预览（不引入第二处实时模糊）；
+- 文件夹 = 静态半透明材质与细边缘光 + 3×3 成员预览（不引入第二处实时模糊）；展开采用九个成员一页、可横向翻页的有界面板；
 - 收藏应用用 2dp `primary` 边框标识；
-- 添加入口 = 1.5dp `outlineVariant` 描边空心容器，明确"非应用"的从属身份。
+- 添加入口 = 低不透明度静态玻璃方块和加号，明确"非应用"的从属身份。
+- 默认图标 60dp（仅未保存尺寸的用户）；已有图标尺寸设置保留。网格由 `LauncherGeometry` 根据可用宽高、行列与字体缩放确定，不读取图片固有尺寸。
+- 主屏 Dock 为 88dp 高四图标托盘；功能页切为 66dp 高标签栏；系统导航安全区单独计算，禁止用硬编码 96dp 替代真实 inset。壁纸位于内容 padding 之外并覆盖整个 Dock 采样源。
 
 ### 6.2 情境菜单（`AppContextMenu`）
 
@@ -116,8 +121,8 @@
 菜单对齐 HyperOS/iOS 主屏长按的**锚点浮窗**样式（非全屏居中面板）：
 
 - 以**手指按压点**为定位基准（Launcher3 `ArrowPopup.orientAboutObject` 的本地化派生）：**垂直**优先向按压点上方展开，上方放不下且下方空间更大时翻转到下方；**水平**以按压点居中展开；四边以屏幕边距钳制（clamp），任何边缘位置菜单都不被截断；弹出动画锚点（`transformOrigin`）始终指向按压点；
-- 菜单体：宽 208dp、16dp 圆角、`surfaceContainerHigh` 94% 半透明磨砂 + 1dp `outlineVariant` 描边（不新增第二处实时模糊，见 PERFORMANCE.md）；
-- 动作项为**纵向列表**：左侧 34dp 圆形图标底（常规 `primary`、破坏性 `errorContainer`）+ `bodyMedium` 短标签，行间细分隔线；
+- 菜单体：最大宽 252dp、20dp 圆角、`surfaceContainerHigh` 94% 静态材质与 0.5dp 边缘光；受可用高度限制，超高可滚动（不新增第二处实时模糊，见 PERFORMANCE.md）；
+- 动作项为**纵向列表**：左文字、右侧 21dp 单色图标，行高至少 48dp，行间细分隔线；
 - 破坏性操作（删除）`error` 红色文字、与常规项以整分隔线隔开置底；
 - 弹出动画统一走 `AppMotion.popupEnter`（scale 0.92→1 + 淡入，锚点指向按压点），点击外部 scrim 关闭。
 
@@ -158,5 +163,6 @@
 - **拖到左右边缘开新屏**（pager 模式）：末屏右缘/首屏左缘悬停约 900ms 在该侧插入临时空白屏并翻过去（左侧落子经 `HomePages.resolvePrependMove` 新开首屏、其余页后移），未落子即裁掉；一次拖拽最多开一个临时屏。
 - **交互层拆分**（0.1.13 起）：`HomeInteractionState` 集中持有全部拖拽/菜单/编辑模式会话状态（手势协程只捕获该稳定持有者，杜绝组合期快照过期）；`HomeGestures.kt` 承载 cell 手势检测（tap/长按/即拖）、根级拖拽会话 `homeDragSession`（翻页后源 cell 随旧页移出组合，会话挂在 cell 上会被取消——必须活在根级）、空白长按菜单、双指捏合编辑模式与 `HomeDragEffects` 边缘悬停状态机（单 `snapshotFlow` 循环，非 key 重启式 Effect；写 `tempPageSide` 后须等帧再滚动，否则被旧 pageCount 钳制）。
 - **「全部应用」浮动入口**：与 AppIcon 同尺寸圆角方块 + `Icons.Filled.Apps`，半透明 `surfaceContainerHigh` 底（不新增实时模糊，见 PERFORMANCE.md），默认右下角，可自由拖动（位置归一化 0..1 持久化）；点按打开抽屉，长按菜单/空白处长按菜单/设置页三处共用 `allAppsEntryVisible` 显隐。
+- **搜索与浮动入口默认值（0.1.14）**：主屏底部搜索胶囊可直接打开 App 资源库，支持标题/URL 搜索。翻页/拖拽期间按设置显示页码点；新用户和未保存显隐值的用户默认关闭旧浮动入口，已保存的 true/false 与归一化位置完全保留。
 - **全部应用抽屉**：全屏 Dialog，按标题首字符分区（汉字经 pinyin4j 取拼音首字母，其余归 `#`），右侧 A→Z/# 字母索引条支持点按与按住滑动跳转，当前字母放大气泡，空分区置灰。
 - **空白处长按菜单**：根布局 Initial pass 手势通道（先于子级图标/pager 手势收到事件），按压点落在已占用 cell 或浮动入口上时不响应。

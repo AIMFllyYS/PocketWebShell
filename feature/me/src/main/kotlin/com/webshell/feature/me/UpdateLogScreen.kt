@@ -23,6 +23,17 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.14",
+        date = "2026-09-06",
+        highlights = listOf(
+            "iOS 风格主屏：全屏流线壁纸、四图标玻璃 Dock、约束自适应网格、白色阴影标题、搜索/页码胶囊与九宫格文件夹预览",
+            "统一玻璃浮层、情境菜单、分组设置、添加页面与浏览器工具栏；保留原有手势、排序和会话隔离",
+            "性能重构：壁纸与 Dock 由应用壳独立管理，非编辑状态停用抖动动画，主题只订阅外观字段，模糊半径限制在 24dp 内",
+            "修复照片取色旧色残留与超长图片采样，回收临时位图；系统安全区与浅/深色状态栏同步适配",
+            "增加网格、图片采样和端侧视觉/导航回归，覆盖多页桌面、紧凑宽度、文件夹与深色模式",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.13",
         date = "2026-09-02",
         highlights = listOf(

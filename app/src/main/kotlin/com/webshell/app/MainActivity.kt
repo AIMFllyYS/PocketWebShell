@@ -5,6 +5,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.webshell.app.ui.AppThemeViewModel
 import com.webshell.app.ui.MainScaffold
 import com.webshell.core.designsystem.theme.WebShellTheme
 import com.webshell.core.model.AppLog
@@ -12,13 +16,20 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val themeViewModel: AppThemeViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         logAppLaunch()
         val launchUrl = intent?.getStringExtra(EXTRA_URL)
         setContent {
-            WebShellTheme {
+            val theme by themeViewModel.theme.collectAsStateWithLifecycle()
+            WebShellTheme(
+                themeMode = theme.mode,
+                photoWallpaperPath = theme.wallpaperPath,
+                transitionStyle = theme.transitionStyle,
+            ) {
                 MainScaffold(launchUrl = launchUrl)
             }
         }

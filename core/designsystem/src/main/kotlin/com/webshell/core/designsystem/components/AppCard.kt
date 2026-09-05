@@ -13,8 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.theme.AppSpacing
 
 /**
- * 统一分组卡片：圆角 16dp、surfaceContainerLow（浅色为纯白）底色、
- * 1dp outlineVariant 发丝描边（静态拟态边缘光）、零阴影。
+ * Inset grouped surface: 20dp continuous-feeling corners, white/charcoal fill and a quiet hairline.
  * 浅色模式靠"灰底托白卡"分层，不靠阴影堆叠，见 docs/DESIGN.md。
  */
 @Composable
@@ -28,11 +27,11 @@ fun AppCard(
         modifier = modifier
             .fillMaxWidth()
             .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant,
-                shape = MaterialTheme.shapes.medium,
+                width = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+                shape = MaterialTheme.shapes.large,
             ),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shadowElevation = 0.dp,
     ) {
