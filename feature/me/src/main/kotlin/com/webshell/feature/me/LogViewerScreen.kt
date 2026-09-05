@@ -8,6 +8,7 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,12 +23,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -47,12 +50,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.data.LogEntity
+import com.webshell.core.designsystem.components.AppNavigationBar
 import com.webshell.core.designsystem.theme.AppSpacing
 import com.webshell.core.model.AppLog
 import java.io.File
@@ -76,6 +81,7 @@ internal fun LogViewerPage(
     val scope = rememberCoroutineScope()
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showActions by remember { mutableStateOf(false) }
 
     /** 完整导出（含头部）+ 当前过滤条件下的全部条目 */
     suspend fun fullExport(): String =
@@ -111,36 +117,29 @@ internal fun LogViewerPage(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        // 顶栏：返回 + 标题 + 刷新/复制/分享/清空
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpacing.xs, vertical = AppSpacing.xs),
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        AppNavigationBar(title = stringResource(R.string.me_logs), onBack = onBack, actions = {
+            Box {
+                IconButton(onClick = { showActions = true }) {
+                    Icon(Icons.Filled.MoreHoriz, stringResource(R.string.me_log_actions))
+                }
+                DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_refresh)) },
+                        leadingIcon = { Icon(Icons.Filled.Refresh, null) },
+                        onClick = { showActions = false; viewModel.refresh() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_copy)) },
+                        leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                        onClick = { showActions = false; copyAll() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_share)) },
+                        leadingIcon = { Icon(Icons.Filled.Share, null) },
+                        onClick = { showActions = false; shareAll() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_clear),
+                        color = MaterialTheme.colorScheme.error) },
+                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                        onClick = { showActions = false; showClearConfirm = true })
+                }
             }
-            Text("日志", style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { viewModel.refresh() }) {
-                Icon(Icons.Filled.Refresh, contentDescription = "刷新")
-            }
-            IconButton(onClick = { copyAll() }) {
-                Icon(Icons.Filled.ContentCopy, contentDescription = "复制")
-            }
-            IconButton(onClick = { shareAll() }) {
-                Icon(Icons.Filled.Share, contentDescription = "分享")
-            }
-            IconButton(onClick = { showClearConfirm = true }) {
-                Icon(
-                    Icons.Filled.Delete,
-                    contentDescription = "清空日志",
-                    tint = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
+        })
 
         if (state.tags.isNotEmpty()) {
             Row(

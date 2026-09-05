@@ -1,76 +1,82 @@
 package com.webshell.feature.add
 
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.webshell.core.designsystem.components.AppCard
+import com.webshell.core.designsystem.components.AppListDivider
+import com.webshell.core.designsystem.components.AppListRow
+import com.webshell.core.designsystem.components.AppNavigationBar
+import com.webshell.core.designsystem.components.AppSectionHeader
+import com.webshell.core.designsystem.components.AppSwitch
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * 添加页：网址 → 应用。两步流程：
- * 1. 输入网址（或导入本地 HTML）→ 抓取站点元数据；
- * 2. 编辑属性（图标/标题/桌面模式/深色/保活/外链/缩放）→ 保存到主页。
- */
+/** Input → metadata → grouped editor. Persistence and import remain owned by AddViewModel. */
 @Composable
 fun AddScreen(
     modifier: Modifier = Modifier,
@@ -79,43 +85,33 @@ fun AddScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-
+    val currentOnCreated by rememberUpdatedState(onCreated)
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris -> viewModel.importLocal(uris) }
 
     LaunchedEffect(viewModel) {
-        viewModel.messages.collect { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-        }
+        viewModel.messages.collect { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
     }
-    LaunchedEffect(viewModel) {
-        viewModel.created.collect { onCreated() }
-    }
+    LaunchedEffect(viewModel) { viewModel.created.collect { currentOnCreated() } }
 
-    when (val s = state) {
+    when (val current = state) {
         AddUiState.Input -> InputStep(
             modifier = modifier,
             onConfirm = viewModel::confirmUrl,
-            onImportLocal = {
-                importLauncher.launch(arrayOf("text/html"))
-            },
+            onImportLocal = { importLauncher.launch(arrayOf("text/html")) },
         )
-
         AddUiState.Loading -> LoadingStep(modifier)
-
         is AddUiState.Edit -> EditStep(
             modifier = modifier,
-            draft = s.draft,
-            fetchFailed = s.fetchFailed,
+            draft = current.draft,
+            fetchFailed = current.fetchFailed,
             onUpdate = viewModel::updateDraft,
             onSave = viewModel::save,
             onBack = viewModel::reset,
         )
     }
 }
-
-// ===== 第一步：输入网址 =====
 
 @Composable
 private fun InputStep(
@@ -125,108 +121,100 @@ private fun InputStep(
 ) {
     var urlText by rememberSaveable { mutableStateOf("") }
     var showError by rememberSaveable { mutableStateOf(false) }
-
-    val valid = AddViewModel.normalizeUrl(urlText) != null
+    val valid = remember(urlText) { AddViewModel.normalizeUrl(urlText) != null }
+    val confirm = { if (valid) onConfirm(urlText) else showError = true }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
+        modifier = modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        Icon(
-            imageVector = Icons.Filled.Public,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(64.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        Text("把网址做成应用", style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.add_title), style = MaterialTheme.typography.headlineLarge)
         Text(
-            "输入一个网址，为它定制图标与属性，\n添加后像原生应用一样出现在主页",
+            stringResource(R.string.add_subtitle),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 4.dp),
         )
-        Spacer(Modifier.height(32.dp))
-        OutlinedTextField(
-            value = urlText,
-            onValueChange = {
-                urlText = it
-                showError = false
-            },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("网址") },
-            placeholder = { Text("例如：github.com") },
-            singleLine = true,
-            isError = showError,
-            supportingText = if (showError) {
-                { Text("请输入有效的网址", color = MaterialTheme.colorScheme.error) }
-            } else {
-                null
-            },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Uri,
-                autoCorrectEnabled = false,
-            ),
-            keyboardActions = KeyboardActions(onDone = {
-                if (valid) onConfirm(urlText) else showError = true
-            }),
-        )
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = {
-                if (valid) onConfirm(urlText) else showError = true
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = urlText.isNotBlank(),
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 36.dp, bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("确认")
+            Box(
+                modifier = Modifier.size(76.dp)
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(22.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Public, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(42.dp))
+            }
+            Text(stringResource(R.string.add_home_title),
+                style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 16.dp))
+            Text(
+                stringResource(R.string.add_home_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp, start = 16.dp, end = 16.dp),
+            )
         }
-        Spacer(Modifier.height(32.dp))
-        HorizontalDivider(modifier = Modifier.fillMaxWidth())
+        AppSectionHeader(stringResource(R.string.add_address_section))
+        AppCard(contentPadding = PaddingValues(0.dp)) {
+            EditorTextField(
+                title = stringResource(R.string.add_address),
+                value = urlText,
+                onValueChange = { urlText = it; showError = false },
+                placeholder = stringResource(R.string.add_address_placeholder),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(onGo = { confirm() }),
+            )
+        }
+        if (showError) {
+            Text(stringResource(R.string.add_address_error),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        }
+        Button(
+            onClick = confirm,
+            enabled = urlText.isNotBlank(),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp),
+        ) { Text(stringResource(R.string.add_continue), style = MaterialTheme.typography.titleMedium) }
+        Spacer(Modifier.height(28.dp))
+        AppSectionHeader(stringResource(R.string.add_offline_section))
+        AppCard(contentPadding = PaddingValues(0.dp)) {
+            AppListRow(
+                title = stringResource(R.string.add_import),
+                subtitle = stringResource(R.string.add_import_hint),
+                leadingIcon = Icons.Filled.Description,
+                leadingIconBackground = Color(0xFF8E8E93),
+                onClick = onImportLocal,
+                trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+            )
+        }
         Spacer(Modifier.height(24.dp))
-        Text(
-            "没有网址？也可以导入本地网页",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onImportLocal, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.Description, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text("导入本地 HTML")
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "支持选择一个或多个 .html 文件，导入后离线可用",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
-
-// ===== 加载中 =====
 
 @Composable
 private fun LoadingStep(modifier: Modifier) {
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator()
-        Spacer(Modifier.height(16.dp))
-        Text("正在获取站点信息…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+        Text(stringResource(R.string.add_loading), color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 16.dp))
     }
 }
 
-// ===== 第二步：编辑属性 =====
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditStep(
     modifier: Modifier,
@@ -237,13 +225,9 @@ private fun EditStep(
     onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
-
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // 上传本地图片作为图标：复制到应用私有 icons 目录后作为 file 路径使用。
-    val pickIcon = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickVisualMedia(),
-    ) { uri ->
+    val pickIcon = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             scope.launch {
                 val path = withContext(Dispatchers.IO) {
@@ -252,7 +236,7 @@ private fun EditStep(
                         val dest = File(dir, "icon_${System.currentTimeMillis()}.png")
                         context.contentResolver.openInputStream(uri)?.use { input ->
                             dest.outputStream().use { input.copyTo(it) }
-                        }
+                        } ?: return@runCatching null
                         dest.absolutePath
                     }.getOrNull()
                 }
@@ -260,206 +244,166 @@ private fun EditStep(
             }
         }
     }
-
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("编辑属性") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    Column(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding()) {
+        AppNavigationBar(
+            title = stringResource(R.string.add_home_title),
+            onBack = onBack,
+            actions = { TextButton(onClick = onSave) { Text(stringResource(R.string.add_save)) } },
+        )
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth()
+                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         ) {
-            if (fetchFailed) {
-                Surface(
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        "无法获取站点信息，请手动填写标题（稍后可再改图标）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                AppIconPreview(draft, 76.dp)
+                Text(draft.title.ifBlank { stringResource(R.string.add_new_site) },
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 10.dp))
             }
-
-            // 图标预览 + 图标 URL
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AppIconPreview(draft, 72.dp)
-                Spacer(Modifier.size(16.dp))
-                OutlinedTextField(
-                    value = draft.title,
-                    onValueChange = { value -> onUpdate { it.copy(title = value) } },
-                    label = { Text("应用名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+            if (fetchFailed) {
+                Text(stringResource(R.string.add_fetch_failed),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(bottom = 20.dp))
+            }
+            AppSectionHeader(stringResource(R.string.add_info_section))
+            AppCard(contentPadding = PaddingValues(0.dp)) {
+                EditorTextField(title = stringResource(R.string.add_name), value = draft.title,
+                    onValueChange = { value -> onUpdate { it.copy(title = value) } })
+                AppListDivider(hasLeadingIcon = false)
+                EditorTextField(
+                    title = stringResource(if (draft.isLocal) R.string.add_local_entry else R.string.add_address),
+                    value = draft.url,
+                    onValueChange = { value -> onUpdate { it.copy(url = value) } },
+                    readOnly = draft.isLocal,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = draft.iconUrl,
-                onValueChange = { value -> onUpdate { it.copy(iconUrl = value) } },
-                label = { Text("图标地址（可选）") },
-                placeholder = { Text("https://…/icon.png") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            // 上传本地图片作为图标（无网站 logo 时的备选）。
-            OutlinedButton(
-                onClick = {
-                    pickIcon.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Image, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (draft.iconUrl.startsWith("/")) "已选择本地图片，点按更换" else "上传本地图片作为图标")
+            if (draft.isLocal) {
+                Text(stringResource(R.string.add_local_hint), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = draft.url,
-                onValueChange = { value -> onUpdate { it.copy(url = value) } },
-                label = { Text(if (draft.isLocal) "本地入口文件" else "网址") },
-                singleLine = true,
-                enabled = !draft.isLocal,
-                readOnly = draft.isLocal,
-                supportingText = if (draft.isLocal) {
-                    { Text("导入的本地网页已存入应用目录，离线可用") }
-                } else {
-                    null
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(8.dp))
-            SwitchRow("桌面模式", "以电脑版网页渲染", draft.desktopMode) { v ->
-                onUpdate { it.copy(desktopMode = v) }
-            }
-            SwitchRow("深色适配", "网页未适配时自动反色", draft.darkMode) { v ->
-                onUpdate { it.copy(darkMode = v) }
-            }
-            SwitchRow("后台保活", "切到后台后静默保持运行（核心特性）", draft.keepAlive) { v ->
-                onUpdate { it.copy(keepAlive = v) }
-            }
-            SwitchRow("外链在系统浏览器打开", "站外链接交给浏览器处理", draft.externalLinksToBrowser) { v ->
-                onUpdate { it.copy(externalLinksToBrowser = v) }
-            }
-
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "文字大小 ${draft.textZoomPercent}%",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-            )
-            Slider(
-                value = draft.textZoomPercent.toFloat(),
-                onValueChange = { value ->
-                    onUpdate { it.copy(textZoomPercent = value.toInt()) }
-                },
-                valueRange = 80f..130f,
-                steps = 9, // 5% 一档：80…130
-            )
-
             Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onSave,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Text("保存", style = MaterialTheme.typography.titleMedium)
+            AppSectionHeader(stringResource(R.string.add_icon_section))
+            AppCard(contentPadding = PaddingValues(0.dp)) {
+                AppListRow(
+                    title = stringResource(if (draft.iconUrl.startsWith("/"))
+                        R.string.add_change_icon else R.string.add_choose_icon),
+                    leadingIcon = Icons.Filled.Image,
+                    onClick = { pickIcon.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant) },
+                )
+                AppListDivider(hasLeadingIcon = false)
+                EditorTextField(title = stringResource(R.string.add_icon_address), value = draft.iconUrl,
+                    onValueChange = { value -> onUpdate { it.copy(iconUrl = value) } },
+                    placeholder = stringResource(R.string.add_icon_placeholder),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false))
+            }
+            Spacer(Modifier.height(24.dp))
+            AppSectionHeader(stringResource(R.string.add_browser_section))
+            AppCard(contentPadding = PaddingValues(0.dp)) {
+                SwitchRow(stringResource(R.string.add_desktop), stringResource(R.string.add_desktop_hint),
+                    draft.desktopMode) { value -> onUpdate { it.copy(desktopMode = value) } }
+                AppListDivider(hasLeadingIcon = false)
+                SwitchRow(stringResource(R.string.add_dark), stringResource(R.string.add_dark_hint),
+                    draft.darkMode) { value -> onUpdate { it.copy(darkMode = value) } }
+                AppListDivider(hasLeadingIcon = false)
+                SwitchRow(stringResource(R.string.add_keep_alive), stringResource(R.string.add_keep_alive_hint),
+                    draft.keepAlive) { value -> onUpdate { it.copy(keepAlive = value) } }
+                AppListDivider(hasLeadingIcon = false)
+                SwitchRow(stringResource(R.string.add_external), stringResource(R.string.add_external_hint),
+                    draft.externalLinksToBrowser) { value -> onUpdate { it.copy(externalLinksToBrowser = value) } }
+            }
+            Spacer(Modifier.height(24.dp))
+            AppSectionHeader(stringResource(R.string.add_text_size))
+            AppCard {
+                Text(stringResource(R.string.add_text_percent, draft.textZoomPercent),
+                    style = MaterialTheme.typography.bodyLarge)
+                Slider(
+                    value = draft.textZoomPercent.toFloat(),
+                    onValueChange = { value -> onUpdate { it.copy(textZoomPercent = value.toInt()) } },
+                    valueRange = 80f..130f,
+                    steps = 9,
+                )
+            }
+            Button(onClick = onSave, shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp).height(52.dp)) {
+                Text(stringResource(R.string.add_save_bottom), style = MaterialTheme.typography.titleMedium)
             }
             Spacer(Modifier.height(24.dp))
         }
     }
 }
 
+/** Intrinsic-height input avoids Material floating labels and clipped text at large font scales. */
 @Composable
-private fun SwitchRow(
-    label: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
+private fun EditorTextField(
+    title: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String = "",
+    readOnly: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    Column(Modifier.fillMaxWidth().heightIn(min = 76.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(title, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        BasicTextField(
+            value = value, onValueChange = onValueChange, readOnly = readOnly, singleLine = true,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 28.dp).semantics { contentDescription = title },
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = keyboardOptions, keyboardActions = keyboardActions,
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(placeholder, style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    inner()
+                }
+            },
+        )
     }
 }
 
-/** 图标预览：有地址用 AsyncImage，加载失败/为空时回退为主题色圆 + 首字母（或地球） */
 @Composable
-private fun AppIconPreview(draft: AddDraft, size: androidx.compose.ui.unit.Dp) {
-    val themeColor = draft.themeColor?.let {
-        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
-    } ?: MaterialTheme.colorScheme.primaryContainer
+private fun SwitchRow(label: String, description: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    AppListRow(title = label, subtitle = description,
+        trailing = { AppSwitch(checked = checked, onCheckedChange = onCheckedChange,
+            modifier = Modifier.semantics { contentDescription = label }) })
+}
 
+/** Same rounded-square geometry as a home icon; failed image loads reveal a legible fallback. */
+@Composable
+private fun AppIconPreview(draft: AddDraft, size: Dp) {
+    val parsedColor = remember(draft.themeColor) {
+        draft.themeColor?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+    }
+    val background = parsedColor ?: MaterialTheme.colorScheme.primary
+    val foreground = if (background.luminance() > 0.45f) Color.Black else Color.White
+    val shape = RoundedCornerShape(26)
     Box(
-        modifier = Modifier.size(size),
+        modifier = Modifier.size(size).clip(shape).background(background)
+            .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
-        // 回退层：网络图加载失败时自然露出
-        Box(
-            modifier = Modifier
-                .size(size)
-                .background(themeColor, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (draft.iconUrl.isBlank() || draft.isLocal) {
-                Icon(
-                    imageVector = if (draft.isLocal) Icons.Filled.Description else Icons.Filled.Public,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(size / 2),
-                )
-            } else {
-                Text(
-                    text = (draft.title.trim().firstOrNull()?.uppercase() ?: "?"),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
-                )
-            }
+        if (draft.iconUrl.isBlank() || draft.isLocal) {
+            Icon(if (draft.isLocal) Icons.Filled.Description else Icons.Filled.Public,
+                contentDescription = null, tint = foreground, modifier = Modifier.size(size / 2))
+        } else {
+            Text(draft.title.trim().firstOrNull()?.uppercase() ?: "?",
+                style = MaterialTheme.typography.headlineMedium, color = foreground, maxLines = 1)
         }
-        if (draft.iconUrl.isNotBlank() && !draft.isLocal) {
-            AsyncImage(
-                model = draft.iconUrl,
-                contentDescription = "应用图标",
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.size(size),
-            )
+        if (draft.iconUrl.isNotBlank()) {
+            AsyncImage(model = draft.iconUrl,
+                contentDescription = stringResource(R.string.add_icon_description),
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
 }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_address">网址</string>
+    <string name="browser_address_placeholder">输入网址</string>
+    <string name="browser_back">返回</string>
+    <string name="browser_forward">前进</string>
+    <string name="browser_stop">停止</string>
+    <string name="browser_refresh">刷新</string>
+    <string name="browser_menu">菜单</string>
+    <string name="browser_tabs">标签页</string>
+    <string name="browser_tabs_count">%1$d 个标签页</string>
+    <string name="browser_new_tab">新标签页</string>
+    <string name="browser_add_bookmark">收藏本页</string>
+    <string name="browser_remove_bookmark">取消收藏</string>
+    <string name="browser_find">页内查找</string>
+    <string name="browser_find_placeholder">在页面中查找</string>
+    <string name="browser_find_previous">上一个</string>
+    <string name="browser_find_next">下一个</string>
+    <string name="browser_find_close">关闭查找</string>
+    <string name="browser_find_count">%1$d/%2$d</string>
+    <string name="browser_desktop">桌面版</string>
+    <string name="browser_enabled">已开启</string>
+    <string name="browser_history">历史</string>
+    <string name="browser_bookmarks">收藏夹</string>
+    <string name="browser_close_all_tabs">关闭全部标签</string>
+    <string name="browser_close_all">关闭全部</string>
+    <string name="browser_close_tab">关闭标签</string>
+    <string name="browser_done">完成</string>
+    <string name="browser_no_tabs">暂无标签页</string>
+    <string name="browser_start_hint">输入网址，或新建一个标签页开始浏览。</string>
+    <string name="browser_create_tab">新建标签页</string>
+    <string name="browser_no_history">暂无历史记录</string>
+    <string name="browser_clear_history">清空历史</string>
+    <string name="browser_no_bookmarks">暂无收藏</string>
+    <string name="browser_delete_bookmark">删除收藏</string>
+</resources>
