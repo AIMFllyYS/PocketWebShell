@@ -8,14 +8,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,28 +20,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bedtime
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Edit
@@ -57,13 +45,13 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Launch
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,34 +61,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
-import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SCROLL_MODE_VERTICAL
-import com.webshell.core.data.WebAppEntity
 import com.webshell.core.designsystem.components.AppContextMenu
 import com.webshell.core.designsystem.components.AppContextMenuItem
-import com.webshell.core.designsystem.theme.LocalPhotoWallpaperPath
 import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -124,7 +99,19 @@ import kotlinx.coroutines.withContext
 fun HomeScreen(
     onLaunch: (appId: String, url: String) -> Unit = { _, _ -> },
     onAddRequested: () -> Unit = {},
+    wallpaperBacked: Boolean = false,
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
+) {
+    CompositionLocalProvider(LocalLauncherWallpaperBacked provides wallpaperBacked) {
+        HomeScreenContent(onLaunch = onLaunch, onAddRequested = onAddRequested, viewModel = viewModel)
+    }
+}
+
+@Composable
+private fun HomeScreenContent(
+    onLaunch: (appId: String, url: String) -> Unit,
+    onAddRequested: () -> Unit,
+    viewModel: HomeViewModel,
 ) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -161,8 +148,8 @@ fun HomeScreen(
     // 落子时全局下标换算回 page = index / capacity、slot = index % capacity）。
     val verticalMode = settings.homeScrollMode == SCROLL_MODE_VERTICAL
     val lazyGridState = rememberLazyGridState()
-    val flatCells: List<HomeCell?> = remember(pages, pageCapacity) {
-        HomePages.flatten(pages, pageCapacity)
+    val flatCells: List<HomeCell?> = remember(pages, pageCapacity, verticalMode) {
+        if (verticalMode) HomePages.flatten(pages, pageCapacity) else emptyList()
     }
     // “添加”入口在摊平列表中的下标：末页第一个空槽（自由摆放用 addSlotIndex；
     // 自动整理的末页图标压实靠左，首个空槽即 pages.last().size）。
@@ -185,12 +172,8 @@ fun HomeScreen(
     var dragPosition by ui::dragPosition
     var dragRegistration by ui::dragRegistration
     var dragHoverTarget by ui::dragHoverTarget
-    var dragTargetCellIndex by ui::dragTargetCellIndex
-    var dragTargetPage by ui::dragTargetPage
     var folderCandidate by ui::folderCandidate
     var folderArmed by ui::folderArmed
-    var edgeDirection by ui::edgeDirection
-    var verticalEdgeDirection by ui::verticalEdgeDirection
     // iOS 顺序：长按先弹情境菜单；按住并移动超过 16dp 后菜单淡出、图标跟手。
     var menuFor by ui::menuFor
     var menuPressPoint by ui::menuPressPoint
@@ -207,10 +190,11 @@ fun HomeScreen(
     // 编辑（jiggle）模式：双指捏合进入，点选图标做批量整理。
     var editMode by ui::editMode
     val editSelection = ui.editSelection
+    val jiggleRotation = rememberLauncherJiggle(editMode)
 
-    val draggedCell = remember(pages, draggingKey) {
-        pages.flatten().firstOrNull { it?.key == draggingKey }
-    }
+    // Build the lookup once per data update, not once per drag/selection state change.
+    val cellsByKey = remember(pages) { pages.asSequence().flatten().filterNotNull().associateBy { it.key } }
+    val draggedCell = cellsByKey[draggingKey]
 
     BackHandler(enabled = folderOpenFor != null) { folderOpenFor = null }
     BackHandler(enabled = editMode) {
@@ -229,17 +213,19 @@ fun HomeScreen(
 
     // 落子动作：手势层不直接依赖 ViewModel，动作在此装配绑定（pageCapacity 随
     // 设置变化，手势工厂内以 rememberUpdatedState 保持最新）。
-    val dropActions = HomeDropActions(
-        createFolder = viewModel::createFolder,
-        prependPageMove = { key, slot ->
-            viewModel.prependPageMove(key, slot, pageCapacity)
-        },
-        moveCellToSlot = { key, page, slot ->
-            viewModel.moveCellToSlot(key, page, slot, pageCapacity)
-        },
-        moveApp = viewModel::moveApp,
-        moveCell = { from, target -> viewModel.moveCell(from, target, pageCapacity) },
-    )
+    val dropActions = remember(viewModel, pageCapacity) {
+        HomeDropActions(
+            createFolder = viewModel::createFolder,
+            prependPageMove = { key, slot ->
+                viewModel.prependPageMove(key, slot, pageCapacity)
+            },
+            moveCellToSlot = { key, page, slot ->
+                viewModel.moveCellToSlot(key, page, slot, pageCapacity)
+            },
+            moveApp = viewModel::moveApp,
+            moveCell = { from, target -> viewModel.moveCell(from, target, pageCapacity) },
+        )
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -250,31 +236,22 @@ fun HomeScreen(
             .homeBlankAreaMenu(ui, haptics)
             .homePinchEditMode(ui, haptics),
     ) {
-        // 照片壁纸主题：壁纸铺底 + 可读性 scrim；不参与网格测量，见 docs/DESIGN.md
-        val wallpaperPath = LocalPhotoWallpaperPath.current
-        if (wallpaperPath != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(File(wallpaperPath))
-                    .size(1080)
-                    .build(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.35f)),
-            )
-        }
-
+        // Wallpaper is owned by the app root so the dock samples the same single backdrop.
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val iconSize = settings.iconSizeDp.dp.coerceAtMost(
-            ((maxWidth - 24.dp) / settings.gridColumns) - 12.dp,
-        ).coerceAtLeast(40.dp)
-        val cellHeight = iconSize + if (settings.showLabels) 30.dp else 16.dp
+        val geometry = remember(maxWidth, maxHeight, settings.gridColumns, settings.gridRows, settings.iconSizeDp, settings.showLabels, density.fontScale) {
+            LauncherGeometry.resolve(
+                widthDp = maxWidth.value,
+                heightDp = maxHeight.value,
+                columns = settings.gridColumns,
+                rows = settings.gridRows,
+                requestedIconSizeDp = settings.iconSizeDp.toFloat(),
+                showLabels = settings.showLabels,
+                fontScale = density.fontScale,
+            )
+        }
+        val iconSize = geometry.iconSizeDp.dp
+        val cellHeight = geometry.cellHeightDp.dp
 
         // 落点/悬停解析入口：手势层每个 MOVE 事件回调这里。pagerState.currentPage
         // 在调用瞬间现读（组合期快照在拖拽中会过期）；本 lambda 随重组重建，
@@ -350,6 +327,7 @@ fun HomeScreen(
                     isSource = draggingKey == cell.key,
                     isMergeTarget = folderArmed && folderCandidate == cell.key,
                     isReorderTarget = dragHoverTarget == cell.key && !folderArmed,
+                    jiggleRotation = jiggleRotation,
                     isEditMode = editMode,
                     isEditSelected = editSelection[cell.key] == true,
                     isPressed = cellPressed,
@@ -392,6 +370,10 @@ fun HomeScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // A folder uses the same wallpaper, with a static glass sheet over it. Hide
+                // only grid pixels so sharp icon/label ghosts cannot leak through that sheet;
+                // all cells remain measured and registered for the unchanged launcher model.
+                .graphicsLayer { alpha = if (folderOpenFor == null) 1f else 0f }
                 .homeDragSession(
                     state = ui,
                     pages = pages,
@@ -409,13 +391,13 @@ fun HomeScreen(
                 state = lazyGridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = 12.dp,
-                    top = 18.dp,
-                    end = 12.dp,
-                    bottom = 20.dp,
+                    start = geometry.horizontalPaddingDp.dp,
+                    top = geometry.topPaddingDp.dp,
+                    end = geometry.horizontalPaddingDp.dp,
+                    bottom = geometry.bottomPaddingDp.dp,
                 ),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(geometry.columnGapDp.dp),
+                verticalArrangement = Arrangement.spacedBy(geometry.rowGapDp.dp),
                 // 拖拽中禁用列表手势（与 pager 模式一致的不变量）
                 userScrollEnabled = draggingKey == null,
             ) {
@@ -440,13 +422,13 @@ fun HomeScreen(
                     columns = GridCells.Fixed(settings.gridColumns),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        start = 12.dp,
-                        top = 18.dp,
-                        end = 12.dp,
-                        bottom = if (settings.showPageIndicator) 44.dp else 20.dp,
+                        start = geometry.horizontalPaddingDp.dp,
+                        top = geometry.topPaddingDp.dp,
+                        end = geometry.horizontalPaddingDp.dp,
+                        bottom = geometry.bottomPaddingDp.dp,
                     ),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(geometry.columnGapDp.dp),
+                    verticalArrangement = Arrangement.spacedBy(geometry.rowGapDp.dp),
                     userScrollEnabled = false,
                 ) {
                     itemsIndexed(
@@ -475,35 +457,16 @@ fun HomeScreen(
         }
         }
 
-        // 页码指示器只在左右翻页模式显示
-        if (!verticalMode && settings.showPageIndicator && pages.size > 1) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 12.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                shape = RoundedCornerShape(50),
-                tonalElevation = 2.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    repeat(pages.size) { index ->
-                        val selected = pagerState.currentPage == index
-                        Box(
-                            Modifier
-                                .size(if (selected) 8.dp else 6.dp)
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.outlineVariant,
-                                    RoundedCornerShape(50),
-                                ),
-                        )
-                    }
-                }
-            }
+        // iOS home alternates the compact Search capsule with page dots while paging/editing.
+        if (!editMode) {
+            HomeSearchPill(
+                pageCount = pagerState.pageCount,
+                currentPage = pagerState.currentPage,
+                showPages = !verticalMode && settings.showPageIndicator &&
+                    (pagerState.isScrollInProgress || draggingKey != null),
+                onClick = { allAppsOpen = true },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
+            )
         }
 
         AnimatedVisibility(
@@ -511,11 +474,14 @@ fun HomeScreen(
             modifier = Modifier.align(Alignment.Center),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("还没有应用", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "点按添加，把常用网站放到桌面",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    stringResource(R.string.home_empty_title),
+                    style = launcherLabelStyle().copy(fontSize = MaterialTheme.typography.titleMedium.fontSize),
+                )
+                Text(
+                    stringResource(R.string.home_empty_description),
+                    style = launcherLabelStyle(),
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
         }
@@ -550,7 +516,7 @@ fun HomeScreen(
                 app = cell.app,
                 size = iconSize,
                 cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                folderPreview = cell.folderMembers.take(4),
+                folderPreview = cell.folderMembers,
                 shadowElevation = 18.dp,
                 modifier = Modifier.graphicsLayer {
                     translationX = dragPosition.x - rootOrigin.x - dragRegistration.x
@@ -565,11 +531,10 @@ fun HomeScreen(
         if (editMode) {
             EditModeOverlay(
                 selectedCount = editSelection.values.count { it },
-                totalCount = pages.sumOf { page -> page.count { it != null } },
+                totalCount = cellsByKey.size,
                 onSelectAll = {
-                    val allSelected = editSelection.values.count { it } ==
-                        pages.sumOf { page -> page.count { it != null } }
-                    pages.flatten().filterNotNull().forEach { editSelection[it.key] = !allSelected }
+                    val allSelected = editSelection.values.count { it } == cellsByKey.size
+                    cellsByKey.keys.forEach { editSelection[it] = !allSelected }
                 },
                 onClearSelection = { editSelection.clear() },
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -578,16 +543,16 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 14.dp, end = 16.dp),
+                    .padding(end = 16.dp),
             ) {
                 Surface(
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.clickable(onClick = { exitEditMode() }),
+                    modifier = Modifier.heightIn(min = 48.dp).clickable(onClick = { exitEditMode() }),
                 ) {
                     Text(
-                        "完成",
+                        stringResource(R.string.home_done),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
@@ -637,8 +602,7 @@ fun HomeScreen(
 
     // 全部应用抽屉：首字母分区网格 + 右侧字母索引条。
     if (allAppsOpen) {
-        // 拼音分组只在应用列表变化时重算（remember 缓存，避免每次重组全量转换）
-        val sections = remember(apps) { AllAppsIndex.buildSections(apps) }
+        val sections by viewModel.allAppsSections.collectAsStateWithLifecycle()
         AllAppsDrawer(
             sections = sections,
             columns = settings.gridColumns,
@@ -872,296 +836,6 @@ fun HomeScreen(
     }
 }
 
-/**
- * 文件夹展开页（对齐 HyperOS）：全屏暗化 + 顶部文件夹名 + 3 列大网格成员图标。
- * 替代旧的 AlertDialog 列表，成员以与主屏一致的圆角图标 + 名称呈现。
- */
-@Composable
-private fun FolderExpandedPage(
-    members: List<WebAppEntity>,
-    cornerRadiusPercent: Int,
-    onLaunch: (String, String) -> Unit,
-    onDissolve: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        LaunchedEffect(window) { window?.setDimAmount(0f) }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { onDismiss() },
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .fillMaxWidth(0.86f)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f))
-                    .border(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant,
-                        RoundedCornerShape(28.dp),
-                    )
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { /* 吞掉点击 */ }
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
-            ) {
-                Text(
-                    "文件夹",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "${members.size} 个应用",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(20.dp))
-                // 3 列大网格成员
-                val columns = 3
-                members.chunked(columns).forEach { rowMembers ->
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                    ) {
-                        rowMembers.forEach { member ->
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onLaunch(member.id, member.url) }
-                                    .padding(vertical = 6.dp),
-                            ) {
-                                AppIcon(
-                                    app = member,
-                                    size = 56.dp,
-                                    cornerRadiusPercent = cornerRadiusPercent,
-                                )
-                                Text(
-                                    member.title,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 6.dp),
-                                )
-                            }
-                        }
-                        // 补齐空位保持网格对齐
-                        repeat(columns - rowMembers.size) {
-                            Spacer(Modifier.weight(1f))
-                        }
-                    }
-                }
-                TextButton(onClick = onDissolve) {
-                    Text("解散文件夹", color = MaterialTheme.colorScheme.error)
-                }
-            }
-        }
-    }
-}
-
-/** 编辑模式底部操作行：选中计数 + 全选/清空，半透明磨砂底。 */
-@Composable
-private fun EditModeOverlay(
-    selectedCount: Int,
-    totalCount: Int,
-    onSelectAll: () -> Unit,
-    onClearSelection: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 12.dp),
-        ) {
-            Text(
-                "已选 $selectedCount / $totalCount",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                TextButton(onClick = onSelectAll) {
-                    Text(
-                        if (selectedCount == totalCount) "取消全选" else "全选",
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                TextButton(onClick = onClearSelection, enabled = selectedCount > 0) {
-                    Text("清空")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LauncherCell(
-    cell: HomeCell,
-    iconSize: Dp,
-    settings: HomeSettings,
-    isSource: Boolean,
-    isMergeTarget: Boolean,
-    isReorderTarget: Boolean,
-    modifier: Modifier = Modifier,
-    isEditMode: Boolean = false,
-    isEditSelected: Boolean = false,
-    isPressed: Boolean = false,
-) {
-    val targetScale by animateFloatAsState(
-        targetValue = if (isMergeTarget) 1.12f else 1f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 600f),
-        label = "drop-target-scale",
-    )
-    // 点按反馈：图标自身轻微回缩（替代整格 ripple 的"网格高亮"）。
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.88f else 1f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 700f),
-        label = "press-scale",
-    )
-    // 编辑（jiggle）模式：图标做 iOS 式小幅旋转抖动。
-    val jiggleTransition = rememberInfiniteTransition(label = "jiggle")
-    val jiggleAnim by jiggleTransition.animateFloat(
-        initialValue = -1.6f,
-        targetValue = 1.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 130, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "jiggle-rotation",
-    )
-    val jiggleRotation = if (isEditMode) jiggleAnim else 0f
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.alpha(if (isSource) 0.18f else 1f),
-    ) {
-        Box {
-            Surface(
-                shape = RoundedCornerShape(settings.iconCornerRadiusPercent.coerceIn(0, 50)),
-                color = androidx.compose.ui.graphics.Color.Transparent,
-                border = if (isReorderTarget) {
-                    BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
-                } else null,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = targetScale * pressScale
-                    scaleY = targetScale * pressScale
-                    rotationZ = jiggleRotation
-                },
-            ) {
-                AppIcon(
-                    app = cell.app,
-                    size = iconSize,
-                    cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                    folderPreview = cell.folderMembers.take(4),
-                )
-            }
-            // 编辑模式勾选角标：左上圆形，选中主色实心 + 对勾，未选中描边空心。
-            if (isEditMode) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 4.dp, y = (-4).dp)
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isEditSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-                            },
-                        )
-                        .border(
-                            1.5.dp,
-                            if (isEditSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant
-                            },
-                            CircleShape,
-                        ),
-                ) {
-                    if (isEditSelected) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = "已选中",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    }
-                }
-            }
-        }
-        if (settings.showLabels) {
-            Text(
-                text = if (cell.isFolder) "文件夹" else cell.app.title,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 5.dp, start = 2.dp, end = 2.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun AddCell(
-    iconSize: Dp,
-    showLabel: Boolean,
-    cornerRadiusPercent: Int,
-    modifier: Modifier = Modifier,
-) {
-    val shape = RoundedCornerShape(cornerRadiusPercent.coerceIn(0, 50))
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .size(iconSize)
-                .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, shape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Filled.Add,
-                contentDescription = "添加",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (showLabel) {
-            Text(
-                "添加",
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(top = 5.dp),
-            )
-        }
-    }
-}
 
 /** 上传的本地图片复制到应用私有 icons 目录（IO 线程），返回绝对路径供图标地址使用。 */
 private suspend fun copyPickedIcon(context: Context, uri: Uri): String? =

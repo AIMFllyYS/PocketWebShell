@@ -3,8 +3,6 @@ package com.webshell.feature.home
 import android.graphics.Rect
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -26,9 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -37,12 +35,14 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppContextMenu
 import com.webshell.core.designsystem.components.AppContextMenuItem
+import com.webshell.core.designsystem.components.staticGlassSurface
 import kotlin.math.roundToInt
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -218,21 +218,19 @@ fun AllAppsEntry(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(iconSize)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+                .staticGlassSurface(shape = shape, opacity = if (LocalLauncherWallpaperBacked.current) 0.45f else 0.88f),
         ) {
             Icon(
                 Icons.Filled.Apps,
-                contentDescription = "全部应用",
-                tint = MaterialTheme.colorScheme.onSurface,
+                contentDescription = stringResource(R.string.home_all_apps),
+                tint = if (LocalLauncherWallpaperBacked.current) Color.White else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(iconSize * 0.52f),
             )
         }
         if (showLabel) {
             Text(
-                "全部应用",
-                style = MaterialTheme.typography.labelSmall,
+                stringResource(R.string.home_all_apps),
+                style = launcherLabelStyle(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 5.dp),
@@ -243,7 +241,7 @@ fun AllAppsEntry(
     if (menuVisible) {
         AppContextMenu(
             items = listOf(
-                AppContextMenuItem("隐藏全部应用入口", Icons.Filled.VisibilityOff) { onHide() },
+                AppContextMenuItem(stringResource(R.string.home_hide_all_apps_entry), Icons.Filled.VisibilityOff) { onHide() },
             ),
             onDismiss = { menuVisible = false },
             // 锚定入口当前视觉中心（positionInRoot 已含 graphicsLayer 平移）

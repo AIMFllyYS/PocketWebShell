@@ -10,24 +10,23 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.BatterySaver
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.RoundedCorner
 import androidx.compose.material.icons.filled.Wallpaper
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,12 +34,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -57,6 +57,8 @@ import com.webshell.core.data.TRANSITION_FADE
 import com.webshell.core.data.TRANSITION_NONE
 import com.webshell.core.data.TRANSITION_SCALE
 import com.webshell.core.data.TRANSITION_SLIDE
+import com.webshell.core.designsystem.components.AppListDivider
+import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.webengine.WebViewCapabilities
 import java.io.File
 
@@ -96,6 +98,7 @@ internal fun LayoutSettingsPage(
                 title = "上下滚动",
                 subtitle = "所有页摊平成一条纵向列表连续滚动",
                 selected = settings.homeScrollMode == SCROLL_MODE_VERTICAL,
+                showDivider = false,
                 onClick = { viewModel.setHomeScrollMode(SCROLL_MODE_VERTICAL) },
             )
         }
@@ -111,6 +114,7 @@ internal fun LayoutSettingsPage(
                 checked = settings.autoArrangeHome,
                 onCheckedChange = viewModel::setAutoArrangeHome,
             )
+            AppListDivider(hasLeadingIcon = false)
             ToggleRow(
                 title = "显示全部应用入口",
                 subtitle = "主屏右下角浮动图标，点按打开全部应用抽屉",
@@ -141,6 +145,7 @@ internal fun LayoutSettingsPage(
                 checked = settings.showLabels,
                 onCheckedChange = viewModel::setShowLabels,
             )
+            AppListDivider(hasLeadingIcon = false)
             ToggleRow(
                 title = "显示页面指示器",
                 checked = settings.showPageIndicator,
@@ -259,25 +264,38 @@ internal fun EngineInfoPage(
     onBack: () -> Unit,
 ) {
     DetailPage(title = "WebView 引擎", onBack = onBack) {
-        SectionCard(title = "引擎信息", edgeToEdge = false) {
-            Text(
-                "版本 ${capabilities.webViewVersion.orEmpty()}",
-                style = MaterialTheme.typography.bodyMedium,
+        SectionCard(title = "引擎信息") {
+            AppListRow(
+                title = stringResource(R.string.me_engine_version),
+                subtitle = capabilities.webViewVersion ?: stringResource(R.string.me_unknown),
             )
-            Text(
-                "独立存储 Profile：${capabilityLabel(capabilities.multiProfile)} · " +
-                    "文档启动注入：${capabilityLabel(capabilities.documentStartJs)} · " +
-                    "算法深色：${capabilityLabel(capabilities.algorithmicDarkening)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
+            AppListDivider(hasLeadingIcon = false)
+            EngineCapabilityRow(stringResource(R.string.me_engine_profiles), capabilities.multiProfile)
+            AppListDivider(hasLeadingIcon = false)
+            EngineCapabilityRow(stringResource(R.string.me_engine_document_start), capabilities.documentStartJs)
+            AppListDivider(hasLeadingIcon = false)
+            EngineCapabilityRow(
+                stringResource(R.string.me_engine_darkening),
+                capabilities.algorithmicDarkening,
             )
         }
         Spacer(Modifier.height(24.dp))
     }
 }
 
-private fun capabilityLabel(supported: Boolean): String = if (supported) "支持" else "降级"
+@Composable
+private fun EngineCapabilityRow(title: String, supported: Boolean) {
+    AppListRow(
+        title = title,
+        trailing = {
+            Text(
+                stringResource(if (supported) R.string.me_supported else R.string.me_fallback),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    )
+}
 
 /** 二级页：外观与主题（跟随系统/纯白/纯黑/照片壁纸）。 */
 @Composable
@@ -314,6 +332,7 @@ internal fun AppearanceSettingsPage(
                 title = "照片壁纸",
                 subtitle = "上传照片作为主页壁纸，并从照片提取主题色",
                 selected = settings.themeMode == THEME_MODE_PHOTO,
+                showDivider = false,
                 onClick = {
                     if (settings.photoWallpaperPath.isNullOrBlank()) {
                         pickWallpaper.launch(
@@ -349,6 +368,7 @@ internal fun AppearanceSettingsPage(
                 title = "无动画",
                 subtitle = "直接切换，最省电",
                 selected = settings.transitionStyle == TRANSITION_NONE,
+                showDivider = false,
                 onClick = { viewModel.setTransitionStyle(TRANSITION_NONE) },
             )
         }
@@ -386,24 +406,22 @@ private fun ThemeModeRow(
     title: String,
     subtitle: String,
     selected: Boolean,
+    showDivider: Boolean = true,
     onClick: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    AppListRow(
+        title = title,
+        subtitle = subtitle,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        trailing = {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+            } else {
+                Spacer(Modifier.size(24.dp))
+            }
+        },
+    )
+    if (showDivider) AppListDivider(hasLeadingIcon = false)
 }

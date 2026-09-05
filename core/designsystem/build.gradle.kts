@@ -37,10 +37,9 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.palette.ktx)
-    implementation(libs.coil.compose)
+    implementation(libs.kotlinx.coroutines.android)
     api(libs.haze)
     api(libs.haze.materials)
-    implementation(project(":core:data"))
+    testImplementation(libs.junit)
 }
