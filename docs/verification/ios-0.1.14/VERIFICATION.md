@@ -1,7 +1,9 @@
 # 0.1.14 · iOS 风格与性能重构验收
 
-日期：2026-09-06（本地 UTC+13）  
-分支：`feat/ios-launcher-redesign`，从干净的 `dev` 创建  
+日期：2026-09-06（本地 UTC+13）
+
+分支：`feat/ios-launcher-redesign`，从干净的 `dev` 创建
+
 交付形态：Debug APK，`versionName=0.1.14` / `versionCode=15`
 
 ## 验证环境
@@ -26,8 +28,10 @@
 | 最终 APK 安装与冷启动 | 专用 API 35 模拟器安装成功，MainActivity 启动成功 |
 | 新装空白主屏空闲采样 | 清零 `dumpsys gfxinfo` 后等待 5 秒，新增应用渲染帧为 0；不是交互帧率基准 |
 
-APK：`dist/PocketWebShell-v0.1.14-debug.apk`，84,667,113 字节（约 80.74 MiB）。  
-SHA-256：`2da88b53642a310447bb74c08ecbe133e7dadc47bc70c55d49de6a50bb7ca1ec`  
+APK：`dist/PocketWebShell-v0.1.14-debug.apk`，84,667,113 字节（约 80.74 MiB）。
+
+SHA-256：`2da88b53642a310447bb74c08ecbe133e7dadc47bc70c55d49de6a50bb7ca1ec`
+
 安装信息：`com.webshell.app`，Android 10+（minSdk 29），targetSdk 36。它是可安装的调试包，不是生产签名包；签名不同的正式版不能直接被它覆盖，安装前应保留现有数据。
 
 单元测试包含：21 项页模型、7 项网格几何、2 项拖拽清理、8 项资源库索引/搜索、6 项设计系统采样/菜单位置、4 项浏览器地址呈现、6 项元数据图标排序与 8 项日志模型测试。几何覆盖 255dp 低高度、320dp 紧凑宽度、3–6 列、3–8 行及放大字体。
@@ -66,6 +70,6 @@ SHA-256：`2da88b53642a310447bb74c08ecbe133e7dadc47bc70c55d49de6a50bb7ca1ec`
 - Lint 的 21 条警告来自目标 API、现有依赖可更新提示、旧 API 守卫、后台电池策略和 KTX 建议，没有通过升级一整套依赖或屏蔽检查来消除它们。
 - 原有浏览器摄像头/麦克风权限资源映射仍需独立专项验证，本次未重写权限或 WebView 引擎。
 - 风格依据 iOS 26 的公开设计，但保留 MiSans、统一 Material 图标库和真实 Android 系统 UI；Haze 不是 Apple 私有 Liquid Glass 光学引擎，不宣称逐像素 1:1。
-- APK 仅为 Debug 交付；未构建正式 Release、未触碰发布私钥、未合并 main、未推送、未打 tag。正式发布等待用户明确确认同版本 Debug。
+- 本记录描述 Debug 交付时状态：当时未构建正式 Release、未触碰发布私钥、未合并 main、未推送、未打 tag。后续正式发布以用户明确批准及 GitHub Release 为准。
 
 设计与架构详情见 [IOS_REDESIGN.md](../../IOS_REDESIGN.md)。
