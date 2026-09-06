@@ -120,6 +120,10 @@ git ls-remote --heads --tags origin
 
 Download the published APK into a clean directory and verify it again with the same `apksigner` command. Confirm the SHA-256 matches the uploaded checksum and the certificate digest matches the prior release.
 
+## Sync the product website
+
+Once the GitHub Release is live, synchronize the product website (changelog archive, download links, checksum and screenshots where applicable) and deploy the updated static build by following `docs/WEBSITE.md` exactly. Only published releases trigger a website sync; debug iterations do not.
+
 ## Return to dev
 
 After the release is published, bring every local and remote branch and tag up to date, then resume work on `dev` (`docs/VERSIONING.md` W6, steps 3–4):
