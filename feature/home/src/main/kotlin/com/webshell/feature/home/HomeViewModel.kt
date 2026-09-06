@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -32,6 +35,12 @@ class HomeViewModel @Inject constructor(
 
     val settings: StateFlow<HomeSettings> = settingsRepository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeSettings())
+
+    /** Library indexing is CPU work, not composition work; opening it never blocks a frame. */
+    val allAppsSections: StateFlow<List<AllAppsIndex.Section>> = apps
+        .map(AllAppsIndex::buildSections)
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
     /** 轻量提示（toast 浮层）：刷新成功/失败等一次性消息。 */

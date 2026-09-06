@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.14] - 2026-09-06
+
+### Changed
+
+- 主屏视觉对齐 iOS：全屏静态流线壁纸、四图标悬浮 Dock、约束驱动的桌面网格、白色阴影标题、搜索/页码胶囊与 3×3 文件夹预览。已有照片壁纸、图标设置及稀疏位置数据继续保留。
+- 统一玻璃材质、文字字阶、分组列表、情境菜单与导航层级；添加页面和浏览器工具栏采用一致的 iOS 风格原生呈现。
+- 呈现层职责拆分：应用壳集中管理安全区/壁纸/Dock，主页分离几何与单元呈现，主题状态经 Hilt ViewModel 单独投影，避免位置设置使整棵主题树重组。
+
+### Fixed
+
+- 壁纸延伸至 Dock 后方，修复玻璃采样到空白底色的问题；实时模糊半径显式限制在 24dp 以内，其他浮层使用静态材质。
+- 非编辑状态不再维持图标抖动动画；照片取色修复路径清除后的旧色残留、超长图片采样及临时位图回收。
+- 安全区随真实 Android 系统栏变化，浅/深主题更新系统栏对比度；外部 URL 打开时保活登记不再被全屏提前返回跳过。
+
+### Testing
+
+- 新增桌面约束几何、壁纸取色采样与端侧视觉/导航回归；以独立 Android 15 模拟器检查标准宽度、紧凑宽度、深色主题、文件夹与多页交互。
+
 ## [0.1.13] - 2026-09-02
 
 ### Fixed

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="me_settings">设置</string>
+    <string name="me_settings_subtitle">让网页成为你的日常应用</string>
+    <string name="me_sessions">后台会话</string>
+    <string name="me_sessions_empty">暂无正在保活的会话</string>
+    <string name="me_sessions_empty_hint">开启网站的后台保活后，会话会显示在这里。</string>
+    <string name="me_session_end">结束</string>
+    <string name="me_display_section">桌面与显示</string>
+    <string name="me_browser_section">浏览与后台</string>
+    <string name="me_about_section">关于</string>
+    <string name="me_appearance">外观与主题</string>
+    <string name="me_layout">主页布局</string>
+    <string name="me_background">后台与通知</string>
+    <string name="me_engine">WebView 引擎</string>
+    <string name="me_updates">项目更新日志</string>
+    <string name="me_developer">开发者选项</string>
+    <string name="me_engine_version">版本</string>
+    <string name="me_engine_profiles">独立存储 Profile</string>
+    <string name="me_engine_document_start">文档启动注入</string>
+    <string name="me_engine_darkening">网页深色适配</string>
+    <string name="me_supported">支持</string>
+    <string name="me_fallback">兼容模式</string>
+    <string name="me_unknown">未知</string>
+    <string name="me_logs">日志</string>
+    <string name="me_log_actions">日志操作</string>
+    <string name="me_log_refresh">刷新</string>
+    <string name="me_log_copy">复制</string>
+    <string name="me_log_share">分享</string>
+    <string name="me_log_clear">清空日志</string>
+    <string name="me_glass_static_preview">静态玻璃预览</string>
+    <string name="me_glass_budget_hint">此示例仅展示半透明材质与边缘高光。底部 Dock 是页面中唯一的实时背景模糊区域，以保持滚动与拖动流畅。</string>
+</resources>

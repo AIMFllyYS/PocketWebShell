@@ -1,49 +1,35 @@
 package com.webshell.app.ui
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.webshell.app.shell.ShellScreen
-import com.webshell.app.ui.MainScaffoldViewModel
-import com.webshell.core.designsystem.components.glassSurface
 import com.webshell.core.designsystem.theme.AppMotion
+import com.webshell.core.designsystem.theme.LocalIsDarkTheme
 import com.webshell.feature.add.AddScreen
 import com.webshell.feature.browser.BrowserScreen
 import com.webshell.feature.home.HomeScreen
@@ -51,13 +37,7 @@ import com.webshell.feature.me.MeScreen
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
-private enum class MainTab(val label: String, val icon: ImageVector) {
-    HOME("主页", Icons.Filled.Home),
-    ADD("添加", Icons.Filled.Add),
-    BROWSE("浏览", Icons.Filled.Public),
-    ME("我的", Icons.Filled.Person),
-}
-
+/** App shell owns insets, the full-bleed backdrop and the only live glass surface. */
 @Composable
 fun MainScaffold(
     launchUrl: String? = null,
@@ -65,135 +45,91 @@ fun MainScaffold(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var openedUrl by rememberSaveable { mutableStateOf(launchUrl) }
+    // Keep tab drafts/scroll anchors alive while a website temporarily owns the whole screen.
+    val stateHolder = rememberSaveableStateHolder()
+    val homeVisible = selectedTab == MainTab.HOME && openedUrl == null
+    SystemBarAppearance(lightIcons = homeVisible || LocalIsDarkTheme.current)
 
-    // 主页打开应用 / 外部 url 进入：全屏壳（无底栏，返回回到入口 tab）
+    // Must run before the immersive early-return: external launches need registration too.
+    LaunchedEffect(launchUrl) {
+        launchUrl?.let(viewModel::registerKeepAliveFor)
+    }
     openedUrl?.let { url ->
         BackHandler { openedUrl = null }
         ShellScreen(initialUrl = url, immersive = true)
         return
     }
-
-    // 冷启动直接带 url（外部唤起）时也要完成保活登记
-    LaunchedEffect(launchUrl) {
-        if (launchUrl != null) viewModel.registerKeepAliveFor(launchUrl)
-    }
+    BackHandler(enabled = selectedTab != MainTab.HOME) { selectedTab = MainTab.HOME }
 
     val hazeState = remember { HazeState() }
+    val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            GlassBottomBar(
-                selectedTab = selectedTab,
-                onSelect = { selectedTab = it },
-                hazeState = hazeState,
-            )
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // 内容作为模糊采样源；顶部保留安全区，底部为悬浮胶囊预留空间
-                .hazeSource(state = hazeState)
-                .padding(
-                    top = innerPadding.calculateTopPadding(),
-                    bottom = 96.dp,
-                ),
-        ) {
-            // 主 Tab 切换：统一淡入淡出过渡（不改变布局尺寸）。
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Box(Modifier.fillMaxSize().hazeSource(state = hazeState)) {
             Crossfade(
                 targetState = selectedTab,
                 animationSpec = tween(AppMotion.NormalMs),
                 label = "main-tab",
+                modifier = Modifier.fillMaxSize(),
             ) { tab ->
-                when (tab) {
-                    MainTab.HOME -> HomeScreen(
-                        onLaunch = { appId, _ ->
-                            viewModel.launchApp(appId) { url -> openedUrl = url }
-                        },
-                        onAddRequested = { selectedTab = MainTab.ADD },
-                    )
-                    MainTab.ADD -> AddScreen(
-                        onCreated = { selectedTab = MainTab.HOME },
-                    )
-                    MainTab.BROWSE -> BrowserScreen()
-                    MainTab.ME -> MeScreen(
-                        onKeepAliveServiceChanged = viewModel::setKeepAliveServiceEnabled,
-                    )
+                // Background and viewport follow this transition branch, not the target tab.
+                // The outgoing desktop therefore keeps both its wallpaper and fixed grid bounds.
+                val bottomClearance = if (tab == MainTab.HOME) {
+                    HomeDockHeight + 20.dp
+                } else {
+                    TabBarHeight + 20.dp
+                }
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    if (tab == MainTab.HOME) LauncherBackdrop(Modifier.fillMaxSize())
+                    Box(
+                        Modifier.fillMaxSize().padding(
+                            start = safeInsets.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+                            end = safeInsets.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
+                            top = safeInsets.calculateTopPadding(),
+                            bottom = safeInsets.calculateBottomPadding() + bottomClearance,
+                        ),
+                    ) {
+                        stateHolder.SaveableStateProvider(tab.name) {
+                            when (tab) {
+                                MainTab.HOME -> HomeScreen(
+                                    wallpaperBacked = true,
+                                    onLaunch = { appId, _ -> viewModel.launchApp(appId) { openedUrl = it } },
+                                    onAddRequested = { selectedTab = MainTab.ADD },
+                                )
+                                MainTab.ADD -> AddScreen(onCreated = { selectedTab = MainTab.HOME })
+                                MainTab.BROWSE -> BrowserScreen()
+                                MainTab.ME -> MeScreen(
+                                    onKeepAliveServiceChanged = viewModel::setKeepAliveServiceEnabled,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
+        LauncherDock(
+            selectedTab = selectedTab,
+            onSelect = { selectedTab = it },
+            hazeState = hazeState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
-/**
- * iOS Liquid Glass 风格悬浮胶囊底栏（Haze 实时背景模糊 + 高光描边）。
- * 全屏仅此一处实时模糊 backdrop，见 docs/PERFORMANCE.md。
- */
+/** Real Android bars use the active surface contrast, not the device's theme. */
 @Composable
-private fun GlassBottomBar(
-    selectedTab: MainTab,
-    onSelect: (MainTab) -> Unit,
-    hazeState: HazeState,
-) {
-    val capsuleShape = RoundedCornerShape(32.dp)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp)
-                .glassSurface(hazeState, shape = capsuleShape),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            MainTab.entries.forEach { tab ->
-                val selected = selectedTab == tab
-                val tint by animateColorAsState(
-                    targetValue = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    animationSpec = spring(),
-                    label = "tabTint",
-                )
-                // 选中态胶囊指示底：只改背景色，不改变任何布局尺寸
-                val pillColor by animateColorAsState(
-                    targetValue = if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                    } else {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0f)
-                    },
-                    animationSpec = spring(),
-                    label = "tabPill",
-                )
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 6.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(pillColor)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { onSelect(tab) }
-                        .padding(vertical = 8.dp),
-                ) {
-                    Icon(tab.icon, contentDescription = tab.label, tint = tint)
-                    Text(
-                        tab.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = tint,
-                    )
-                }
-            }
+private fun SystemBarAppearance(lightIcons: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(view, lightIcons) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previousStatus = controller?.isAppearanceLightStatusBars
+        val previousNavigation = controller?.isAppearanceLightNavigationBars
+        controller?.isAppearanceLightStatusBars = !lightIcons
+        controller?.isAppearanceLightNavigationBars = !lightIcons
+        onDispose {
+            previousStatus?.let { controller?.isAppearanceLightStatusBars = it }
+            previousNavigation?.let { controller?.isAppearanceLightNavigationBars = it }
         }
     }
 }

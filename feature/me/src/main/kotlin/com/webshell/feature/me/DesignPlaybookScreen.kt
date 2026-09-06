@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -54,11 +55,9 @@ import com.webshell.core.designsystem.components.AppContextMenu
 import com.webshell.core.designsystem.components.AppContextMenuItem
 import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppListRow
-import com.webshell.core.designsystem.components.glassSurface
+import com.webshell.core.designsystem.components.staticGlassSurface
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.AppSpacing
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 
 /**
  * 设计 Playbook：统一展示全部设计 token 与组件，
@@ -329,7 +328,6 @@ private fun ContextMenuSection() {
 
 @Composable
 private fun GlassSection() {
-    val hazeState = remember { HazeState() }
     SectionCard(title = "玻璃材质 Glass", edgeToEdge = false) {
         Box(
             modifier = Modifier
@@ -337,11 +335,10 @@ private fun GlassSection() {
                 .height(140.dp)
                 .clip(MaterialTheme.shapes.medium),
         ) {
-            // 彩色背景：用于观察模糊与高光描边
+            // Static counterpart only: the root dock already owns the sole live backdrop.
             Box(
                 Modifier
                     .fillMaxSize()
-                    .hazeSource(hazeState)
                     .background(
                         Brush.linearGradient(
                             listOf(
@@ -355,16 +352,22 @@ private fun GlassSection() {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .glassSurface(hazeState, shape = MaterialTheme.shapes.large)
+                    .staticGlassSurface(shape = MaterialTheme.shapes.large, opacity = 0.82f)
                     .padding(horizontal = AppSpacing.xl, vertical = AppSpacing.md),
             ) {
                 Text(
-                    "iOS Liquid Glass",
+                    stringResource(R.string.me_glass_static_preview),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
+        Text(
+            stringResource(R.string.me_glass_budget_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = AppSpacing.md),
+        )
     }
 }
 

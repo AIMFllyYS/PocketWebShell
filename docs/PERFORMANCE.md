@@ -28,3 +28,13 @@
 
 - 底栏、壁纸等全局层读取状态时使用生命周期感知收集，避免因高频状态（如拖动偏移）触发大范围重组。
 - 动画优先使用 `graphicsLayer` / `animateDpAsState` 等不改布局的手段。
+- 主题层由 `AppThemeViewModel` 只投影主题模式、照片路径与转场方式，去重后供纯呈现 `WebShellTheme` 消费；不得在主题 Composable 中构造 Repository。
+- 非编辑态不得挂载图标无限抖动；编辑态共用一个时钟，角度在 `graphicsLayer` 中读取。
+- 标题/拼音索引在 `Dispatchers.Default` 构建；图标统一 AsyncImage，不在网格中做 subcomposition 或同步 File.exists。
+- 滑杆连续移动只更新本地预览，松手提交偏好；照片 Palette 仅使用最长边 ≤256px 的临时位图并及时回收。
+
+## 6. 验证口径
+
+- 单元测试与截图可以验证几何、状态和功能，不能直接证明所有设备的帧率提升。
+- 帧统计须明确 debug/release、设备和操作；模拟器数据不替代真机性能基准。
+- API 29–32 降级分支、厂商 GPU/驱动和 OEM WebView 的实测情况必须在交付说明中单独列出，不得由 API 35 模拟器结果外推。

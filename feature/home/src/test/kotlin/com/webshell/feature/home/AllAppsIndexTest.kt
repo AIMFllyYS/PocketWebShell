@@ -84,4 +84,26 @@ class AllAppsIndexTest {
         )
         assertEquals(mapOf("A" to 0, "B" to 2, "#" to 4), flat.sectionFirstIndex)
     }
+
+    @Test
+    fun `search matches titles and urls without changing alphabetical order`() {
+        val sections = AllAppsIndex.buildSections(
+            listOf(app("知乎"), app("GitHub"), app("Gmail").copy(url = "https://github.example.com")),
+        )
+        val filtered = AllAppsIndex.filterSections(sections, "  GITHUB  ")
+        assertEquals(listOf("G"), filtered.map { it.letter })
+        assertEquals(listOf("GitHub", "Gmail"), filtered.single().apps.map { it.title })
+        assertEquals(listOf("知乎"), AllAppsIndex.filterSections(sections, "知").single().apps.map { it.title })
+    }
+
+    @Test
+    fun `blank search reuses the existing index and missing search drops empty sections`() {
+        val sections = AllAppsIndex.buildSections(listOf(app("Apple"), app("百度")))
+        assertEquals(sections, AllAppsIndex.filterSections(sections, "  "))
+        assertEquals(emptyList<AllAppsIndex.Section>(), AllAppsIndex.filterSections(sections, "missing"))
+        assertEquals(
+            mapOf("B" to 0),
+            AllAppsIndex.flatten(AllAppsIndex.filterSections(sections, "百度")).sectionFirstIndex,
+        )
+    }
 }

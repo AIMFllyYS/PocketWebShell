@@ -12,9 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-/** 数字徽标：primary 底 + onPrimary 文字，最大显示 99。 */
+/** iOS-style notification badge, clamped to the visible 0–99 range. */
 @Composable
 fun AppBadge(count: Int, modifier: Modifier = Modifier) {
     Box(
@@ -23,13 +24,13 @@ fun AppBadge(count: Int, modifier: Modifier = Modifier) {
             .heightIn(min = 20.dp)
             .widthIn(min = 20.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary)
+            .background(MaterialTheme.colorScheme.error)
             .padding(horizontal = 5.dp),
     ) {
         Text(
-            count.coerceAtMost(99).toString(),
+            count.coerceIn(0, 99).toString(),
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimary,
+            color = Color.White,
         )
     }
 }

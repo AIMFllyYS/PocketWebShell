@@ -7,13 +7,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.webshell.core.designsystem.theme.AppSpacing
 
-/** 分组标题：小字号 + primary 强调色，出现在分组卡片上方。 */
+/** Secondary, unaccented inset-grouped section caption. */
 @Composable
 fun AppSectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
             start = AppSpacing.lg,
             top = AppSpacing.xs,

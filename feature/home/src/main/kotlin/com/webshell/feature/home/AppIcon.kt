@@ -2,7 +2,6 @@ package com.webshell.feature.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -11,7 +10,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,9 +23,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import coil3.compose.SubcomposeAsyncImage
+import coil3.compose.AsyncImagePainter
 import com.webshell.core.data.WebAppEntity
+import com.webshell.core.designsystem.components.staticGlassSurface
+import com.webshell.core.designsystem.theme.LocalIsDarkTheme
 import java.io.File
 
 /**
@@ -31,9 +36,10 @@ import java.io.File
  * 圆角由图标本体（白底/首字母色块/文件夹容器）自行裁剪；
  * 收藏应用以 2dp 边框标识。远端图标内容尺寸不参与网格测量。
  *
- * [shadowElevation] > 0 时用图标本体的大圆角 shape 投影（拖拽浮动层用），
+ * [shadowElevation] > 0 时用不透明网站图标本体的大圆角 shape 投影（拖拽浮动层用），
  * 阴影跟随圆角而非矩形 —— 不要在外层用 graphicsLayer{ clip=true } 投影，
- * 那会把圆角阴影裁成方块。
+ * 那会把圆角阴影裁成方块。半透明文件夹不投硬件阴影：RenderNode 的内部阴影剔除区
+ * 会透过材质形成明显的矩形色差；玻璃描边足以定义其层次，不另外添加图层。
  */
 @Composable
 fun AppIcon(
@@ -45,11 +51,12 @@ fun AppIcon(
     shadowElevation: Dp = 0.dp,
 ) {
     val shape = RoundedCornerShape(cornerRadiusPercent.coerceIn(0, 50))
+    val isFolder = folderPreview.isNotEmpty()
     Box(
         modifier = modifier
             .size(size)
             .then(
-                if (shadowElevation > 0.dp) {
+                if (shadowElevation > 0.dp && !isFolder) {
                     Modifier.graphicsLayer {
                         this.shadowElevation = shadowElevation.toPx()
                         this.shape = shape
@@ -69,10 +76,10 @@ fun AppIcon(
             .clip(shape),
         contentAlignment = Alignment.Center,
     ) {
-        if (folderPreview.isNotEmpty()) {
+        if (isFolder) {
             FolderPreview(
                 apps = folderPreview,
-                iconSize = size * 0.36f,
+                iconSize = size * 0.225f,
                 shape = shape,
                 cornerRadiusPercent = cornerRadiusPercent,
             )
@@ -85,51 +92,41 @@ fun AppIcon(
 /** 网站图标：本地上传图直接铺满裁圆角；远端 logo 等比放大贴满圆角边界；加载失败/无图标走首字母兜底。 */
 @Composable
 private fun SiteIcon(app: WebAppEntity, iconSize: Dp, shape: Shape) {
-    val iconUrl = app.iconUrl
-    val isRemote = !iconUrl.isNullOrBlank() &&
-        (iconUrl.startsWith("http://") || iconUrl.startsWith("https://"))
-    val isLocalFile = !iconUrl.isNullOrBlank() && iconUrl.startsWith("/") &&
-        File(iconUrl).exists()
-    when {
-        isLocalFile -> {
-            // 用户上传图：本身就是完整图标，铺满裁圆角，不加白底。
-            AsyncImage(
-                model = File(iconUrl),
-                contentDescription = app.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(iconSize)
-                    .clip(shape),
-            )
-        }
-        isRemote -> {
-            // 官方 logo 通常不是正方形：白底衬底（兼容透明 PNG），ContentScale.Crop 等比放大
-            // 到完全覆盖圆角方块（四条边贴到圆角边缘），不内缩加边距。
-            // 关键兜底：logo 加载失败（404/网络拦截/格式不支持）时回退首字母色块，
-            // 否则只剩白底空块（"白底无字" bug 根因）。
-            Box(
-                modifier = Modifier
-                    .size(iconSize)
-                    .background(Color.White, shape)
-                    .clip(shape),
-                contentAlignment = Alignment.Center,
-            ) {
-                SubcomposeAsyncImage(
-                    model = iconUrl,
-                    contentDescription = app.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                    error = { IconFallback(title = app.title, size = iconSize, shape = shape) },
-                )
+    val model = remember(app.iconUrl) {
+        app.iconUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            when {
+                url.startsWith("/") -> File(url)
+                url.startsWith("http://") || url.startsWith("https://") -> url
+                else -> null
             }
         }
-        else -> {
-            IconFallback(title = app.title, size = iconSize, shape = shape)
-        }
+    }
+    if (model == null) {
+        IconFallback(title = app.title, size = iconSize, shape = shape)
+        return
+    }
+    // A normal AsyncImage avoids per-icon subcomposition in scrolling grids. Coil owns file
+    // access and decoding on its worker dispatcher; there is deliberately no File.exists on UI.
+    // Keep the same fallback visible during loading and on failure (also for missing local files).
+    var imageLoaded by remember(model) { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.size(iconSize).clip(shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!imageLoaded) IconFallback(title = app.title, size = iconSize, shape = shape)
+        AsyncImage(
+            model = model,
+            contentDescription = app.title,
+            contentScale = ContentScale.Crop,
+            onState = { imageLoaded = it is AsyncImagePainter.State.Success },
+            modifier = Modifier.fillMaxSize().then(
+                if (imageLoaded) Modifier.background(Color.White) else Modifier,
+            ),
+        )
     }
 }
 
-/** 文件夹：实底容器（浅色纯白/深色卡片色）+ 发丝描边 + 2×2 成员预览，不引入第二处实时模糊。 */
+/** iOS folder tile: nine miniature icons in a translucent, softly edged material. No live blur. */
 @Composable
 private fun FolderPreview(
     apps: List<WebAppEntity>,
@@ -137,22 +134,25 @@ private fun FolderPreview(
     shape: Shape,
     cornerRadiusPercent: Int,
 ) {
-    val gap = 3.dp
+    val gap = iconSize * 0.20f
     val memberShape = RoundedCornerShape(cornerRadiusPercent.coerceIn(0, 50))
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow, shape)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+            .staticGlassSurface(
+                shape = shape,
+                tint = MaterialTheme.colorScheme.surfaceContainerHigh,
+                opacity = if (LocalLauncherWallpaperBacked.current) 0.62f else 0.88f,
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Box(modifier = Modifier.size(iconSize * 2 + gap)) {
-            apps.take(4).forEachIndexed { index, app ->
+        Box(modifier = Modifier.size(iconSize * 3 + gap * 2)) {
+            apps.take(9).forEachIndexed { index, app ->
                 Box(
                     modifier = Modifier
                         .padding(
-                            start = (iconSize + gap) * (index % 2),
-                            top = (iconSize + gap) * (index / 2),
+                            start = (iconSize + gap) * (index % 3),
+                            top = (iconSize + gap) * (index / 3),
                         ),
                 ) {
                     SiteIcon(app = app, iconSize = iconSize, shape = memberShape)
@@ -169,7 +169,7 @@ private fun FolderPreview(
  */
 @Composable
 private fun IconFallback(title: String, size: Dp, shape: Shape) {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalIsDarkTheme.current
     val palette = remember(title, darkTheme) { fallbackColorsFor(title, darkTheme) }
     Box(
         modifier = Modifier
@@ -180,7 +180,10 @@ private fun IconFallback(title: String, size: Dp, shape: Shape) {
     ) {
         Text(
             text = title.trim().take(1).uppercase().ifEmpty { "?" },
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = (size.value * 0.40f).sp,
+                lineHeight = (size.value * 0.52f).sp,
+            ),
             color = palette.content,
         )
     }

@@ -34,9 +34,13 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 
 ## 界面
 
-| 标签切换器 | 桌面与系统设置 |
+| iOS 风格主屏 | 分组设置 |
 |---|---|
-| ![标签切换器](docs/verification/webshell-tabs.png) | ![设置页](docs/verification/webshell-settings.png) |
+| ![主屏](docs/verification/ios-0.1.14/home-light.png) | ![设置页](docs/verification/ios-0.1.14/settings-light.png) |
+
+0.1.14 将桌面、玻璃 Dock、文件夹、菜单和功能页统一为 iOS 风格的原生 Compose 呈现。设计边界、结构性性能优化与实际检查结果见 [重构说明](docs/IOS_REDESIGN.md) 和 [验收记录](docs/verification/ios-0.1.14/VERIFICATION.md)。上图使用离线测试数据和图标加载兜底。
+
+下方是拖拽机制的历史验收截图，仅展示交互行为，不代表当前视觉：
 
 | 独立拖动浮层 | 文件夹合并结果 |
 |---|---|
@@ -48,7 +52,7 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 app/                 应用壳、Navigation 3、底部导航、会话与前台服务控制
 core/model/          跨模块领域模型
 core/data/           Room、DataStore、Repository 与持久化设置
-core/designsystem/   Material 3 主题、动态色与回退色板
+core/designsystem/   iOS 风格 token、Haze 材质、菜单与原生组件
 core/webengine/      ShellWebView、池化、站点配置、Profile 与资源加载
 feature/home/        固定桌面、分页、文件夹与 DragLayer
 feature/add/         URL、元数据、图标候选与属性编辑

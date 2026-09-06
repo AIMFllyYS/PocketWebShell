@@ -45,10 +45,13 @@ class HomeGestureInstrumentedTest {
     fun setUp() {
         instrumentation = InstrumentationRegistry.getInstrumentation()
         device = UiDevice.getInstance(instrumentation)
+        seedApps()
     }
 
     @After
     fun tearDown() {
+        // Exit the infinite jiggle before ActivityScenario waits for an idle main queue.
+        device.pressBack()
         scenario?.close()
         scenario = null
     }
@@ -278,7 +281,6 @@ class HomeGestureInstrumentedTest {
          * 播种 4 个应用到首屏前 4 格（进程启动后、首个 Activity 启动前执行，
          * 保证主页首次查询即读到；图标留空走首字母兜底，不依赖网络）。
          */
-        @BeforeClass
         @JvmStatic
         fun seedApps() {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -305,7 +307,10 @@ class HomeGestureInstrumentedTest {
                             createdAt = index.toLong() + 1,
                         )
                     }
-                runBlocking { db.webAppDao().upsertAll(apps) }
+                runBlocking {
+                    db.webAppDao().upsertAll(apps)
+                    com.webshell.core.data.SettingsRepository(context).setAllAppsEntryVisible(true)
+                }
             } finally {
                 db.close()
             }

@@ -100,6 +100,12 @@ class HomeInteractionState {
     /** pager 页号 → 数据页号的左偏移：左侧临时屏存在时数据页 = pager 页 - 1。 */
     val tempLeftOffset: Int get() = if (tempPageSide == -1) 1 else 0
 
+    // Pointer moves are high-frequency. Cache membership by the immutable page-list identity,
+    // not by a drag coordinate; avoid rebuilding sets and scanning every app for every MOVE.
+    private var indexedPages: List<List<HomeCell?>>? = null
+    private var keysByPage: List<Set<String>> = emptyList()
+    private var cellsByKey: Map<String, HomeCell> = emptyMap()
+
     /**
      * 落点/悬停解析：拖拽中每个 MOVE 事件调用。依次更新重排目标、最近网格槽
      * 吸附（空槽也是合法落点，与真实安卓桌面一致）、文件夹合并热点、边缘
@@ -119,14 +125,21 @@ class HomeInteractionState {
         density: Density,
         haptics: HapticFeedback,
     ) {
+        // An edge-page animation's finally block can report its last pointer after the root
+        // drag session has already reset. Never let that delayed callback re-arm idle state.
+        if (draggingKey == null) return
+        if (indexedPages !== pages) {
+            indexedPages = pages
+            keysByPage = pages.map { page -> page.mapNotNull { it?.key }.toSet() }
+            cellsByKey = pages.asSequence().flatten().filterNotNull().associateBy { it.key }
+        }
         // 上下滚动模式：所有已组合的 cell 都是合法目标（列表内全部页摊平展示）；
         // 翻页模式：只命中当前页的 cell。
         val currentKeys = if (verticalMode) {
             null
         } else {
             // pager 页号减左偏移才是数据页号；临时屏（映射后越界）无命中目标。
-            pages.getOrNull(currentPage - tempLeftOffset).orEmpty()
-                .asSequence().mapNotNull { it?.key }.toHashSet()
+            keysByPage.getOrNull(currentPage - tempLeftOffset).orEmpty()
         }
         val target = cellBounds.entries.firstOrNull { (key, rect) ->
             key != draggingKey && (currentKeys == null || key in currentKeys) &&
@@ -141,20 +154,25 @@ class HomeInteractionState {
         }
         // 网格吸附：在全部网格槽（含空槽）中取几何中心距手指最近的槽。
         // 翻页模式只看当前页的槽；上下滚动模式看全部可见槽（页号随 slotKey 解析）。
-        val nearestSlot = slotBounds.entries
-            .filter { (key, _) ->
-                verticalMode || key.startsWith("$currentPage:")
-            }
-            .minByOrNull { (_, rect) ->
+        val pagePrefix = "$currentPage:"
+        var nearestSlotKey: String? = null
+        var nearestDistance = Float.POSITIVE_INFINITY
+        slotBounds.forEach { (key, rect) ->
+            if (verticalMode || key.startsWith(pagePrefix)) {
                 val dx = rect.exactCenterX() - position.x
                 val dy = rect.exactCenterY() - position.y
-                dx * dx + dy * dy
+                val distance = dx * dx + dy * dy
+                if (distance < nearestDistance) {
+                    nearestDistance = distance
+                    nearestSlotKey = key
+                }
             }
+        }
         if (verticalMode) {
-            dragTargetPage = nearestSlot?.key?.substringBefore(':')?.toIntOrNull() ?: -1
-            dragTargetCellIndex = nearestSlot?.key?.substringAfter(':')?.toIntOrNull() ?: -1
+            dragTargetPage = nearestSlotKey?.substringBefore(':')?.toIntOrNull() ?: -1
+            dragTargetCellIndex = nearestSlotKey?.substringAfter(':')?.toIntOrNull() ?: -1
         } else {
-            dragTargetCellIndex = nearestSlot?.key?.substringAfter(':')?.toIntOrNull() ?: -1
+            dragTargetCellIndex = nearestSlotKey?.substringAfter(':')?.toIntOrNull() ?: -1
             dragTargetPage = if (dragTargetCellIndex >= 0) currentPage else -1
         }
         // 文件夹合并热点：悬停目标图标中心附近（不依赖重组推导的 draggedCell ——
@@ -167,10 +185,7 @@ class HomeInteractionState {
             val dy = position.y - centerY
             dx * dx + dy * dy <= radius * radius
         } == true
-        val sourceCanMerge = pages.asSequence()
-            .flatten()
-            .firstOrNull { it?.key == draggingKey }
-            ?.isFolder == false
+        val sourceCanMerge = cellsByKey[draggingKey]?.isFolder == false
         folderCandidate = targetKey.takeIf { inFolderHotspot && sourceCanMerge }
 
         if (verticalMode) {
@@ -201,6 +216,9 @@ class HomeInteractionState {
     /** 拖拽会话结束（落子/取消）时清空全部会话状态；临时屏未落子随状态清除被裁掉。 */
     fun resetDrag() {
         draggingKey = null
+        dragPosition = Offset.Zero
+        dragRegistration = Offset.Zero
+        menuPressPoint = null
         dragHoverTarget = null
         dragTargetCellIndex = -1
         dragTargetPage = -1

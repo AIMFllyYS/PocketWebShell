@@ -60,19 +60,35 @@ object AllAppsIndex {
     /**
      * 分组排序：分区按 A→Z、# 殿后；区内按排序键 → 标题 → 创建时间排序，保证确定性。
      */
-    fun buildSections(apps: List<WebAppEntity>): List<Section> =
-        apps.groupBy { sectionKey(it.title) }
+    fun buildSections(apps: List<WebAppEntity>): List<Section> {
+        // Pinyin conversion is comparatively expensive: compute once per title, not repeatedly
+        // inside the O(n log n) comparator while opening/searching the library.
+        val sortKeys = apps.associate { it.id to sortKey(it.title) }
+        return apps.groupBy { sectionKey(it.title) }
             .map { (letter, group) ->
                 Section(
                     letter = letter,
                     apps = group.sortedWith(
-                        compareBy<WebAppEntity> { sortKey(it.title) }
+                        compareBy<WebAppEntity> { sortKeys.getValue(it.id) }
                             .thenBy { it.title }
                             .thenBy { it.createdAt },
                     ),
                 )
             }
             .sortedWith(compareBy({ it.letter == OTHER_SECTION }, { it.letter }))
+    }
+
+    /** Filter an already sorted index without changing its order or recomputing pinyin. */
+    fun filterSections(sections: List<Section>, query: String): List<Section> {
+        val normalized = query.trim()
+        if (normalized.isEmpty()) return sections
+        return sections.mapNotNull { section ->
+            section.apps.filter { app ->
+                app.title.contains(normalized, ignoreCase = true) ||
+                    app.url.contains(normalized, ignoreCase = true)
+            }.takeIf { it.isNotEmpty() }?.let { section.copy(apps = it) }
+        }
+    }
 
     /** 分区摊平为渲染列表（header + 应用），并给出每个分区首项在列表中的下标。 */
     fun flatten(sections: List<Section>): FlatList {

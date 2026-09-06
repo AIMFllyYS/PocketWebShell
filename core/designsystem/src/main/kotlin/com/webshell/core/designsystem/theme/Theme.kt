@@ -1,6 +1,7 @@
 package com.webshell.core.designsystem.theme
 
 import android.graphics.BitmapFactory
+import androidx.core.graphics.ColorUtils
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -10,54 +11,69 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.palette.graphics.Palette
-import com.webshell.core.data.HomeSettings
-import com.webshell.core.data.SettingsRepository
-import com.webshell.core.data.THEME_MODE_DARK
-import com.webshell.core.data.THEME_MODE_LIGHT
-import com.webshell.core.data.THEME_MODE_PHOTO
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** 照片壁纸路径；仅照片主题模式下非空，供主页背景读取 */
 val LocalPhotoWallpaperPath = compositionLocalOf<String?> { null }
 
+/** Effective appearance, including the user's explicit override of the system theme. */
+val LocalIsDarkTheme = compositionLocalOf { false }
+
+/**
+ * Presentation-only theme. The composition root supplies a distinct theme projection from its
+ * lifecycle-owned ViewModel; moving a launcher item must never invalidate the entire UI theme.
+ */
 @Composable
 fun WebShellTheme(
+    themeMode: String = "system",
+    photoWallpaperPath: String? = null,
+    transitionStyle: String = "slide",
     content: @Composable () -> Unit,
 ) {
-    val context = LocalContext.current
-    // DataStore 按文件名进程内单例，直接构造读取同一份数据
-    val settingsRepository = remember { SettingsRepository(context.applicationContext) }
-    val settings by settingsRepository.settings
-        .collectAsStateWithLifecycle(initialValue = HomeSettings())
-
     val systemDark = isSystemInDarkTheme()
-    val darkTheme = when (settings.themeMode) {
-        THEME_MODE_LIGHT -> false
-        THEME_MODE_DARK -> true
+    val darkTheme = when (themeMode) {
+        "light" -> false
+        "dark" -> true
         else -> systemDark
     }
-    val isPhotoMode = settings.themeMode == THEME_MODE_PHOTO &&
-        !settings.photoWallpaperPath.isNullOrBlank()
-    val wallpaperPath = if (isPhotoMode) settings.photoWallpaperPath else null
+    val wallpaperPath = photoWallpaperPath?.takeIf { themeMode == "photo" && it.isNotBlank() }
 
-    // 照片主题：后台线程降采样解码 + Palette 提取主色，结果缓存于 state
-    val photoSeedColor by produceState<Color?>(initialValue = null, wallpaperPath) {
+    // Cached in this lifecycle-owned state, not recomputed when non-theme settings change.
+    // Tagging the result with its path prevents even a single frame of the previous photo's accent.
+    val photoAccent by produceState<PhotoAccent?>(initialValue = null, wallpaperPath) {
+        value = null
         val path = wallpaperPath ?: return@produceState
-        value = withContext(Dispatchers.IO) { extractSeedColor(path) }
+        value = withContext(Dispatchers.IO) {
+            extractSeedColor(path)?.let { PhotoAccent(path, it) }
+        }
     }
 
     val baseScheme = if (darkTheme) AppleDarkColorScheme else AppleLightColorScheme
-    val colorScheme = photoSeedColor?.let { seed ->
-        baseScheme.copy(primary = seed)
-    } ?: baseScheme
+    val seedColor = photoAccent?.takeIf { it.path == wallpaperPath }?.color
+    val colorScheme = remember(baseScheme, seedColor, darkTheme) {
+        seedColor?.let { seed ->
+            val accent = accessibleAccent(seed, baseScheme.background, darkTheme)
+            val onAccent = if (
+                ColorUtils.calculateContrast(Color.White.toArgb(), accent.toArgb()) >= 4.5
+            ) Color.White else Color.Black
+            baseScheme.copy(
+                primary = accent,
+                onPrimary = onAccent,
+                primaryContainer = lerp(baseScheme.surfaceContainerLow, accent, if (darkTheme) 0.24f else 0.13f),
+                onPrimaryContainer = baseScheme.onSurface,
+                surfaceTint = accent,
+            )
+        } ?: baseScheme
+    }
 
     CompositionLocalProvider(
         LocalPhotoWallpaperPath provides wallpaperPath,
-        LocalTransitionStyle provides settings.transitionStyle,
+        LocalIsDarkTheme provides darkTheme,
+        LocalTransitionStyle provides transitionStyle,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
@@ -68,20 +84,36 @@ fun WebShellTheme(
     }
 }
 
+private data class PhotoAccent(val path: String, val color: Color)
+
 private fun extractSeedColor(path: String): Color? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(path, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    // 取色无需全尺寸，限制最长边约 256px
-    var sample = 1
-    while (bounds.outWidth / (sample * 2) >= 256 && bounds.outHeight / (sample * 2) >= 256) {
-        sample *= 2
+    return runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val bitmap = BitmapFactory.decodeFile(
+            path,
+            BitmapFactory.Options().apply {
+                inSampleSize = paletteSampleSize(bounds.outWidth, bounds.outHeight)
+            },
+        ) ?: return null
+        try {
+            val palette = Palette.from(bitmap).generate()
+            Color(palette.getVibrantColor(palette.getMutedColor(0xFF007AFF.toInt())))
+        } finally {
+            // Palette owns swatches, not this temporary decoded bitmap.
+            bitmap.recycle()
+        }
+    }.getOrNull()
+}
+
+/** Keep photo-derived links and selected controls readable on their actual neutral background. */
+private fun accessibleAccent(seed: Color, background: Color, darkTheme: Boolean): Color {
+    val target = if (darkTheme) Color.White else Color.Black
+    var accent = seed.copy(alpha = 1f)
+    repeat(20) {
+        if (ColorUtils.calculateContrast(accent.toArgb(), background.toArgb()) >= 4.5) return accent
+        accent = lerp(accent, target, 0.1f)
     }
-    val bitmap = BitmapFactory.decodeFile(
-        path,
-        BitmapFactory.Options().apply { inSampleSize = sample },
-    ) ?: return null
-    val palette = Palette.from(bitmap).generate()
-    val rgb = palette.getVibrantColor(palette.getMutedColor(0xFF007AFF.toInt()))
-    return Color(rgb)
+    return accent
 }

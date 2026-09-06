@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">玄览</string>
+    <string name="tab_home">主页</string>
+    <string name="tab_add">添加</string>
+    <string name="tab_browse">浏览</string>
+    <string name="tab_me">我的</string>
 </resources>

@@ -16,7 +16,6 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,13 +27,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil3.imageLoader
 import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.WebViewCapabilities
-import coil3.imageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -171,12 +170,6 @@ private fun InfoRow(
     AppListRow(
         title = title,
         leadingIcon = icon,
-        trailing = {
-            Text(
-                value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
+        subtitle = value,
     )
 }

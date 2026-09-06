@@ -2,6 +2,7 @@ package com.webshell.core.designsystem.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -25,23 +26,24 @@ private fun miSans(size: Int, weight: FontWeight, lineHeight: Int, spacing: Floa
     fontSize = size.sp,
     lineHeight = lineHeight.sp,
     letterSpacing = spacing.sp,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
 )
 
-/** 全端统一字阶：标题 Semibold、功能文本 Medium、正文 Regular；行高 ≥1.3×字号。 */
+/** iOS-oriented large title / title / body / footnote hierarchy, using the licensed MiSans family. */
 val WebShellTypography = Typography(
     displayLarge = miSans(40, FontWeight.SemiBold, 52),
-    displayMedium = miSans(32, FontWeight.SemiBold, 42),
-    displaySmall = miSans(28, FontWeight.SemiBold, 36),
-    headlineLarge = miSans(28, FontWeight.SemiBold, 36),
-    headlineMedium = miSans(24, FontWeight.SemiBold, 32),
-    headlineSmall = miSans(20, FontWeight.SemiBold, 28),
-    titleLarge = miSans(18, FontWeight.SemiBold, 26),
+    displayMedium = miSans(34, FontWeight.SemiBold, 45, -0.6f),
+    displaySmall = miSans(28, FontWeight.SemiBold, 37, -0.35f),
+    headlineLarge = miSans(34, FontWeight.SemiBold, 45, -0.6f),
+    headlineMedium = miSans(28, FontWeight.SemiBold, 37, -0.35f),
+    headlineSmall = miSans(22, FontWeight.SemiBold, 29, -0.2f),
+    titleLarge = miSans(17, FontWeight.SemiBold, 23, -0.15f),
     titleMedium = miSans(16, FontWeight.Medium, 24),
-    titleSmall = miSans(14, FontWeight.Medium, 20),
-    bodyLarge = miSans(16, FontWeight.Normal, 26),
-    bodyMedium = miSans(14, FontWeight.Normal, 22),
-    bodySmall = miSans(12, FontWeight.Normal, 18),
-    labelLarge = miSans(14, FontWeight.Medium, 20),
+    titleSmall = miSans(15, FontWeight.Medium, 21),
+    bodyLarge = miSans(17, FontWeight.Normal, 23, -0.15f),
+    bodyMedium = miSans(15, FontWeight.Normal, 21),
+    bodySmall = miSans(13, FontWeight.Normal, 18),
+    labelLarge = miSans(15, FontWeight.Medium, 21),
     labelMedium = miSans(12, FontWeight.Medium, 16),
     labelSmall = miSans(11, FontWeight.Medium, 16),
 )

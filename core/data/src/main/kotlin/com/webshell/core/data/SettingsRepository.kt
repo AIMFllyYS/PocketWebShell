@@ -20,7 +20,7 @@ data class HomeSettings(
     val gridColumns: Int = 4,
     val gridRows: Int = 5,
     val iconCornerRadiusPercent: Int = 26,
-    val iconSizeDp: Int = 56,
+    val iconSizeDp: Int = 60,
     val showLabels: Boolean = true,
     val showPageIndicator: Boolean = true,
     val keepAliveServiceEnabled: Boolean = true,
@@ -36,7 +36,7 @@ data class HomeSettings(
     /** 桌面滑动模式：左右翻页（默认）/ 上下滚动，见 SCROLL_MODE_* */
     val homeScrollMode: String = SCROLL_MODE_PAGER,
     /** 「全部应用」浮动入口是否显示 */
-    val allAppsEntryVisible: Boolean = true,
+    val allAppsEntryVisible: Boolean = false,
     /**
      * 「全部应用」浮动入口位置：归一化到主屏内容区的 0..1 中心坐标比例，
      * 负值（默认）= 未拖动过，落在右下角默认位。
@@ -89,7 +89,7 @@ class SettingsRepository @Inject constructor(
             gridColumns = prefs[Keys.GRID_COLUMNS] ?: 4,
             gridRows = prefs[Keys.GRID_ROWS] ?: 5,
             iconCornerRadiusPercent = prefs[Keys.ICON_CORNER] ?: 26,
-            iconSizeDp = prefs[Keys.ICON_SIZE] ?: 56,
+            iconSizeDp = prefs[Keys.ICON_SIZE] ?: 60,
             showLabels = prefs[Keys.SHOW_LABELS] ?: true,
             showPageIndicator = prefs[Keys.PAGE_INDICATOR] ?: true,
             keepAliveServiceEnabled = prefs[Keys.KEEP_ALIVE_SERVICE] ?: true,
@@ -99,7 +99,7 @@ class SettingsRepository @Inject constructor(
             transitionStyle = prefs[Keys.TRANSITION_STYLE] ?: TRANSITION_SLIDE,
             autoArrangeHome = prefs[Keys.AUTO_ARRANGE_HOME] ?: false,
             homeScrollMode = prefs[Keys.HOME_SCROLL_MODE] ?: SCROLL_MODE_PAGER,
-            allAppsEntryVisible = prefs[Keys.ALL_APPS_ENTRY_VISIBLE] ?: true,
+            allAppsEntryVisible = prefs[Keys.ALL_APPS_ENTRY_VISIBLE] ?: false,
             allAppsEntryPosX = prefs[Keys.ALL_APPS_ENTRY_X] ?: -1f,
             allAppsEntryPosY = prefs[Keys.ALL_APPS_ENTRY_Y] ?: -1f,
         )

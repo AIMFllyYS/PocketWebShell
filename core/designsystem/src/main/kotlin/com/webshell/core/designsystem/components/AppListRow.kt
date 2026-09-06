@@ -1,6 +1,8 @@
 package com.webshell.core.designsystem.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +11,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -16,14 +20,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.theme.AppSpacing
 
 /**
- * 统一列表行（M3 List 规范）：
- * - 单行 ≥56dp、双行 ≥72dp；leading 图标 24dp primary 色；
+ * iOS inset-grouped row with an optional 30dp colored glyph tile.
+ * - 单行 ≥56dp、双行 ≥72dp；
  * - 副标题强制 onSurfaceVariant（≥4.5:1 对比度），最多 2 行截断；
  * - trailing 槽放开关/箭头/文字。
  */
@@ -34,6 +40,8 @@ fun AppListRow(
     subtitle: String? = null,
     leadingIcon: ImageVector? = null,
     onClick: (() -> Unit)? = null,
+    leadingIconTint: Color? = null,
+    leadingIconBackground: Color? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -42,21 +50,34 @@ fun AppListRow(
             .fillMaxWidth()
             .heightIn(min = if (subtitle == null) 56.dp else 72.dp)
             .then(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier)
-            .padding(horizontal = AppSpacing.lg, vertical = AppSpacing.md),
+            .padding(horizontal = AppSpacing.lg, vertical = if (subtitle == null) 4.dp else 8.dp),
     ) {
         if (leadingIcon != null) {
-            Icon(
-                leadingIcon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(AppSpacing.lg))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .then(leadingIconBackground?.let { Modifier.background(it) } ?: Modifier),
+            ) {
+                Icon(
+                    leadingIcon,
+                    contentDescription = null,
+                    tint = leadingIconTint ?: if (leadingIconBackground != null) {
+                        Color.White
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(21.dp),
+                )
+            }
+            Spacer(Modifier.width(AppSpacing.md))
         }
         Column(Modifier.weight(1f)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -72,16 +93,20 @@ fun AppListRow(
         }
         if (trailing != null) {
             Spacer(Modifier.width(AppSpacing.md))
-            trailing()
+            // An unconstrained trailing value must not measure away the row's title at 320dp.
+            Box(Modifier.widthIn(max = 112.dp), contentAlignment = Alignment.CenterEnd) {
+                trailing()
+            }
         }
     }
 }
 
-/** 分组卡片内的分割线：左侧缩进对齐文字起点（16 内边距 + 24 图标 + 16 间隔）。 */
+/** Inset hairline aligned with the text (16dp inset + 30dp tile + 12dp gap). */
 @Composable
 fun AppListDivider(hasLeadingIcon: Boolean = true) {
     HorizontalDivider(
-        modifier = Modifier.padding(start = if (hasLeadingIcon) 56.dp else AppSpacing.lg),
-        color = MaterialTheme.colorScheme.outlineVariant,
+        modifier = Modifier.padding(start = if (hasLeadingIcon) 58.dp else AppSpacing.lg),
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.55f),
     )
 }
