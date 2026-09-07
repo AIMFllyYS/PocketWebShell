@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Launch
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
@@ -24,6 +25,7 @@ internal fun HomeCellMenu(
     anchorPoint: IntOffset?,
     onOpen: () -> Unit,
     onDissolve: () -> Unit,
+    onCopyLink: () -> Unit,
     onRename: () -> Unit,
     onChangeIcon: () -> Unit,
     onRefresh: () -> Unit,
@@ -39,6 +41,7 @@ internal fun HomeCellMenu(
             add(AppContextMenuItem(stringResource(R.string.home_folder_dissolve), Icons.Filled.FolderOff, onClick = onDissolve))
         } else {
             add(AppContextMenuItem(stringResource(R.string.home_open), Icons.Filled.Launch, onClick = onOpen))
+            add(AppContextMenuItem(stringResource(R.string.home_copy_link), Icons.Filled.Link, onClick = onCopyLink))
             add(AppContextMenuItem(stringResource(R.string.home_rename), Icons.Filled.Edit, onClick = onRename))
             add(AppContextMenuItem(stringResource(R.string.home_change_icon), Icons.Filled.Image, onClick = onChangeIcon))
             add(AppContextMenuItem(stringResource(R.string.home_refresh), Icons.Filled.Refresh, onClick = onRefresh))

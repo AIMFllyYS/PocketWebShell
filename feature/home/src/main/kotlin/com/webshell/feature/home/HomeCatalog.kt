@@ -162,7 +162,7 @@ private fun HomeOverlaySample(kind: HomeOverlayKind) {
     if (open) when (kind) {
         HomeOverlayKind.FOLDER -> FolderExpandedPage(apps, 26, onLaunch = { _, _ -> dismiss() }, onDissolve = dismiss, onDismiss = dismiss)
         HomeOverlayKind.MENU -> HomeCellMenu(
-            cell, null, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss,
+            cell, null, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss,
         )
         HomeOverlayKind.BLANK_MENU -> HomeBlankMenu(true, null, dismiss, dismiss, dismiss)
         HomeOverlayKind.RENAME -> HomeRenameDialog(apps[0], onConfirm = { dismiss() }, onDismiss = dismiss)

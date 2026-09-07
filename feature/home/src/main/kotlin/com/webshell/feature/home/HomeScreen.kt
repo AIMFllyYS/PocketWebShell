@@ -35,8 +35,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -152,6 +154,8 @@ private fun HomeScreenContent(
     var iconEditFor by remember { mutableStateOf<HomeCell?>(null) }
     // ViewModel 一次性消息（刷新成功/失败等）的轻量 toast 浮层。
     var toast by remember { mutableStateOf<String?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+    val linkCopiedMessage = stringResource(R.string.home_link_copied)
     // 编辑（jiggle）模式：双指捏合进入，点选图标做批量整理。
     var editMode by ui::editMode
     val editSelection = ui.editSelection
@@ -446,6 +450,10 @@ private fun HomeScreenContent(
                 if (cell.isFolder) folderOpenFor = cell.app.folderId else onLaunch(cell.app.id, cell.app.url)
             },
             onDissolve = { viewModel.dissolveFolder(cell.app.folderId.orEmpty()) },
+            onCopyLink = {
+                clipboardManager.setText(AnnotatedString(cell.app.url))
+                toast = linkCopiedMessage
+            },
             onRename = { renameFor = cell },
             onChangeIcon = { iconEditFor = cell },
             onRefresh = { viewModel.refreshMetadata(cell.app.id) },
