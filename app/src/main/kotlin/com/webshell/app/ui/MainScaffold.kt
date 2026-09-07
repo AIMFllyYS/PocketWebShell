@@ -123,7 +123,7 @@ fun MainScaffold(
             }
         }
         if (selectedTab == MainTab.BROWSE) BrowserDockHost(
-            chrome = browserChrome, preferences = browserPreferences, hazeState = hazeState,
+            chrome = browserChrome, preferences = browserPreferences,
             onSelect = { selectedTab = it; if (it == MainTab.BROWSE) browserChrome.dispatch(BrowserChromeEvent.Reveal) },
             onAnchorChanged = viewModel::setBrowserOrbPosition,
         ) else LauncherDock(

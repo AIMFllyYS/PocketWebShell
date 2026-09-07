@@ -45,23 +45,23 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.webshell.app.R
-import com.webshell.core.designsystem.components.glassSurface
+import com.webshell.core.designsystem.components.staticGlassSurface
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.feature.browser.BottomChromeMode
 import com.webshell.feature.browser.BrowserChromeController
 import com.webshell.feature.browser.BrowserChromeEvent
-import dev.chrisbanes.haze.HazeState
 import kotlin.math.roundToInt
 
 /**
  * Browser-only overlay. Its changing bounds never constrain or remeasure the sibling WebView.
- * The same glass effect node morphs between Dock and orb; the parked handle uses no live blur.
+ * The same glass effect node morphs between Dock and orb. The material is deliberately static:
+ * live backdrop blur resamples the WebView every scrolled frame and visibly flickers, so the
+ * single live-blur budget stays with LauncherDock over Compose-rendered tabs (docs/PERFORMANCE.md).
  */
 @Composable
 internal fun BrowserDockHost(
     chrome: BrowserChromeController,
     preferences: BrowserHostPreferences,
-    hazeState: HazeState,
     onSelect: (MainTab) -> Unit,
     onAnchorChanged: (Float, Float) -> Unit,
 ) {
@@ -211,7 +211,11 @@ internal fun BrowserDockHost(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .glassSurface(hazeState, shape = RoundedCornerShape(if (expanded) 32.dp else 26.dp))
+                        .staticGlassSurface(
+                            shape = RoundedCornerShape(if (expanded) 32.dp else 26.dp),
+                            tint = MaterialTheme.colorScheme.surface,
+                            opacity = 0.72f,
+                        )
                         .graphicsLayer {
                             translationX = with(density) { ((dragCenter?.x ?: baseCenterX) - baseCenterX).dp.toPx() }
                             translationY = with(density) { ((dragCenter?.y ?: baseCenterY) - baseCenterY).dp.toPx() }

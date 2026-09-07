@@ -32,8 +32,6 @@ import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.staticGlassSurface
 import com.webshell.feature.browser.BrowserChromeEvent
 import com.webshell.feature.browser.rememberBrowserChromeController
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 
 internal fun appCatalog() = listOf(
     CatalogEntry("app.dock", CatalogCategory.NAVIGATION, R.string.catalog_dock, R.string.catalog_dock_description) { DockSample() },
@@ -53,16 +51,15 @@ private fun DockSample() {
 @Composable
 private fun BrowserDockSample() {
     val controller = rememberBrowserChromeController()
-    val haze = remember { HazeState() }
     var preferences by remember { mutableStateOf(BrowserHostPreferences()) }
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().hazeSource(haze).background(Brush.verticalGradient(
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
             listOf(Color(0xFFC9E7F3), Color(0xFFD7D2EF)))))
         Column(Modifier.padding(16.dp)) {
             AppPrimaryButton(stringResource(R.string.catalog_collapse), { controller.dispatch(BrowserChromeEvent.Collapse) })
         }
-        // No outer live Dock is mounted on this route: this remains the only live effect.
-        BrowserDockHost(controller, preferences, haze,
+        // Static-glass dock: the gradient backdrop needs no live blur source on this route.
+        BrowserDockHost(controller, preferences,
             onSelect = { controller.dispatch(BrowserChromeEvent.Reveal) },
             onAnchorChanged = { x, y -> preferences = preferences.copy(orbX = x, orbY = y) })
     }
