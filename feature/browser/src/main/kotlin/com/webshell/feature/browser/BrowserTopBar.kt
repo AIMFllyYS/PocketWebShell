@@ -65,7 +65,8 @@ internal fun BrowserTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Filled.MoreHoriz, stringResource(R.string.browser_menu), Modifier.size(24.dp))
+                Icon(Icons.Filled.MoreHoriz, stringResource(R.string.browser_menu), Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.onSurface)
             }
             AppFormField(
                 value = urlInput,
