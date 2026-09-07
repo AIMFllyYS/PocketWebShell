@@ -11,14 +11,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
  */
 open class SwipeRefreshWebView(context: Context) : SwipeRefreshLayout(context) {
 
-    val webView: WebView = ReadingWebView(context)
-
-    /** UI-only callback. Detached/background sessions must leave this null. */
-    var onReadingGesture: (() -> Unit)?
-        get() = (webView as ReadingWebView).onReadingGesture
-        set(value) { (webView as ReadingWebView).onReadingGesture = value }
-
-    protected fun cancelReadingGesture() = (webView as ReadingWebView).cancelReadingGesture()
+    val webView: WebView = WebView(context)
 
     var onUserRefresh: (() -> Unit)? = null
 

@@ -21,24 +21,21 @@ data class BrowserChromeState(
     val overlay: BrowserOverlay? = null,
     val visible: Boolean = false,
     val activeSessionId: String? = null,
+    val activeUrl: String? = null,
     val autoCollapse: Boolean = true,
     val interactionBlocked: Boolean = false,
-) {
-    val canReadToCollapse: Boolean
-        get() = visible && activeSessionId != null && autoCollapse &&
-            !interactionBlocked && overlay == null && bottomMode == BottomChromeMode.Expanded
-}
+)
 
 sealed interface BrowserChromeEvent {
     data object Reveal : BrowserChromeEvent
     data object Collapse : BrowserChromeEvent
     data object Park : BrowserChromeEvent
     data object HideToolbar : BrowserChromeEvent
-    data class Reading(val sessionId: String) : BrowserChromeEvent
     data class ShowOverlay(val overlay: BrowserOverlay?) : BrowserChromeEvent
     data class Environment(
         val visible: Boolean,
         val activeSessionId: String?,
+        val activeUrl: String?,
         val autoCollapse: Boolean,
         val interactionBlocked: Boolean,
     ) : BrowserChromeEvent
@@ -55,19 +52,24 @@ fun reduceBrowserChrome(state: BrowserChromeState, event: BrowserChromeEvent): B
             state.copy(bottomMode = BottomChromeMode.Edge)
         } else state
         BrowserChromeEvent.HideToolbar -> state.copy(toolbarVisible = false, overlay = null)
-        is BrowserChromeEvent.Reading -> if (
-            state.canReadToCollapse && event.sessionId == state.activeSessionId
-        ) state.copy(bottomMode = BottomChromeMode.Orb) else state
         is BrowserChromeEvent.ShowOverlay -> state.copy(overlay = event.overlay)
         is BrowserChromeEvent.Environment -> state.copy(
             visible = event.visible,
             activeSessionId = event.activeSessionId,
+            activeUrl = event.activeUrl,
             autoCollapse = event.autoCollapse,
             interactionBlocked = event.interactionBlocked,
-            // Empty/new-tab UI must never be stranded behind hidden controls.
-            bottomMode = if (event.activeSessionId == null || (state.autoCollapse && !event.autoCollapse)) {
-                BottomChromeMode.Expanded
-            } else state.bottomMode,
+            // Empty/new-tab UI must never be stranded behind hidden controls. Entering a page
+            // (or navigating within a tab) collapses straight to the orb; an unchanged
+            // session/url pair keeps a deliberate Reveal intact.
+            bottomMode = when {
+                event.activeSessionId == null || (state.autoCollapse && !event.autoCollapse) ->
+                    BottomChromeMode.Expanded
+                event.autoCollapse && (!state.autoCollapse ||
+                    event.activeSessionId != state.activeSessionId ||
+                    event.activeUrl != state.activeUrl) -> BottomChromeMode.Orb
+                else -> state.bottomMode
+            },
             toolbarVisible = if (event.activeSessionId == null) true else state.toolbarVisible,
             overlay = if (event.visible) state.overlay else null,
         )

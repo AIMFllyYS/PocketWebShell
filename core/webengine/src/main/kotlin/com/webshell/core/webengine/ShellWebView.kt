@@ -186,7 +186,6 @@ class ShellWebView internal constructor(
         ): Boolean = routeUrl(request.url.toString())
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-            cancelReadingGesture()
             AppLog.log("web", "加载 ${logHost(url)}")
             notifyListeners { onPageStarted(url) }
         }
@@ -515,7 +514,6 @@ class ShellWebView internal constructor(
     }
 
     fun release() {
-        onReadingGesture = null
         listener = null
         sessionListener = null
         saveSessionState()

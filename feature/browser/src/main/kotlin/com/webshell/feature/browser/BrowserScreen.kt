@@ -66,6 +66,7 @@ fun BrowserScreen(
         viewModel.setVisible(isVisible)
         chrome.dispatch(BrowserChromeEvent.Environment(
             visible = isVisible, activeSessionId = sessionId.takeIf { hasPage },
+            activeUrl = currentUrl.takeIf { hasPage },
             autoCollapse = autoCollapse,
             interactionBlocked = editing || imeVisible || findState.visible || requests.busy,
         ))
@@ -75,7 +76,7 @@ fun BrowserScreen(
             viewModel.captureActiveThumbnail()
             viewModel.setVisible(false)
             val state = chrome.state
-            chrome.dispatch(BrowserChromeEvent.Environment(false, state.activeSessionId, state.autoCollapse, false))
+            chrome.dispatch(BrowserChromeEvent.Environment(false, state.activeSessionId, state.activeUrl, state.autoCollapse, false))
         }
     }
     LaunchedEffect(activeTabId) {
@@ -168,9 +169,6 @@ fun BrowserScreen(
                     isVisible = isVisible,
                     parentHandlesInsets = true,
                     sessionListener = viewModel.listenerFor(sessionId),
-                    onReadingGesture = if (chrome.state.canReadToCollapse) ({
-                        chrome.dispatch(BrowserChromeEvent.Reading(sessionId))
-                    }) else null,
                     onFindResult = { active, total -> viewModel.onFindResult(sessionId, active, total) },
                     onReady = { viewModel.onHostReady(sessionId) },
                 )

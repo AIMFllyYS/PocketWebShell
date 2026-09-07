@@ -24,7 +24,7 @@ import com.webshell.core.webengine.WebViewPool
 
 /**
  * The sole native-view lifecycle boundary. A session retains its WebView/history in the pool,
- * while UI callbacks, reading observation and visible-session protection belong to this host.
+ * while UI callbacks and visible-session protection belong to this host.
  * Parents using Compose safeDrawing/imePadding opt into [parentHandlesInsets] to avoid double
  * padding. Full-screen site shells keep the existing native PAD/CSS_ONLY behavior by default.
  */
@@ -38,7 +38,6 @@ fun ShellWebViewHost(
     parentHandlesInsets: Boolean = false,
     isVisible: Boolean = true,
     sessionListener: ShellListener? = null,
-    onReadingGesture: (() -> Unit)? = null,
     onFindResult: ((Int, Int) -> Unit)? = null,
     onReady: (() -> Unit)? = null,
 ) {
@@ -52,7 +51,6 @@ fun ShellWebViewHost(
     SideEffect {
         shell.uiHostOwner = ownership
         shell.listener = if (isVisible) listener else null
-        shell.onReadingGesture = if (isVisible) onReadingGesture else null
         shell.onFindResult = if (isVisible) onFindResult else null
         if (sessionListener != null) shell.sessionListener = sessionListener
     }
@@ -80,7 +78,6 @@ fun ShellWebViewHost(
             lifecycleOwner.lifecycle.removeObserver(observer)
             if (shell.uiHostOwner == ownership) {
                 shell.listener = null
-                shell.onReadingGesture = null
                 shell.onFindResult = null
                 shell.suspendRendering()
                 shell.uiHostOwner = null

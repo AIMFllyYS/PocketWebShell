@@ -16,15 +16,13 @@ performs normal validation; the facade never bypasses it.
 
 `ShellWebViewHost` is the native ownership/lifecycle boundary. Hosts receiving consumed Compose safe
 insets use `parentHandlesInsets = true`; standalone shells may retain native PAD/CSS_ONLY handling.
-Only the visible host has reading and ephemeral UI callbacks. Per-session listeners remain attached
+Only the visible host holds ephemeral UI callbacks. Per-session listeners remain attached
 for background tab metadata, independently of chrome state.
 
-Reading-to-collapse uses native single-finger gesture classification (64dp upward movement), followed
-by bounded checks that the touched document or one of its same-document scroll ancestors actually
-scrolled. It does not install a privileged JavaScript bridge or ongoing DOM scroll listener. Script-only
-scrolls, horizontal/pinch gestures, selection and inactive hosts do not qualify. Cross-origin iframe
-internal scrollers cannot be verified and conservatively keep controls expanded; users can always use
-the menu's explicit collapse command. This is not a promise to detect every custom web interaction.
+The bottom Dock collapses to the orb as soon as a page session becomes active, and again after an
+in-tab navigation; no scroll or touch classification is involved, and web content can never trigger
+or veto the transition. A deliberate reveal (tap the orb or the parked edge handle) holds until the
+session or URL changes, and the menu keeps an explicit collapse command.
 
 `browserCatalog()` supplies real stateless production content with in-memory fixtures for the app's
 Playbook. These samples do not construct business ViewModels, WebViews or database writers. Saved
