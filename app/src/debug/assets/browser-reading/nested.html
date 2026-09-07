@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reading Fixture Nested</title><style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;color:#171719;background:#edf6f0;font:17px/1.6 sans-serif}
+header{padding:12px 20px;height:80px;background:#d3ecdc}h1{font-size:24px;margin:0}
+#scroller{position:absolute;inset:92px 16px 16px;overflow:auto;overscroll-behavior:contain;touch-action:pan-y;background:white;padding:20px;border-radius:18px}
+p{padding:24px 0;border-bottom:1px solid #dce6de}
+</style></head><body><header><h1>Nested reader</h1>Only the inner panel scrolls.</header><section id="scroller"></section>
+<script>for(let i=1;i<=50;i++){let p=document.createElement('p');p.textContent='Nested paragraph '+i+'. The outer document remains stationary while this internal reading surface scrolls.';document.getElementById('scroller').append(p)}</script>
+</body></html>

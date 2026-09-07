@@ -1,6 +1,5 @@
 package com.webshell.feature.home
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,28 +7,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
-import coil3.compose.AsyncImagePainter
 import com.webshell.core.data.WebAppEntity
+import com.webshell.core.designsystem.components.SiteIcon
 import com.webshell.core.designsystem.components.staticGlassSurface
-import com.webshell.core.designsystem.theme.LocalIsDarkTheme
-import java.io.File
 
 /**
  * 主页图标：iOS 主屏规范 —— 图标本体直接落在壁纸上，无底座卡片容器。
@@ -84,48 +72,16 @@ fun AppIcon(
                 cornerRadiusPercent = cornerRadiusPercent,
             )
         } else {
-            SiteIcon(app = app, iconSize = size, shape = shape)
+            SiteIcon(
+                title = app.title,
+                iconUrl = app.iconUrl,
+                size = size,
+                cornerRadiusPercent = cornerRadiusPercent,
+                localFallback = app.isLocal,
+            )
         }
     }
 }
-
-/** 网站图标：本地上传图直接铺满裁圆角；远端 logo 等比放大贴满圆角边界；加载失败/无图标走首字母兜底。 */
-@Composable
-private fun SiteIcon(app: WebAppEntity, iconSize: Dp, shape: Shape) {
-    val model = remember(app.iconUrl) {
-        app.iconUrl?.takeIf { it.isNotBlank() }?.let { url ->
-            when {
-                url.startsWith("/") -> File(url)
-                url.startsWith("http://") || url.startsWith("https://") -> url
-                else -> null
-            }
-        }
-    }
-    if (model == null) {
-        IconFallback(title = app.title, size = iconSize, shape = shape)
-        return
-    }
-    // A normal AsyncImage avoids per-icon subcomposition in scrolling grids. Coil owns file
-    // access and decoding on its worker dispatcher; there is deliberately no File.exists on UI.
-    // Keep the same fallback visible during loading and on failure (also for missing local files).
-    var imageLoaded by remember(model) { mutableStateOf(false) }
-    Box(
-        modifier = Modifier.size(iconSize).clip(shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (!imageLoaded) IconFallback(title = app.title, size = iconSize, shape = shape)
-        AsyncImage(
-            model = model,
-            contentDescription = app.title,
-            contentScale = ContentScale.Crop,
-            onState = { imageLoaded = it is AsyncImagePainter.State.Success },
-            modifier = Modifier.fillMaxSize().then(
-                if (imageLoaded) Modifier.background(Color.White) else Modifier,
-            ),
-        )
-    }
-}
-
 /** iOS folder tile: nine miniature icons in a translucent, softly edged material. No live blur. */
 @Composable
 private fun FolderPreview(
@@ -135,7 +91,6 @@ private fun FolderPreview(
     cornerRadiusPercent: Int,
 ) {
     val gap = iconSize * 0.20f
-    val memberShape = RoundedCornerShape(cornerRadiusPercent.coerceIn(0, 50))
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -155,65 +110,15 @@ private fun FolderPreview(
                             top = (iconSize + gap) * (index / 3),
                         ),
                 ) {
-                    SiteIcon(app = app, iconSize = iconSize, shape = memberShape)
+                    SiteIcon(
+                        title = app.title,
+                        iconUrl = app.iconUrl,
+                        size = iconSize,
+                        cornerRadiusPercent = cornerRadiusPercent,
+                        localFallback = app.isLocal,
+                    )
                 }
             }
         }
     }
-}
-
-/**
- * 首字母兜底：按标题 hash 从一组高对比配色中取色块，随主题取色 ——
- * 浅色主题用 pastel 底 + 深色字，深色主题用深饱和底 + 近白字，
- * 保证浅色/深色主题下首字母都清晰可读（≥4.5:1，区别于 primaryContainer 低对比问题）。
- */
-@Composable
-private fun IconFallback(title: String, size: Dp, shape: Shape) {
-    val darkTheme = LocalIsDarkTheme.current
-    val palette = remember(title, darkTheme) { fallbackColorsFor(title, darkTheme) }
-    Box(
-        modifier = Modifier
-            .size(size)
-            .background(palette.container, shape)
-            .clip(shape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = title.trim().take(1).uppercase().ifEmpty { "?" },
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = (size.value * 0.40f).sp,
-                lineHeight = (size.value * 0.52f).sp,
-            ),
-            color = palette.content,
-        )
-    }
-}
-
-private data class FallbackColors(val container: Color, val content: Color)
-
-/** 浅色主题：pastel 底色 + 近黑文字，确保 ≥7:1 对比度。 */
-private val fallbackPaletteLight = listOf(
-    FallbackColors(Color(0xFFDCE9FF), Color(0xFF0B3D91)), // 蓝
-    FallbackColors(Color(0xFFDDF3E4), Color(0xFF0B5D3B)), // 绿
-    FallbackColors(Color(0xFFFCE3EC), Color(0xFF8A1B4E)), // 品红
-    FallbackColors(Color(0xFFFFF0D6), Color(0xFF7A4E00)), // 橙
-    FallbackColors(Color(0xFFE9E2FB), Color(0xFF4A2C93)), // 紫
-    FallbackColors(Color(0xFFDDF1F4), Color(0xFF0B5563)), // 青
-)
-
-/** 深色主题：深饱和底色 + 近白文字，确保 ≥4.5:1 对比度（与浅色 palette 同序同 hue）。 */
-private val fallbackPaletteDark = listOf(
-    FallbackColors(Color(0xFF1D3A6E), Color(0xFFD6E4FF)), // 蓝
-    FallbackColors(Color(0xFF14532D), Color(0xFFD9F2E3)), // 绿
-    FallbackColors(Color(0xFF6B1B41), Color(0xFFFBDCE8)), // 品红
-    FallbackColors(Color(0xFF7A4A00), Color(0xFFFFE9C2)), // 橙
-    FallbackColors(Color(0xFF3B2A73), Color(0xFFE6DFFC)), // 紫
-    FallbackColors(Color(0xFF0E4A55), Color(0xFFD3EEF3)), // 青
-)
-
-private fun fallbackColorsFor(title: String, darkTheme: Boolean): FallbackColors {
-    val palette = if (darkTheme) fallbackPaletteDark else fallbackPaletteLight
-    val key = title.trim().ifEmpty { "?" }
-    val index = (key.first().code % palette.size + palette.size) % palette.size
-    return palette[index]
 }

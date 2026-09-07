@@ -49,15 +49,12 @@ import com.webshell.core.designsystem.theme.AppMotion
 
 /**
  * iOS context action: label on the left and a simple monochrome glyph on the right.
- * [iconContainer] remains source-compatible but is no longer painted; only destructive actions
- * receive a semantic color. Optional [iconTint] is retained for existing callers.
+ * Only destructive actions receive a semantic color; all other actions are neutral.
  */
 data class AppContextMenuItem(
     val label: String,
     val icon: ImageVector,
     val destructive: Boolean = false,
-    val iconContainer: Color? = null,
-    val iconTint: Color? = null,
     val onClick: () -> Unit,
 )
 
@@ -187,7 +184,7 @@ private fun MenuRow(item: AppContextMenuItem, onClick: () -> Unit) {
     val destructive = item.destructive
     val tintColor = when {
         destructive -> MaterialTheme.colorScheme.error
-        else -> item.iconTint ?: MaterialTheme.colorScheme.onSurface
+        else -> MaterialTheme.colorScheme.onSurface
     }
     val textColor = if (destructive) {
         MaterialTheme.colorScheme.error

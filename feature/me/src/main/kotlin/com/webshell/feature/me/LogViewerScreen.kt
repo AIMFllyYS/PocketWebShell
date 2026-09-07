@@ -21,23 +21,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -48,7 +42,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.IntOffset
+import com.webshell.core.designsystem.components.AppContextMenu
+import com.webshell.core.designsystem.components.AppContextMenuItem
+import com.webshell.core.designsystem.components.AppConfirmDialog
+import com.webshell.core.designsystem.components.AppFilterChip
+import com.webshell.core.designsystem.components.AppListRow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -82,6 +83,7 @@ internal fun LogViewerPage(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showClearConfirm by remember { mutableStateOf(false) }
     var showActions by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf(IntOffset.Zero) }
 
     /** 完整导出（含头部）+ 当前过滤条件下的全部条目 */
     suspend fun fullExport(): String =
@@ -113,31 +115,20 @@ internal fun LogViewerPage(
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(send, "分享日志"))
+            context.startActivity(Intent.createChooser(send, context.getString(R.string.me_log_share_title)))
         }
     }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AppNavigationBar(title = stringResource(R.string.me_logs), onBack = onBack, actions = {
-            Box {
+            Box(Modifier.onGloballyPositioned { coordinates ->
+                val position = coordinates.positionInWindow()
+                menuAnchor = IntOffset((position.x + coordinates.size.width / 2).toInt(), (position.y + coordinates.size.height).toInt())
+            }) {
                 IconButton(onClick = { showActions = true }) {
                     Icon(Icons.Filled.MoreHoriz, stringResource(R.string.me_log_actions))
                 }
-                DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_refresh)) },
-                        leadingIcon = { Icon(Icons.Filled.Refresh, null) },
-                        onClick = { showActions = false; viewModel.refresh() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_copy)) },
-                        leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
-                        onClick = { showActions = false; copyAll() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_share)) },
-                        leadingIcon = { Icon(Icons.Filled.Share, null) },
-                        onClick = { showActions = false; shareAll() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.me_log_clear),
-                        color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                        onClick = { showActions = false; showClearConfirm = true })
-                }
+
             }
         })
 
@@ -149,30 +140,27 @@ internal fun LogViewerPage(
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = AppSpacing.lg),
             ) {
-                FilterChip(
-                    selected = state.tagFilter == null,
-                    onClick = { viewModel.setTagFilter(null) },
-                    label = { Text("全部") },
-                )
+                AppFilterChip(stringResource(R.string.me_log_all), selected = state.tagFilter == null,
+                    onClick = { viewModel.setTagFilter(null) })
                 state.tags.forEach { tag ->
-                    FilterChip(
-                        selected = state.tagFilter == tag,
-                        onClick = {
-                            viewModel.setTagFilter(if (state.tagFilter == tag) null else tag)
-                        },
-                        label = { Text(tag) },
-                    )
+                    AppFilterChip(tag, selected = state.tagFilter == tag,
+                        onClick = { viewModel.setTagFilter(if (state.tagFilter == tag) null else tag) })
                 }
             }
             Spacer(Modifier.height(AppSpacing.sm))
         }
 
+        if (state.loadFailed && state.entries.isNotEmpty()) {
+            AppListRow(stringResource(R.string.me_log_failed), onClick = viewModel::refresh)
+        }
         if (state.entries.isEmpty()) {
             Text(
-                text = if (state.tagFilter == null) {
-                    "暂无日志。操作主页或修改设置后，事件会记录在这里。"
+                text = if (state.loadFailed) stringResource(R.string.me_log_failed)
+                else if (state.refreshing) stringResource(R.string.me_log_loading)
+                else if (state.tagFilter == null) {
+                    stringResource(R.string.me_log_empty)
                 } else {
-                    "该标签下暂无日志。"
+                    stringResource(R.string.me_log_empty_filter)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -188,8 +176,8 @@ internal fun LogViewerPage(
                     last.index >= info.totalItemsCount - 1
                 }
             }
-            LaunchedEffect(reachedEnd) {
-                if (reachedEnd) viewModel.loadMore()
+            LaunchedEffect(reachedEnd, state.entries.size, state.hasMore, state.refreshing) {
+                if (reachedEnd && !state.refreshing && !state.loadFailed) viewModel.loadMore()
             }
 
             LazyColumn(
@@ -207,9 +195,9 @@ internal fun LogViewerPage(
                 item {
                     Text(
                         text = if (state.hasMore || state.loadingMore) {
-                            "加载更多…"
+                            stringResource(R.string.me_log_loading)
                         } else {
-                            "已加载 ${state.entries.size} / 共 ${state.totalCount} 条"
+                            stringResource(R.string.me_log_count, state.entries.size, state.totalCount)
                         },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -220,65 +208,44 @@ internal fun LogViewerPage(
         }
     }
 
+    if (showActions) {
+        AppContextMenu(
+            items = listOf(
+                AppContextMenuItem(stringResource(R.string.me_log_refresh), Icons.Filled.Refresh) { viewModel.refresh() },
+                AppContextMenuItem(stringResource(R.string.me_log_copy), Icons.Filled.ContentCopy) { copyAll() },
+                AppContextMenuItem(stringResource(R.string.me_log_share), Icons.Filled.Share) { shareAll() },
+                AppContextMenuItem(stringResource(R.string.me_log_clear), Icons.Filled.Delete, destructive = true) { showClearConfirm = true },
+            ),
+            onDismiss = { showActions = false },
+            anchorPoint = menuAnchor,
+        )
+    }
     if (showClearConfirm) {
-        AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("清空全部日志？") },
-            text = { Text("将删除数据库中的全部日志记录，此操作不可恢复。") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showClearConfirm = false
-                        viewModel.clear()
-                    },
-                ) {
-                    Text("清空", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) {
-                    Text("取消")
-                }
-            },
+        AppConfirmDialog(
+            title = stringResource(R.string.me_log_clear_title),
+            text = stringResource(R.string.me_log_clear_hint),
+            confirmText = stringResource(R.string.me_clear),
+            dismissText = stringResource(R.string.me_cancel),
+            destructive = true,
+            onConfirm = { showClearConfirm = false; viewModel.clear() },
+            onDismiss = { showClearConfirm = false },
         )
     }
 }
 
+/** Message stays full width; header metadata wraps without stealing its reading column. */
 @Composable
-private fun LogRow(entry: LogEntity) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-    ) {
-        Text(
-            AppLog.formatTime(entry.timeMillis),
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.width(AppSpacing.sm))
-        Text(
-            entry.tag,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(horizontal = 6.dp, vertical = 1.dp),
-        )
-        Spacer(Modifier.width(AppSpacing.sm))
-        Text(
-            entry.message,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (entry.level == AppLog.Level.ERROR.name) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-            modifier = Modifier.weight(1f),
-        )
+internal fun LogRow(entry: LogEntity) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.Top) {
+            Text(AppLog.formatTime(entry.timeMillis), style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
+            Text(entry.tag, style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+        }
+        Text(entry.message, style = MaterialTheme.typography.bodySmall,
+            color = if (entry.level == AppLog.Level.ERROR.name) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
 }
 

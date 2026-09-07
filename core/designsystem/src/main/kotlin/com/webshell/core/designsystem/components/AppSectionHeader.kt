@@ -12,7 +12,7 @@ import com.webshell.core.designsystem.theme.AppSpacing
 fun AppSectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         title,
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
             start = AppSpacing.lg,

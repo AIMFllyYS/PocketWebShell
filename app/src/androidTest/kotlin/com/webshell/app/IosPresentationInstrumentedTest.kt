@@ -7,6 +7,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import com.webshell.core.data.HomeSettings
@@ -171,11 +172,7 @@ class IosPresentationInstrumentedTest {
         shot("add")
         description("浏览").click()
         shot("browser-empty")
-        val field = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 5_000)
-        assertNotNull("Address field must be reachable", field)
-        field!!.click()
-        field.text = "https://appassets.androidplatform.net/assets/fixtures/spa/index.html"
-        device.pressEnter()
+        enterAddress("https://appassets.androidplatform.net/assets/fixtures/spa/index.html")
         shot("browser-after-go")
         assertTrue("Local WebView fixture must load", device.wait(Until.hasObject(By.text("夹具 · 第 1 页")), 10_000))
         description("标签页").click()
@@ -186,6 +183,9 @@ class IosPresentationInstrumentedTest {
         device.pressBack()
         description("菜单").click()
         text("关闭全部标签").click()
+        // The destructive action opens the shared confirmation dialog; selecting the menu item
+        // alone must not close tabs without an explicit confirmation.
+        text("关闭全部").click()
         text("暂无标签页")
         SystemClock.sleep(350)
         device.pressBack()
@@ -239,6 +239,22 @@ class IosPresentationInstrumentedTest {
 
     private fun description(value: String) = device.wait(Until.findObject(By.desc(value)), 5_000)
         ?: throw AssertionError("Missing content description: $value")
+
+    private fun enterAddress(url: String) {
+        repeat(5) {
+            val field = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 2_000)
+                ?: return@repeat
+            try {
+                field.click()
+                field.text = url
+                device.pressEnter()
+                return
+            } catch (_: StaleObjectException) {
+                SystemClock.sleep(120)
+            }
+        }
+        throw AssertionError("Address field must be reachable")
+    }
 
     private fun shot(name: String) {
         SystemClock.sleep(600)

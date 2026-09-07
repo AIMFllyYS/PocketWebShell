@@ -41,12 +41,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
 
-    // 图标加载（coil-network-okhttp 传递的 okhttp 4.x 与 okhttp-android 5.x 冲突，强制排除）
-    implementation(libs.coil.compose)
-    implementation(libs.coil.network.okhttp) {
-        exclude(group = "com.squareup.okhttp3", module = "okhttp")
-    }
-
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)

@@ -17,12 +17,14 @@ data class AppThemeState(
     val mode: String = THEME_MODE_SYSTEM,
     val wallpaperPath: String? = null,
     val transitionStyle: String = TRANSITION_SLIDE,
+    val appFontFamily: String = "misans",
+    val appFontScalePercent: Int = 100,
 )
 
 @HiltViewModel
 class AppThemeViewModel @Inject constructor(settingsRepository: SettingsRepository) : ViewModel() {
     val theme = settingsRepository.settings
-        .map { AppThemeState(it.themeMode, it.photoWallpaperPath, it.transitionStyle) }
+        .map { AppThemeState(it.themeMode, it.photoWallpaperPath, it.transitionStyle, it.appFontFamily, it.appFontScalePercent) }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppThemeState())
 }

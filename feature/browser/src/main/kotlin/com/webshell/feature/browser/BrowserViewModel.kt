@@ -3,10 +3,7 @@ package com.webshell.feature.browser
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.webshell.core.data.BookmarkDao
-import com.webshell.core.data.BookmarkEntity
-import com.webshell.core.data.HistoryDao
-import com.webshell.core.data.HistoryEntity
+import com.webshell.core.data.BrowserSavedPagesRepository
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.WebViewPool
@@ -18,28 +15,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-
-/** 浏览器标签页的 UI 状态（缩略图仅内存持有，进程恢复后重绘） */
-data class BrowserTab(
-    val tabId: String,
-    val title: String,
-    val url: String,
-    val thumbnail: Bitmap? = null,
-    /** 加载进度 0..100（per-tab，切 tab 不串台） */
-    val progress: Int = 0,
-    val loading: Boolean = false,
-    val canGoBack: Boolean = false,
-    val canGoForward: Boolean = false,
-)
-
-/** 页面内查找状态 */
-data class FindState(
-    val visible: Boolean = false,
-    val query: String = "",
-    val active: Int = 0,
-    val total: Int = 0,
-)
 
 /**
  * 多标签浏览器状态中枢：
@@ -49,8 +26,7 @@ data class FindState(
  */
 @HiltViewModel
 class BrowserViewModel @Inject constructor(
-    private val historyDao: HistoryDao,
-    private val bookmarkDao: BookmarkDao,
+    private val savedPages: BrowserSavedPagesRepository,
 ) : ViewModel() {
 
     private val _tabs = MutableStateFlow<List<BrowserTab>>(emptyList())
@@ -67,11 +43,13 @@ class BrowserViewModel @Inject constructor(
     val bookmarkedUrls: StateFlow<Set<String>> = _bookmarkedUrls.asStateFlow()
 
     /** 收藏列表（收藏夹面板） */
-    val bookmarks: StateFlow<List<BookmarkEntity>> = bookmarkDao.observeAll()
+    val bookmarks: StateFlow<List<BrowserSavedPage>> = savedPages.observeBookmarks()
+        .map { entries -> entries.map { BrowserSavedPage(it.id, it.title, it.url) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** 历史列表（最近 100 条，同 URL 合并为最新一条） */
-    val history: StateFlow<List<HistoryEntity>> = historyDao.observeRecent()
+    val history: StateFlow<List<BrowserSavedPage>> = savedPages.observeHistory()
+        .map { entries -> entries.map { BrowserSavedPage(it.id, it.title, it.url) } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** sessionId → 桌面模式（会话级记忆） */
@@ -84,23 +62,28 @@ class BrowserViewModel @Inject constructor(
      * 不依赖"当前激活 tab"——后台 tab 的回调不再丢失、不再串台。
      */
     private val sessionListeners = mutableMapOf<String, ShellListener>()
+    private var browserVisible = false
+    private val evictionListener: (String) -> Unit = { sessionId ->
+        if (sessionId.startsWith("browser-")) removeTabState(sessionId.removePrefix("browser-"))
+    }
 
     init {
         viewModelScope.launch {
-            bookmarkDao.observeAll().collect { list ->
+            savedPages.observeBookmarks().collect { list ->
                 _bookmarkedUrls.value = list.map { it.url }.toSet()
             }
         }
         // 池满淘汰时同步移除对应 tab（实例已被池销毁并留存快照，这里不重复 destroy）
-        WebViewPool.onSessionEvicted = { sessionId ->
-            if (sessionId.startsWith("browser-")) {
-                removeTabState(sessionId.removePrefix("browser-"))
-            }
-        }
+        WebViewPool.onSessionEvicted = evictionListener
     }
 
     override fun onCleared() {
-        WebViewPool.onSessionEvicted = null
+        if (WebViewPool.onSessionEvicted === evictionListener) WebViewPool.onSessionEvicted = null
+        sessionListeners.forEach { (sessionId, listener) ->
+            WebViewPool.get(sessionId)?.let { if (it.sessionListener === listener) it.sessionListener = null }
+        }
+        sessionListeners.clear()
+        setVisible(false)
         super.onCleared()
     }
 
@@ -161,8 +144,55 @@ class BrowserViewModel @Inject constructor(
 
     /** 激活 tab 切换的唯一出口：同步池的激活保护（激活会话不被淘汰） */
     private fun setActive(tabId: String?) {
+        val previous = _activeTabId.value
+        if (previous != tabId) {
+            previous?.let { WebViewPool.suspendSession("browser-$it") }
+            _findState.value = FindState()
+        }
         _activeTabId.value = tabId
-        WebViewPool.activeSessionId = tabId?.let { "browser-$it" }
+        if (browserVisible) WebViewPool.activeSessionId = tabId?.let { "browser-$it" }
+    }
+
+    fun setVisible(visible: Boolean) {
+        browserVisible = visible
+        val sid = activeSessionId() ?: return
+        if (visible) {
+            WebViewPool.activeSessionId = sid
+        } else if (WebViewPool.activeSessionId == sid) {
+            WebViewPool.activeSessionId = null
+        }
+    }
+
+    /** Invoked after the lifecycle host has installed the persistent per-session listener. */
+    fun onHostReady(sessionId: String) {
+        val shell = WebViewPool.get(sessionId) ?: return
+        val tabId = sessionId.removePrefix("browser-")
+        val tab = _tabs.value.firstOrNull { it.tabId == tabId } ?: return
+        val currentUrl = shell.currentUrl()
+        if ((currentUrl == null || currentUrl == "about:blank") && tab.url.isNotBlank() && tab.url != "about:blank") {
+            shell.loadWithStateRestore(tab.url)
+        } else if (currentUrl != null && currentUrl != "about:blank") {
+            updateTabMeta(tabId, url = currentUrl)
+        }
+        updateTabNav(tabId, canGoBack = shell.canGoBack(), canGoForward = shell.canGoForward())
+    }
+
+    fun captureActiveThumbnail() {
+        val tabId = _activeTabId.value ?: return
+        runCatching { WebViewPool.get("browser-$tabId")?.captureThumbnail() }
+            .getOrNull()?.let { updateTabThumbnail(tabId, it) }
+    }
+
+    fun openUrl(url: String) {
+        if (url.isBlank()) return
+        val shell = activeSessionId()?.let { WebViewPool.get(it) }
+        if (shell != null) shell.loadWithStateRestore(url) else createTab(url, activate = true)
+    }
+
+    fun goBack() { activeSessionId()?.let { WebViewPool.get(it)?.goBack() } }
+    fun goForward() { activeSessionId()?.let { WebViewPool.get(it)?.goForward() } }
+    fun refreshOrStop(loading: Boolean) {
+        activeSessionId()?.let { WebViewPool.get(it) }?.let { if (loading) it.stopLoading() else it.reload() }
     }
 
     /** 切走前由 Screen 先截缩略图，再调这里更新卡片 */
@@ -274,7 +304,8 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    fun onFindResult(active: Int, total: Int) {
+    fun onFindResult(sessionId: String, active: Int, total: Int) {
+        if (sessionId != activeSessionId() || !_findState.value.visible) return
         _findState.value = _findState.value.copy(active = active, total = total)
     }
 
@@ -285,44 +316,21 @@ class BrowserViewModel @Inject constructor(
     // ---------------------------------------------------------------- bookmarks
 
     fun toggleBookmark(url: String, title: String) {
-        if (url.isBlank() || url == "about:blank") return
-        viewModelScope.launch {
-            if (bookmarkDao.getByUrl(url) != null) {
-                bookmarkDao.deleteByUrl(url)
-            } else {
-                bookmarkDao.upsert(
-                    BookmarkEntity(
-                        url = url,
-                        title = title.ifBlank { url },
-                        addedAt = System.currentTimeMillis(),
-                    ),
-                )
-            }
-        }
+        viewModelScope.launch { savedPages.toggleBookmark(url, title) }
     }
 
     fun removeBookmark(url: String) {
-        viewModelScope.launch { bookmarkDao.deleteByUrl(url) }
+        viewModelScope.launch { savedPages.removeBookmark(url) }
     }
 
     // ---------------------------------------------------------------- history
 
     fun recordHistory(url: String, title: String) {
-        if (url.isBlank() || url == "about:blank" || url.startsWith("data:")) return
-        viewModelScope.launch {
-            historyDao.deleteByUrl(url)
-            historyDao.insert(
-                HistoryEntity(
-                    url = url,
-                    title = title.ifBlank { url },
-                    visitedAt = System.currentTimeMillis(),
-                ),
-            )
-        }
+        viewModelScope.launch { savedPages.recordVisit(url, title) }
     }
 
     fun clearHistory() {
-        viewModelScope.launch { historyDao.clearAll() }
+        viewModelScope.launch { savedPages.clearHistory() }
     }
 
     // ---------------------------------------------------------------- desktop mode

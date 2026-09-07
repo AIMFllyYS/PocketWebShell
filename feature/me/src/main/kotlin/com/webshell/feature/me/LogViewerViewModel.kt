@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 
 data class LogViewerUiState(
     /** 已加载的条目（最新在前） */
@@ -20,6 +22,8 @@ data class LogViewerUiState(
     val loadingMore: Boolean = false,
     /** 当前过滤条件下的总条数 */
     val totalCount: Int = 0,
+    val refreshing: Boolean = false,
+    val loadFailed: Boolean = false,
 )
 
 /**
@@ -33,38 +37,59 @@ class LogViewerViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(LogViewerUiState())
     val state: StateFlow<LogViewerUiState> = _state.asStateFlow()
+    private var queryGeneration = 0L
+    private var refreshJob: Job? = null
+    private var pageJob: Job? = null
 
     init {
         refresh()
     }
 
     fun refresh() {
-        viewModelScope.launch {
-            val tag = _state.value.tagFilter
-            val entries = logRepository.page(PAGE_SIZE, 0, tag)
-            val total = logRepository.count(tag)
-            _state.value = _state.value.copy(
-                entries = entries,
-                tags = logRepository.tags(),
-                totalCount = total,
-                hasMore = entries.size < total,
-                loadingMore = false,
-            )
+        val generation = ++queryGeneration
+        val tag = _state.value.tagFilter
+        refreshJob?.cancel()
+        pageJob?.cancel()
+        _state.value = _state.value.copy(refreshing = true, loadingMore = false, loadFailed = false)
+        refreshJob = viewModelScope.launch {
+            try {
+                val entries = logRepository.page(PAGE_SIZE, 0, tag)
+                val total = logRepository.count(tag)
+                val tags = logRepository.tags()
+                if (generation != queryGeneration) return@launch
+                _state.value = _state.value.copy(
+                    entries = entries, tags = tags, totalCount = total,
+                    hasMore = entries.size < total, refreshing = false, loadingMore = false,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (generation == queryGeneration) _state.value = _state.value.copy(refreshing = false, loadFailed = true)
+            }
         }
     }
 
     /** 滚动到底部时追加下一页；无硬性总上限 */
     fun loadMore() {
         val s = _state.value
-        if (s.loadingMore || !s.hasMore) return
+        if (s.refreshing || s.loadingMore || !s.hasMore) return
+        val generation = queryGeneration
         _state.value = s.copy(loadingMore = true)
-        viewModelScope.launch {
-            val more = logRepository.page(PAGE_SIZE, s.entries.size, s.tagFilter)
-            _state.value = _state.value.copy(
-                entries = _state.value.entries + more,
-                loadingMore = false,
-                hasMore = more.size >= PAGE_SIZE,
-            )
+        pageJob = viewModelScope.launch {
+            try {
+                val more = logRepository.page(PAGE_SIZE, s.entries.size, s.tagFilter)
+                // A late page for an old filter must never be mixed into the newly selected tag.
+                if (generation != queryGeneration || s.tagFilter != _state.value.tagFilter) return@launch
+                val combined = (_state.value.entries + more).distinctBy { it.id }
+                _state.value = _state.value.copy(
+                    entries = combined, loadingMore = false, loadFailed = false,
+                    hasMore = more.size >= PAGE_SIZE && combined.size < _state.value.totalCount,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                if (generation == queryGeneration) _state.value = _state.value.copy(loadingMore = false, loadFailed = true)
+            }
         }
     }
 
@@ -76,8 +101,14 @@ class LogViewerViewModel @Inject constructor(
 
     fun clear() {
         viewModelScope.launch {
-            logRepository.clear()
-            refresh()
+            try {
+                logRepository.clear()
+                refresh()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(loadFailed = true)
+            }
         }
     }
 
