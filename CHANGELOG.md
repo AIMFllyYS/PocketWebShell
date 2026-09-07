@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.16] - 2026-09-07
+
+### Added
+
+- 解散文件夹二次确认：主页长按菜单与文件夹展开页的「解散文件夹」均先弹出确认对话框（复用 `AppConfirmDialog`），确认后才解散；文件夹成员移回主屏幕，应用本身不会被删除。
+- 长按应用 Logo 的情境菜单新增「复制应用链接」，一键把站点 URL 写入剪贴板并弹出底部浮层提示。
+- 设置页「后台会话」收敛为最多展示前 3 条；超过 3 条时提供「全部会话」入口，进入独立页面统一管理全部保活会话（含逐条结束）。
+
+### Testing
+
+- `testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleDebugAndroidTest` 通过。
+- `:app:connectedDebugAndroidTest` 在 `webshell-ios-qa-api35`（API 35）上全部通过。
+- 手动冒烟（API 35 模拟器）：长按图标菜单出现「复制应用链接」并复制成功；解散文件夹弹确认弹窗、取消不生效、确认才解散；后台会话超过 3 条时出现「全部会话」入口并可逐条结束。
+
 ## [0.1.15] - 2026-09-07
 
 ### Changed

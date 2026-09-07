@@ -23,6 +23,15 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.16",
+        date = "2026-09-07",
+        highlights = listOf(
+            "解散文件夹新增二次确认弹窗，确认后才解散，应用本身不会被删除",
+            "长按应用 Logo 的菜单新增「复制应用链接」，一键复制网址到剪贴板",
+            "设置页「后台会话」最多显示前 3 条；更多时提供「全部会话」入口，进入独立页面统一管理全部保活会话",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.15",
         date = "2026-09-07",
         highlights = listOf(
