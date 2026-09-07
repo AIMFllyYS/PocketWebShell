@@ -1,18 +1,20 @@
 package com.webshell.feature.add
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.HomeSlotAllocator
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.data.UserIconRepository
 import com.webshell.core.data.WebAppDao
-import com.webshell.core.data.WebAppEntity
-import com.webshell.core.model.AppLog
-import com.webshell.core.webengine.LocalWebHost
-import com.webshell.core.data.metadata.SiteMetadata
 import com.webshell.core.data.metadata.SiteMetadataFetcher
+import com.webshell.core.model.AppLog
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.net.URLDecoder
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -22,194 +24,136 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/** 第二步（编辑属性）的草稿状态；fetch 失败时也用它做纯手动录入 */
-data class AddDraft(
-    val appId: String = "",
-    val url: String = "",
-    val title: String = "",
-    val iconUrl: String = "",
-    val themeColor: String? = null,
-    val desktopMode: Boolean = false,
-    val darkMode: Boolean = false,
-    val keepAlive: Boolean = true,
-    val externalLinksToBrowser: Boolean = false,
-    val textZoomPercent: Int = 100,
-    val isLocal: Boolean = false,
-)
-
-sealed interface AddUiState {
-    data object Input : AddUiState
-
-    /** 元数据抓取中 */
-    data object Loading : AddUiState
-
-    /** 编辑属性（fetch 成功或降级手动） */
-    data class Edit(val draft: AddDraft, val fetchFailed: Boolean = false) : AddUiState
-}
-
 @HiltViewModel
 class AddViewModel @Inject constructor(
     private val fetcher: SiteMetadataFetcher,
     private val importer: LocalAppImporter,
     private val dao: WebAppDao,
     private val settingsRepository: SettingsRepository,
+    private val icons: UserIconRepository,
 ) : ViewModel() {
-
     private val _state = MutableStateFlow<AddUiState>(AddUiState.Input)
     val state: StateFlow<AddUiState> = _state.asStateFlow()
-
     private val _created = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val created: SharedFlow<Unit> = _created.asSharedFlow()
+    private val _messages = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    /** String resources only: failure details and local file paths are not presented or logged. */
+    val messages: SharedFlow<Int> = _messages.asSharedFlow()
+    private var preparation: Job? = null
+    private var revision = 0L
 
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
-    val messages: SharedFlow<String> = _messages.asSharedFlow()
-
-    /** 确认网址：抓取元数据后进入编辑；失败则降级为手动录入（通用地球图标） */
     fun confirmUrl(rawUrl: String) {
-        val normalized = normalizeUrl(rawUrl)
-        if (normalized == null) {
-            _state.value = AddUiState.Input
-            return
-        }
+        val normalized = AddUrl.normalize(rawUrl) ?: return
+        preparation?.cancel()
+        val expectedRevision = ++revision
         _state.value = AddUiState.Loading
-        viewModelScope.launch {
-            val metadata: SiteMetadata? = fetcher.fetch(normalized).getOrNull()
-            when {
-                metadata == null -> {
-                    AppLog.warn("add", "元数据抓取失败，转手动录入 ${hostLabel(normalized)}")
-                    _state.value = AddUiState.Edit(
-                        draft = AddDraft(appId = newAppId(), url = normalized, title = hostLabel(normalized)),
-                        fetchFailed = true,
-                    )
-                }
-                else -> {
-                    _state.value = AddUiState.Edit(
-                        draft = AddDraft(
-                            appId = newAppId(),
-                            url = metadata.finalUrl,
-                            title = metadata.title,
-                            iconUrl = metadata.iconUrl.orEmpty(),
-                            themeColor = metadata.themeColor,
-                        ),
-                    )
-                }
+        preparation = viewModelScope.launch {
+            val metadata = fetcher.fetch(normalized).getOrNull()
+            if (revision != expectedRevision) return@launch
+            _state.value = if (metadata == null) {
+                AppLog.warn("add", "Metadata unavailable; manual editor shown")
+                AddUiState.Edit(
+                    draft = AddDraft(appId = newAppId(), url = normalized, title = AddUrl.hostLabel(normalized)),
+                    fetchFailed = true,
+                )
+            } else {
+                AddUiState.Edit(
+                    draft = AddDraft(
+                        appId = newAppId(),
+                        url = metadata.finalUrl,
+                        title = metadata.title,
+                        iconUrl = metadata.iconUrl.orEmpty(),
+                    ),
+                )
             }
         }
     }
 
-    /** 本地 HTML 导入：拷贝文件后直接进入编辑（标题先取文件名） */
-    fun importLocal(uris: List<android.net.Uri>) {
+    fun importLocal(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        preparation?.cancel()
+        val expectedRevision = ++revision
         _state.value = AddUiState.Loading
-        viewModelScope.launch {
+        preparation = viewModelScope.launch {
             val appId = newAppId()
             val result = importer.import(appId, uris)
+            if (revision != expectedRevision) return@launch
             result.onSuccess { entryUrl ->
-                val entryName = java.net.URLDecoder.decode(
-                    entryUrl.substringAfterLast('/'),
-                    Charsets.UTF_8,
-                )
+                val entryName = runCatching {
+                    URLDecoder.decode(entryUrl.substringAfterLast('/'), Charsets.UTF_8)
+                }.getOrDefault("index.html")
                 _state.value = AddUiState.Edit(
-                    draft = AddDraft(
-                        appId = appId,
-                        url = entryUrl,
-                        title = entryName.substringBeforeLast('.').ifBlank { "本地应用" },
-                        isLocal = true,
-                    ),
+                    AddDraft(appId = appId, url = entryUrl, title = entryName.substringBeforeLast('.'), isLocal = true),
                 )
-            }.onFailure { e ->
-                AppLog.error("add", "本地导入失败：${e.message ?: "未知错误"}")
+            }.onFailure {
+                AppLog.warn("add", "Local import failed")
                 _state.value = AddUiState.Input
-                _messages.tryEmit("导入失败：${e.message ?: "未知错误"}")
+                _messages.tryEmit(R.string.add_import_failed)
             }
+        }
+    }
+
+    fun importIcon(uri: Uri) {
+        val editor = _state.value as? AddUiState.Edit ?: return
+        if (editor.isSaving || editor.isImportingIcon) return
+        val expectedId = editor.draft.appId
+        _state.value = editor.copy(isImportingIcon = true)
+        viewModelScope.launch {
+            val result = icons.importIcon(uri)
+            val current = _state.value as? AddUiState.Edit ?: return@launch
+            if (current.draft.appId != expectedId) return@launch
+            _state.value = current.copy(
+                draft = result.getOrNull()?.let { current.draft.copy(iconUrl = it) } ?: current.draft,
+                isImportingIcon = false,
+            )
+            if (result.isFailure) _messages.tryEmit(R.string.add_icon_import_failed)
         }
     }
 
     fun updateDraft(transform: (AddDraft) -> AddDraft) {
-        val current = _state.value
-        if (current is AddUiState.Edit) {
-            _state.value = current.copy(draft = transform(current.draft))
-        }
+        val editor = _state.value as? AddUiState.Edit ?: return
+        if (!editor.isSaving && !editor.isImportingIcon) _state.value = editor.copy(draft = transform(editor.draft))
     }
 
-    /** 保存到主页数据库 */
     fun save() {
-        val current = _state.value as? AddUiState.Edit ?: return
+        val editor = _state.value as? AddUiState.Edit ?: return
+        if (editor.isSaving || editor.isImportingIcon) return
+        val draft = editor.draft
+        if (!draft.isLocal && AddUrl.normalize(draft.url) == null) {
+            _messages.tryEmit(R.string.add_address_error)
+            return
+        }
+        _state.value = editor.copy(isSaving = true)
         viewModelScope.launch {
-            val d = current.draft
-            runCatching {
+            try {
                 val settings = settingsRepository.settings.first()
-                // 自由摆放：直接落在最后一页的首个空槽；自动整理：-1 追加末尾后压实。
-                val (homePage, homeCellIndex) = if (settings.autoArrangeHome) {
-                    0 to -1
-                } else {
+                val (page, slot) = if (settings.autoArrangeHome) 0 to -1 else {
                     HomeSlotAllocator.appendSlot(
                         apps = dao.observeAll().first(),
                         pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
                     )
                 }
-                dao.upsert(
-                    WebAppEntity(
-                        id = d.appId.ifBlank { newAppId() },
-                        title = d.title.trim().ifBlank { hostLabel(d.url) },
-                        url = d.url,
-                        iconUrl = d.iconUrl.trim().takeIf {
-                            // 远端 favicon 或用户上传的本地图片（应用私有目录绝对路径）
-                            it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/")
-                        },
-                        desktopMode = d.desktopMode,
-                        darkMode = d.darkMode,
-                        keepAlive = d.keepAlive,
-                        isFavorite = false,
-                        homePage = homePage,
-                        homeCellIndex = homeCellIndex,
-                        folderId = null,
-                        createdAt = System.currentTimeMillis(),
-                        isLocal = d.isLocal,
-                        externalLinksToBrowser = d.externalLinksToBrowser,
-                        textZoomPercent = d.textZoomPercent,
-                    ),
-                )
-            }.onSuccess {
-                AppLog.log("add", "添加网站「${d.title.trim().ifBlank { hostLabel(d.url) }}」(${hostLabel(d.url)})")
-                _messages.tryEmit("已添加到主页")
+                dao.upsert(draft.toNewEntity(page, slot, System.currentTimeMillis(), newAppId()))
+                AppLog.log("add", "Site shortcut created")
+                _messages.tryEmit(R.string.add_saved)
                 _created.tryEmit(Unit)
                 _state.value = AddUiState.Input
-            }.onFailure { e ->
-                AppLog.error("add", "添加网站失败 ${hostLabel(d.url)}：${e.message ?: "未知错误"}")
-                _messages.tryEmit("添加失败：${e.message ?: "未知错误"}")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                AppLog.warn("add", "Site save failed")
+                _state.value = editor
+                _messages.tryEmit(R.string.add_save_failed)
             }
         }
     }
 
     fun reset() {
+        if ((_state.value as? AddUiState.Edit)?.isSaving == true) return
+        preparation?.cancel()
+        revision++
         _state.value = AddUiState.Input
     }
 
-    private fun newAppId(): String = "app-${UUID.randomUUID().toString().take(8)}"
-
-    companion object {
-        /** 补全 scheme；仅接受 http/https */
-        fun normalizeUrl(raw: String): String? {
-            val trimmed = raw.trim()
-            if (trimmed.isEmpty()) return null
-            val withScheme = when {
-                trimmed.startsWith("http://", ignoreCase = true) ||
-                    trimmed.startsWith("https://", ignoreCase = true) -> trimmed
-                else -> "https://$trimmed"
-            }
-            return try {
-                val uri = java.net.URI(withScheme)
-                if (uri.host.isNullOrBlank()) null else withScheme
-            } catch (_: Exception) {
-                null
-            }
-        }
-
-        fun hostLabel(url: String): String = try {
-            java.net.URI(url).host?.removePrefix("www.") ?: url
-        } catch (_: Exception) {
-            url
-        }
-    }
+    private fun newAppId(): String = "app-" + UUID.randomUUID().toString().take(8)
 }

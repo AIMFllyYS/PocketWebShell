@@ -13,6 +13,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import com.webshell.core.model.AppFontFamily
+import com.webshell.core.model.AppFontScale
 import androidx.palette.graphics.Palette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,6 +36,8 @@ fun WebShellTheme(
     themeMode: String = "system",
     photoWallpaperPath: String? = null,
     transitionStyle: String = "slide",
+    appFontFamily: String = AppFontFamily.MISANS,
+    appFontScalePercent: Int = AppFontScale.DEFAULT,
     content: @Composable () -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
@@ -70,14 +76,21 @@ fun WebShellTheme(
         } ?: baseScheme
     }
 
+    val systemDensity = LocalDensity.current
+    val appDensity = remember(systemDensity.density, systemDensity.fontScale, appFontScalePercent) {
+        Density(systemDensity.density, systemDensity.fontScale * AppFontScale.multiplier(appFontScalePercent))
+    }
+    val typography = remember(appFontFamily) { typographyFor(appFontFamily) }
     CompositionLocalProvider(
         LocalPhotoWallpaperPath provides wallpaperPath,
         LocalIsDarkTheme provides darkTheme,
         LocalTransitionStyle provides transitionStyle,
+        LocalSystemFontScale provides systemDensity.fontScale,
+        LocalDensity provides appDensity,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = WebShellTypography,
+            typography = typography,
             shapes = WebShellShapes,
             content = content,
         )

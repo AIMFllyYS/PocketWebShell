@@ -3,38 +3,37 @@ package com.webshell.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webshell.app.shell.ShellSessionController
-import com.webshell.core.data.WebAppDao
+import com.webshell.core.data.WebAppLookupRepository
+import com.webshell.core.data.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** MainScaffold 的装配层：主页图标 → 会话控制器（保活登记 + 沉浸式打开）。 */
 @HiltViewModel
 class MainScaffoldViewModel @Inject constructor(
     private val sessionController: ShellSessionController,
-    private val webAppDao: WebAppDao,
+    private val webApps: WebAppLookupRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
+    val browserPreferences = settingsRepository.settings
+        .map { BrowserHostPreferences(it.browserAutoCollapse, it.browserOrbX, it.browserOrbY) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowserHostPreferences())
 
-    var launchedUrl: String? = null
-        private set
-
-    /** 主页点击图标：按实体打开会话（保活登记由控制器完成） */
-    fun launchApp(appId: String, onReady: (String) -> Unit) {
-        viewModelScope.launch {
-            val app = webAppDao.getById(appId) ?: return@launch
-            sessionController.openSession(app)
-            launchedUrl = app.url
-            onReady(app.url)
-        }
+    fun setBrowserOrbPosition(x: Float, y: Float) {
+        viewModelScope.launch { settingsRepository.setBrowserOrbPosition(x, y) }
     }
 
-    /** 冷启动带 url 的外部唤起：若 url 对应某个已创建应用且开了保活，登记会话 */
-    fun registerKeepAliveFor(url: String) {
+    /** Keep the saved identity: the site shell must display this app's configured session. */
+    fun launchApp(appId: String, onReady: (String, String) -> Unit) {
         viewModelScope.launch {
-            val apps = webAppDao.observeAll().first()
-            val match = apps.firstOrNull { it.url == url } ?: return@launch
-            if (match.keepAlive) sessionController.openSession(match)
+            val app = webApps.getById(appId) ?: return@launch
+            onReady(app.url, app.id)
         }
     }
 
@@ -42,3 +41,9 @@ class MainScaffoldViewModel @Inject constructor(
         sessionController.setServiceEnabled(enabled)
     }
 }
+
+data class BrowserHostPreferences(
+    val autoCollapse: Boolean = true,
+    val orbX: Float = -1f,
+    val orbY: Float = -1f,
+)

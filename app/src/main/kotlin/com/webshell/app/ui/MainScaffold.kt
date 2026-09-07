@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -27,11 +28,15 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.webshell.app.catalog.PlaybookScreen
 import com.webshell.app.shell.ShellScreen
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalIsDarkTheme
 import com.webshell.feature.add.AddScreen
 import com.webshell.feature.browser.BrowserScreen
+import com.webshell.feature.browser.rememberBrowserChromeController
+import com.webshell.feature.browser.BrowserChromeEvent
 import com.webshell.feature.home.HomeScreen
 import com.webshell.feature.me.MeScreen
 import dev.chrisbanes.haze.HazeState
@@ -45,18 +50,23 @@ fun MainScaffold(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var openedUrl by rememberSaveable { mutableStateOf(launchUrl) }
+    var openedAppId by rememberSaveable { mutableStateOf<String?>(null) }
+    var playbookOpen by rememberSaveable { mutableStateOf(false) }
+    val browserChrome = rememberBrowserChromeController()
+    val browserPreferences by viewModel.browserPreferences.collectAsStateWithLifecycle()
     // Keep tab drafts/scroll anchors alive while a website temporarily owns the whole screen.
     val stateHolder = rememberSaveableStateHolder()
-    val homeVisible = selectedTab == MainTab.HOME && openedUrl == null
+    val homeVisible = selectedTab == MainTab.HOME && openedUrl == null && !playbookOpen
     SystemBarAppearance(lightIcons = homeVisible || LocalIsDarkTheme.current)
 
-    // Must run before the immersive early-return: external launches need registration too.
-    LaunchedEffect(launchUrl) {
-        launchUrl?.let(viewModel::registerKeepAliveFor)
+    if (playbookOpen) {
+        PlaybookScreen(onBack = { playbookOpen = false })
+        return
     }
     openedUrl?.let { url ->
-        BackHandler { openedUrl = null }
-        ShellScreen(initialUrl = url, immersive = true)
+        val leave = { openedUrl = null; openedAppId = null }
+        BackHandler { leave() }
+        ShellScreen(initialUrl = url, appId = openedAppId, onLeave = leave)
         return
     }
     BackHandler(enabled = selectedTab != MainTab.HOME) { selectedTab = MainTab.HOME }
@@ -74,10 +84,10 @@ fun MainScaffold(
             ) { tab ->
                 // Background and viewport follow this transition branch, not the target tab.
                 // The outgoing desktop therefore keeps both its wallpaper and fixed grid bounds.
-                val bottomClearance = if (tab == MainTab.HOME) {
-                    HomeDockHeight + 20.dp
-                } else {
-                    TabBarHeight + 20.dp
+                val bottomClearance = when (tab) {
+                    MainTab.HOME -> HomeDockHeight + 20.dp
+                    MainTab.BROWSE -> 0.dp // Browser Dock is a sibling overlay, never a viewport reservation.
+                    else -> measuredDockHeight(tab) + 20.dp
                 }
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     if (tab == MainTab.HOME) LauncherBackdrop(Modifier.fillMaxSize())
@@ -87,19 +97,24 @@ fun MainScaffold(
                             end = safeInsets.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
                             top = safeInsets.calculateTopPadding(),
                             bottom = safeInsets.calculateBottomPadding() + bottomClearance,
-                        ),
+                        ).consumeWindowInsets(safeInsets),
                     ) {
                         stateHolder.SaveableStateProvider(tab.name) {
                             when (tab) {
                                 MainTab.HOME -> HomeScreen(
                                     wallpaperBacked = true,
-                                    onLaunch = { appId, _ -> viewModel.launchApp(appId) { openedUrl = it } },
+                                    onLaunch = { appId, _ -> viewModel.launchApp(appId) { url, id -> openedAppId = id; openedUrl = url } },
                                     onAddRequested = { selectedTab = MainTab.ADD },
                                 )
                                 MainTab.ADD -> AddScreen(onCreated = { selectedTab = MainTab.HOME })
-                                MainTab.BROWSE -> BrowserScreen()
+                                MainTab.BROWSE -> BrowserScreen(
+                                    chrome = browserChrome,
+                                    isVisible = selectedTab == MainTab.BROWSE,
+                                    autoCollapse = browserPreferences.autoCollapse,
+                                )
                                 MainTab.ME -> MeScreen(
                                     onKeepAliveServiceChanged = viewModel::setKeepAliveServiceEnabled,
+                                    onOpenPlaybook = { playbookOpen = true },
                                 )
                             }
                         }
@@ -107,7 +122,11 @@ fun MainScaffold(
                 }
             }
         }
-        LauncherDock(
+        if (selectedTab == MainTab.BROWSE) BrowserDockHost(
+            chrome = browserChrome, preferences = browserPreferences, hazeState = hazeState,
+            onSelect = { selectedTab = it; if (it == MainTab.BROWSE) browserChrome.dispatch(BrowserChromeEvent.Reveal) },
+            onAnchorChanged = viewModel::setBrowserOrbPosition,
+        ) else LauncherDock(
             selectedTab = selectedTab,
             onSelect = { selectedTab = it },
             hazeState = hazeState,

@@ -35,4 +35,5 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.core.ktx)
+    testImplementation(libs.junit)
 }

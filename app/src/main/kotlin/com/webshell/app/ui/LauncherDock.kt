@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,17 @@ import dev.chrisbanes.haze.HazeState
 
 internal val HomeDockHeight = 88.dp
 internal val TabBarHeight = 66.dp
+
+@Composable
+internal fun measuredDockHeight(tab: MainTab): androidx.compose.ui.unit.Dp {
+    if (tab == MainTab.HOME) return HomeDockHeight
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val style = MaterialTheme.typography.labelSmall
+    val label = stringResource(R.string.tab_me)
+    val labelHeight = with(density) { measurer.measure(label, style = style).size.height.toDp() }
+    return maxOf(TabBarHeight, labelHeight + 42.dp)
+}
 
 internal enum class MainTab(@StringRes val label: Int, val icon: ImageVector) {
     HOME(R.string.tab_home, Icons.Filled.Home),
@@ -63,16 +76,24 @@ internal fun LauncherDock(
     modifier: Modifier = Modifier,
 ) {
     val desktop = selectedTab == MainTab.HOME
+    val height = measuredDockHeight(selectedTab)
     val shape = RoundedCornerShape(if (desktop) 34.dp else 32.dp)
     Box(
         modifier.widthIn(max = 500.dp).fillMaxWidth().navigationBarsPadding()
             .padding(horizontal = 18.dp, vertical = 10.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .height(if (desktop) HomeDockHeight else TabBarHeight)
-                .glassSurface(hazeState, shape = shape)
-                .selectableGroup().padding(horizontal = 8.dp),
+        DockItems(selectedTab, onSelect, Modifier.fillMaxWidth()
+            .height(height)
+            .glassSurface(hazeState, shape = shape))
+    }
+}
+
+/** Shared production content: catalog and browser restoration never duplicate navigation UI. */
+@Composable
+internal fun DockItems(selectedTab: MainTab, onSelect: (MainTab) -> Unit, modifier: Modifier = Modifier) {
+    val desktop = selectedTab == MainTab.HOME
+    Row(
+            modifier = modifier.selectableGroup().padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -105,7 +126,6 @@ internal fun LauncherDock(
                 }
             }
         }
-    }
 }
 
 @Composable

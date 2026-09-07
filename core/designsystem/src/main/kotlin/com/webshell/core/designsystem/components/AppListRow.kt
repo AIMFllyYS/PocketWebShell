@@ -23,14 +23,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.theme.AppSpacing
 
 /**
  * iOS inset-grouped row with an optional 30dp colored glyph tile.
  * - 单行 ≥56dp、双行 ≥72dp；
- * - 副标题强制 onSurfaceVariant（≥4.5:1 对比度），最多 2 行截断；
+ * - Dynamic Type may expand title/subtitle; touch targets never shrink with the text;
  * - trailing 槽放开关/箭头/文字。
  */
 @Composable
@@ -78,16 +77,12 @@ fun AppListRow(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

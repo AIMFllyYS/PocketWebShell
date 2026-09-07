@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
+import com.webshell.core.designsystem.components.AppCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +22,17 @@ private data class UpdateEntry(
 
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
+    UpdateEntry(
+        version = "0.1.15",
+        date = "2026-09-07",
+        highlights = listOf(
+            "清理旧控件与重复实现：统一表单、图标、选择行、弹窗和面板；添加网页不再显示旧字号滑杆，保留已有站点字号",
+            "设置 → 外观与主题新增字体与字号：MiSans、系统字体、Noto Sans SC，界面字号90%至130%，不改变网页缩放",
+            "浏览器精简为一行菜单、地址、标签；阅读时导航收成玻璃小球，可拖至侧边，点击召回完整导航和地址栏",
+            "Playbook 改由应用层聚合所有模块的真实生产组件，涵盖常态、空态、错误、编辑、菜单和弹窗，演示不读写业务数据",
+            "修正浏览会话原生视图绑定、安全区及旧网页壳重复会话问题；添加输入、图标导入和日志过滤补充状态保护",
+        ),
+    ),
     UpdateEntry(
         version = "0.1.14",
         date = "2026-09-06",
@@ -233,7 +244,7 @@ internal fun UpdateLogPage(onBack: () -> Unit) {
     DetailPage(title = "项目更新日志", onBack = onBack) {
         updateEntries.forEachIndexed { index, entry ->
             if (index > 0) Spacer(Modifier.height(12.dp))
-            Card(modifier = Modifier.fillMaxWidth()) {
+            AppCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(

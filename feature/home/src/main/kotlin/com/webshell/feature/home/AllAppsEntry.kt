@@ -36,6 +36,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -75,7 +76,11 @@ fun AllAppsEntry(
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val iconPx = with(density) { iconSize.toPx() }
-    val labelPx = with(density) { (if (showLabel) 24.dp else 0.dp).toPx() }
+    val labelMeasurer = rememberTextMeasurer()
+    val labelPx = if (showLabel) {
+        labelMeasurer.measure(stringResource(R.string.home_all_apps), style = launcherLabelStyle(), maxLines = 1).size.height +
+            with(density) { 5.dp.toPx() }
+    } else 0f
     val halfW = iconPx / 2f
     val halfH = (iconPx + labelPx) / 2f
     val marginPx = with(density) { 20.dp.toPx() }
@@ -139,14 +144,14 @@ fun AllAppsEntry(
                     ),
                 )
             }
-            .pointerInput(posX, posY, containerWidthPx, containerHeightPx, showLabel) {
+            .pointerInput(posX, posY, containerWidthPx, containerHeightPx, showLabel, iconPx, labelPx) {
                 val dragThresholdPx = ENTRY_DRAG_THRESHOLD.toPx()
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     // 长按超时窗口：提前松手 = 点按；位移超 touchSlop = 取消（交还父级滚动）
                     var isTap = false
                     var isCancelled = false
-                    val longPressTriggered = withTimeoutOrNull(
+                    withTimeoutOrNull(
                         viewConfiguration.longPressTimeoutMillis,
                     ) {
                         var accumulated = Offset.Zero
@@ -167,7 +172,7 @@ fun AllAppsEntry(
                                 return@withTimeoutOrNull
                             }
                         }
-                    } == null
+                    }
 
                     when {
                         isTap -> onOpen()
