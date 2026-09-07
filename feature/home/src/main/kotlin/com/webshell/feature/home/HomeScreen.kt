@@ -150,6 +150,7 @@ private fun HomeScreenContent(
     var allAppsOpen by remember { mutableStateOf(false) }
     var folderOpenFor by remember { mutableStateOf<String?>(null) }
     var confirmDeleteFor by remember { mutableStateOf<HomeCell?>(null) }
+    var confirmDissolveFor by remember { mutableStateOf<HomeCell?>(null) }
     var renameFor by remember { mutableStateOf<HomeCell?>(null) }
     var iconEditFor by remember { mutableStateOf<HomeCell?>(null) }
     // ViewModel 一次性消息（刷新成功/失败等）的轻量 toast 浮层。
@@ -449,7 +450,7 @@ private fun HomeScreenContent(
             onOpen = {
                 if (cell.isFolder) folderOpenFor = cell.app.folderId else onLaunch(cell.app.id, cell.app.url)
             },
-            onDissolve = { viewModel.dissolveFolder(cell.app.folderId.orEmpty()) },
+            onDissolve = { confirmDissolveFor = cell },
             onCopyLink = {
                 clipboardManager.setText(AnnotatedString(cell.app.url))
                 toast = linkCopiedMessage
@@ -502,6 +503,19 @@ private fun HomeScreenContent(
         )
     }
 
+    // 解散二次确认：取消时保留展开的文件夹，确认后一并关闭。
+    confirmDissolveFor?.let { cell ->
+        HomeDissolveDialog(
+            cell = cell,
+            onConfirm = {
+                viewModel.dissolveFolder(cell.app.folderId.orEmpty())
+                confirmDissolveFor = null
+                folderOpenFor = null
+            },
+            onDismiss = { confirmDissolveFor = null },
+        )
+    }
+
     folderOpenFor?.let { folderId ->
         val members = apps.filter { it.folderId == folderId }
         FolderExpandedPage(
@@ -512,8 +526,8 @@ private fun HomeScreenContent(
                 onLaunch(id, url)
             },
             onDissolve = {
-                viewModel.dissolveFolder(folderId)
-                folderOpenFor = null
+                cellsByKey.values.firstOrNull { it.isFolder && it.app.folderId == folderId }
+                    ?.let { confirmDissolveFor = it }
             },
             onDismiss = { folderOpenFor = null },
         )

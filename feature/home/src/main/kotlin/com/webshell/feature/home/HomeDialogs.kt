@@ -130,6 +130,17 @@ internal fun HomeIconEditDialog(
 }
 
 @Composable
+internal fun HomeDissolveDialog(cell: HomeCell, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AppConfirmDialog(
+        title = stringResource(R.string.home_dissolve_folder_title),
+        text = stringResource(R.string.home_dissolve_folder_message, cell.folderMembers.size),
+        confirmText = stringResource(R.string.home_folder_dissolve),
+        dismissText = stringResource(R.string.home_cancel),
+        onConfirm = onConfirm, onDismiss = onDismiss,
+    )
+}
+
+@Composable
 internal fun HomeDeleteDialog(cell: HomeCell, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AppConfirmDialog(
         title = if (cell.isFolder) stringResource(R.string.home_delete_folder_title)
