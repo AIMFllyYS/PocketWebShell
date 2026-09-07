@@ -6,6 +6,8 @@
     <string name="me_sessions_empty">暂无正在保活的会话</string>
     <string name="me_sessions_empty_hint">开启网站的后台保活后，会话会显示在这里。</string>
     <string name="me_session_end">结束</string>
+    <string name="me_sessions_all">全部会话</string>
+    <string name="me_sessions_count">共 %1$d 个会话</string>
     <string name="me_display_section">桌面与显示</string>
     <string name="me_browser_section">浏览与后台</string>
     <string name="me_about_section">关于</string>

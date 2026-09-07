@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.AppSettingsSection
+import com.webshell.core.webengine.KeepAliveRegistry
 
 @Composable
 internal fun MeHome(
@@ -49,26 +50,27 @@ internal fun MeHome(
         }
         item(key = "running-sessions") {
             AppSettingsSection(stringResource(R.string.me_sessions), Modifier.padding(bottom = 24.dp)) {
-                if (state.runningSessions.isEmpty()) {
-                    AppListRow(
-                        title = stringResource(R.string.me_sessions_empty),
-                        subtitle = stringResource(R.string.me_sessions_empty_hint),
-                        leadingIcon = Icons.Filled.PlayCircle,
-                        leadingIconBackground = Color(0xFF34C759),
-                    )
-                } else state.runningSessions.forEachIndexed { index, session ->
-                    AppListRow(
-                        title = session.title,
-                        subtitle = session.url,
-                        leadingIcon = Icons.Filled.PlayCircle,
-                        leadingIconBackground = Color(0xFF34C759),
-                        trailing = {
-                            TextButton(onClick = { onStopSession(session.sessionId) }) {
-                                Text(stringResource(R.string.me_session_end), color = MaterialTheme.colorScheme.error)
-                            }
-                        },
-                    )
-                    if (index < state.runningSessions.lastIndex) AppListDivider()
+                val sessions = state.runningSessions
+                if (sessions.isEmpty()) {
+                    SessionEmptyRow()
+                } else {
+                    // 首页最多展示 3 条；更多时收敛为「全部会话」入口，避免挤占设置首页。
+                    val visible = sessions.take(3)
+                    val overflow = sessions.size - visible.size
+                    visible.forEachIndexed { index, session ->
+                        SessionRow(session = session, onStop = { onStopSession(session.sessionId) })
+                        if (index < visible.lastIndex || overflow > 0) AppListDivider()
+                    }
+                    if (overflow > 0) {
+                        AppListRow(
+                            title = stringResource(R.string.me_sessions_all),
+                            subtitle = stringResource(R.string.me_sessions_count, sessions.size),
+                            leadingIcon = Icons.Filled.PlayCircle,
+                            leadingIconBackground = Color(0xFF34C759),
+                            onClick = { onOpenSection(MeSection.SESSIONS) },
+                            trailing = { SettingsChevron() },
+                        )
+                    }
                 }
             }
         }
@@ -104,6 +106,31 @@ private fun SettingsMenuEntry(icon: ImageVector, title: String, color: Color, on
         leadingIconBackground = color,
         onClick = onClick,
         trailing = { SettingsChevron() },
+    )
+}
+
+@Composable
+internal fun SessionRow(session: KeepAliveRegistry.Entry, onStop: () -> Unit) {
+    AppListRow(
+        title = session.title,
+        subtitle = session.url,
+        leadingIcon = Icons.Filled.PlayCircle,
+        leadingIconBackground = Color(0xFF34C759),
+        trailing = {
+            TextButton(onClick = onStop) {
+                Text(stringResource(R.string.me_session_end), color = MaterialTheme.colorScheme.error)
+            }
+        },
+    )
+}
+
+@Composable
+internal fun SessionEmptyRow() {
+    AppListRow(
+        title = stringResource(R.string.me_sessions_empty),
+        subtitle = stringResource(R.string.me_sessions_empty_hint),
+        leadingIcon = Icons.Filled.PlayCircle,
+        leadingIconBackground = Color(0xFF34C759),
     )
 }
 
