@@ -8,18 +8,22 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - 清理页面层旧控件与重复实现，统一表单、图标、选择行、弹窗、面板和设置分组；应用层 Playbook 聚合各模块的真实生产组件，并使用隔离夹具演示。
 - 设置 → 外观与主题新增 MiSans、系统字体、Noto Sans SC 和 90%–130% 界面字号；字号只影响应用界面，不覆盖网站自身的文字缩放。
-- 浏览器顶部收敛为菜单、地址和标签的一行工具栏；阅读手势可将底部导航收成玻璃 Orb，Orb 支持边缘停靠并可点击召回完整导航。
+- 浏览器顶部收敛为菜单、地址和标签的一行工具栏；进入网页后底部导航直接收成玻璃 Orb（进入网页、切换标签或页内导航时立即收缩，不再依赖滚动检测），Orb 支持边缘停靠并可点击召回完整导航。
 
 ### Fixed
 
+- 恢复添加网址时的站点图标发现：补齐 Coil 3 网络加载组件（`coil-network-okhttp`），抓取的网站图标重新作为应用 Logo 显示，无图标站点仍回退为首字符。
+- 修复深色模式下浏览器菜单按钮（⋯）呈灰色难以辨认的问题，图标改用 `onSurface` 前景色，随主题自动适配。
+- 修复浏览网页时内容区域闪烁：浏览器底部 Dock/Orb 改为静态玻璃材质，不再对 WebView 逐帧实时模糊采样；同时移除阅读手势的 JS 探测注入。
 - 保留已有网站的 `textZoomPercent`，新添加的网站固定从 100% 网页字号开始；修复页面层重构过程中旧网站缩放被应用字体设置覆盖的风险。
 - 修正 WebView 宿主安全区、会话监听和原生视图绑定，确保回调按 `sessionId` 更新对应标签页，并避免重复网页壳造成的状态串扰。
 - 目录回归使用本地化资源查找交互入口，滚动页面的端侧查找只接受实际位于视口内的节点，避免误点被 Dock 覆盖的控件。
 
 ### Testing
 
-- `testDebugUnitTest`、`:feature:home:testDebugUnitTest`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 和 `:app:lintDebug` 通过。
-- `:app:connectedDebugAndroidTest` 在 `webshell-ios-qa-api35`（API 35）上 20/20 通过；浏览器嵌套滚动与 Orb 两侧停靠/恢复用例另行无暂停重复通过 2/2。
+- `testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleDebugAndroidTest` 通过。
+- `:app:connectedDebugAndroidTest` 在 `webshell-ios-qa-api35`（API 35）上 17/17 通过；滚动检测手势及其用例随功能一并移除。
+- 手动冒烟（API 35 模拟器）：添加 github.com 后主屏显示抓取的网站图标；进入网页、页内导航与新建标签页时底部导航立即收成 Orb，点击 Orb 召回完整 Dock；深色模式下浏览器菜单按钮为白色。
 - API 30/31 回退实机/模拟器验收未执行：当前工作环境没有可用的 API 30/31 设备；未将其标记为通过。
 
 ## [0.1.14] - 2026-09-06
