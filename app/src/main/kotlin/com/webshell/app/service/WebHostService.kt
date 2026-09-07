@@ -16,10 +16,8 @@ import com.webshell.app.MainActivity
 import com.webshell.app.R
 
 /**
- * 后台静默前台服务（specialUse 类型）：
- * 持有 WebViewPool 中"保活中"会话的存在感，对抗切后台 ~40s 后的进程冻结
- * —— 这是"切走任务不断线"的核心机制。即便服务被厂商策略杀死，
- * Profile 落盘的 cookie/存储仍保证回来自动恢复登录态（兜底层）。
+ * User-visible foreground service for explicitly enabled site sessions. Android/OEM memory,
+ * power policy and website throttling remain authoritative; this is not permanent execution.
  */
 class WebHostService : Service() {
 
@@ -71,7 +69,7 @@ class WebHostService : Service() {
         )
         return NotificationCompat.Builder(this, KeepAliveRegistry.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_shell)
-            .setContentTitle("玄览 后台运行中")
+            .setContentTitle(getString(R.string.service_title))
             .setContentText(summaryText())
             .setOngoing(true)
             .setContentIntent(contentIntent)
@@ -82,19 +80,19 @@ class WebHostService : Service() {
     private fun summaryText(): String {
         val count = KeepAliveRegistry.entries.size
         return if (count == 0) {
-            "没有正在保活的网页应用"
+            getString(R.string.service_empty)
         } else {
-            "正在保活 $count 个网页应用，任务不会中断"
+            getString(R.string.service_summary, count)
         }
     }
 
     private fun createChannel() {
         val channel = NotificationChannel(
             KeepAliveRegistry.CHANNEL_ID,
-            "后台保活",
+            getString(R.string.service_channel),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "保证网页应用切到后台后任务继续运行"
+            description = getString(R.string.service_description)
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)

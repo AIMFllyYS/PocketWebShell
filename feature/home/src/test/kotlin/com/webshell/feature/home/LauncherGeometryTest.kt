@@ -14,7 +14,7 @@ class LauncherGeometryTest {
     }
 
     @Test
-    fun `every configured row and column fits compact and standard viewports`() {
+    fun `all columns fit and short dense pages explicitly opt into scrolling`() {
         for (width in listOf(320f, 360f, 393f, 430f, 600f, 840f)) {
             for (height in listOf(255f, 320f, 480f, 620f, 780f)) {
                 for (columns in 3..6) {
@@ -26,7 +26,8 @@ class LauncherGeometryTest {
                             val usedHeight = g.topPaddingDp + g.bottomPaddingDp +
                                 g.cellHeightDp * rows + g.rowGapDp * (rows - 1)
                             assertTrue("width=$width columns=$columns", usedWidth <= width + 0.01f)
-                            assertTrue("height=$height rows=$rows", usedHeight <= height + 0.01f)
+                            assertTrue("height=$height rows=$rows", usedHeight <= height + 0.01f || g.requiresVerticalScroll)
+                            if (g.requiresVerticalScroll) assertTrue(g.iconSizeDp >= 24f)
                             assertTrue(g.iconSizeDp > 0f)
                         }
                     }
@@ -59,7 +60,7 @@ class LauncherGeometryTest {
         val geometry = LauncherGeometry.resolve(600f, 255f, 4, 5, 60f, true)
         assertTrue(geometry.bottomPaddingDp >= LauncherGeometry.SEARCH_FOOTER_HEIGHT_DP)
         val finalCellBottom = geometry.topPaddingDp + geometry.cellHeightDp * 5 + geometry.rowGapDp * 4
-        assertTrue(finalCellBottom <= 255f - 52f + 0.01f)
+        assertTrue(finalCellBottom <= 255f - 52f + 0.01f || geometry.requiresVerticalScroll)
     }
 
     @Test
@@ -81,5 +82,26 @@ class LauncherGeometryTest {
         val invalid = LauncherGeometry.resolve(Float.NaN, Float.POSITIVE_INFINITY, 0, 0, 60f, false)
         assertTrue(invalid.iconSizeDp.isFinite())
         assertTrue(invalid.cellHeightDp.isFinite())
+    }
+
+    @Test
+    fun `measured text wins over the linear scale estimate without clipping`() {
+        val measured = LauncherGeometry.resolve(
+            320f, 480f, 4, 5, 60f, true, fontScale = 2.6f,
+            measuredLabelHeightDp = 49f, measuredHeaderHeightDp = 76f, measuredFooterHeightDp = 130f,
+        )
+        assertEquals(54f, measured.cellHeightDp - measured.iconSizeDp, 0.001f)
+        assertTrue(measured.topPaddingDp >= 76f)
+        assertTrue(measured.bottomPaddingDp >= 130f)
+        assertTrue(measured.requiresVerticalScroll)
+        assertTrue(measured.iconSizeDp >= 24f)
+    }
+
+    @Test
+    fun `large type footer stacks before editing without changing geometry`() {
+        assertTrue(stackLauncherEditActions(320f, 1.3f))
+        assertTrue(stackLauncherEditActions(411f, 2.6f))
+        assertTrue(!stackLauncherEditActions(411f, 1f))
+        assertTrue(!stackLauncherEditActions(320f, 1f))
     }
 }

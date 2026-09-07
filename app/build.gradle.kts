@@ -30,8 +30,8 @@ android {
         minSdk = 29
         targetSdk = 36
         // 版本计数已重置，规则见 docs/VERSIONING.md
-        versionCode = 15
-        versionName = "0.1.14"
+        versionCode = 17
+        versionName = "0.1.16"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -106,4 +106,5 @@ dependencies {
     androidTestImplementation(libs.androidx.uiautomator)
     androidTestImplementation(libs.androidx.datastore.preferences)
     androidTestImplementation(libs.junit)
+    testImplementation(libs.junit)
 }

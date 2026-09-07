@@ -2,7 +2,6 @@ package com.webshell.core.webengine
 
 import android.content.Context
 import android.view.MotionEvent
-import android.webkit.CookieManager
 import android.webkit.WebView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 

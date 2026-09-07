@@ -18,13 +18,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class MeUiState(
     val batteryWhitelisted: Boolean = false,
-    val keepAliveServiceEnabled: Boolean = true,
     val runningSessions: List<KeepAliveRegistry.Entry> = emptyList(),
     val capabilities: WebViewCapabilities.Snapshot = WebViewCapabilities.snapshot(),
     val oemHint: String = oemHintFor(Build.MANUFACTURER),
@@ -57,7 +58,45 @@ class MeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeSettings())
 
     private val _uiState = MutableStateFlow(MeUiState())
-    val uiState: StateFlow<MeUiState> = _uiState
+    val uiState: StateFlow<MeUiState> = _uiState.asStateFlow()
+
+    private val _fontSaveState = MutableStateFlow(FontSaveState.Idle)
+    val fontSaveState: StateFlow<FontSaveState> = _fontSaveState.asStateFlow()
+
+    fun resetFontSaveState() { _fontSaveState.value = FontSaveState.Idle }
+
+    fun setAppTypography(fontFamily: String, scalePercent: Int) {
+        if (_fontSaveState.value == FontSaveState.Saving) return
+        _fontSaveState.value = FontSaveState.Saving
+        viewModelScope.launch {
+            try {
+                settingsRepository.setAppTypography(fontFamily, scalePercent)
+                _fontSaveState.value = FontSaveState.Saved
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _fontSaveState.value = FontSaveState.Failed
+            }
+        }
+    }
+
+    fun setBrowserAutoCollapse(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setBrowserAutoCollapse(enabled)
+    }
+
+    internal fun onLayoutAction(action: LayoutSettingAction) {
+        when (action) {
+            is LayoutSettingAction.Columns -> setColumns(action.value)
+            is LayoutSettingAction.Rows -> setRows(action.value)
+            is LayoutSettingAction.ScrollMode -> setHomeScrollMode(action.value)
+            is LayoutSettingAction.AutoArrange -> setAutoArrangeHome(action.value)
+            is LayoutSettingAction.AllAppsEntry -> setAllAppsEntryVisible(action.value)
+            is LayoutSettingAction.IconSize -> setIconSize(action.value)
+            is LayoutSettingAction.IconCorner -> setIconCorner(action.value)
+            is LayoutSettingAction.Labels -> setShowLabels(action.value)
+            is LayoutSettingAction.PageIndicator -> setShowPageIndicator(action.value)
+        }
+    }
 
     fun setColumns(value: Int) = viewModelScope.launch { settingsRepository.setGridColumns(value) }
 
@@ -90,7 +129,6 @@ class MeViewModel @Inject constructor(
     }
 
     fun setKeepAliveServiceEnabled(value: Boolean) {
-        _uiState.value = _uiState.value.copy(keepAliveServiceEnabled = value)
         viewModelScope.launch { settingsRepository.setKeepAliveServiceEnabled(value) }
         AppLog.log("me", "增强保活${if (value) "开启" else "关闭"}")
     }

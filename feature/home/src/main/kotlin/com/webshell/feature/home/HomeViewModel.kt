@@ -6,6 +6,7 @@ import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.data.UserIconRepository
 import com.webshell.core.data.metadata.SiteMetadataFetcher
 import com.webshell.core.model.AppLog
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +29,7 @@ class HomeViewModel @Inject constructor(
     private val dao: WebAppDao,
     private val settingsRepository: SettingsRepository,
     private val fetcher: SiteMetadataFetcher,
+    private val icons: UserIconRepository,
 ) : ViewModel() {
 
     val apps: StateFlow<List<WebAppEntity>> = dao.observeAll()
@@ -45,6 +47,9 @@ class HomeViewModel @Inject constructor(
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
     /** 轻量提示（toast 浮层）：刷新成功/失败等一次性消息。 */
     val messages: SharedFlow<String> = _messages.asSharedFlow()
+
+    /** Route may cancel a dismissed picker; the repository cleans up an incomplete import. */
+    suspend fun importIcon(uri: android.net.Uri): Result<String> = icons.importIcon(uri)
 
     /**
      * 自由摆放落子：把 cell（应用或文件夹）移动到 (toPage, toSlot)；

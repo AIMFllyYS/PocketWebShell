@@ -1,63 +1,31 @@
 package com.webshell.feature.home
 
-import android.content.Context
-import android.graphics.Rect
-import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Bedtime
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FolderOff
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Launch
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,22 +34,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.data.SCROLL_MODE_VERTICAL
-import com.webshell.core.designsystem.components.AppContextMenu
-import com.webshell.core.designsystem.components.AppContextMenuItem
-import java.io.File
 import kotlin.math.roundToInt
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 手机桌面式主页。
@@ -164,16 +128,19 @@ private fun HomeScreenContent(
     }
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = launcherLabelStyle()
+    val labelHeightDp = with(density) {
+        textMeasurer.measure("国Hg", style = labelStyle, maxLines = 1).size.height.toDp().value
+    }
+    val actionLineHeightDp = with(density) {
+        textMeasurer.measure("国Hg", style = MaterialTheme.typography.labelLarge, maxLines = 1).size.height.toDp().value
+    }
 
-    val cellBounds = ui.cellBounds
-    val slotBounds = ui.slotBounds
     var rootOrigin by ui::rootOrigin
     var draggingKey by ui::draggingKey
     var dragPosition by ui::dragPosition
     var dragRegistration by ui::dragRegistration
-    var dragHoverTarget by ui::dragHoverTarget
-    var folderCandidate by ui::folderCandidate
-    var folderArmed by ui::folderArmed
     // iOS 顺序：长按先弹情境菜单；按住并移动超过 16dp 后菜单淡出、图标跟手。
     var menuFor by ui::menuFor
     var menuPressPoint by ui::menuPressPoint
@@ -183,10 +150,13 @@ private fun HomeScreenContent(
     var allAppsOpen by remember { mutableStateOf(false) }
     var folderOpenFor by remember { mutableStateOf<String?>(null) }
     var confirmDeleteFor by remember { mutableStateOf<HomeCell?>(null) }
+    var confirmDissolveFor by remember { mutableStateOf<HomeCell?>(null) }
     var renameFor by remember { mutableStateOf<HomeCell?>(null) }
     var iconEditFor by remember { mutableStateOf<HomeCell?>(null) }
     // ViewModel 一次性消息（刷新成功/失败等）的轻量 toast 浮层。
     var toast by remember { mutableStateOf<String?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+    val linkCopiedMessage = stringResource(R.string.home_link_copied)
     // 编辑（jiggle）模式：双指捏合进入，点选图标做批量整理。
     var editMode by ui::editMode
     val editSelection = ui.editSelection
@@ -239,7 +209,8 @@ private fun HomeScreenContent(
         // Wallpaper is owned by the app root so the dock samples the same single backdrop.
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val geometry = remember(maxWidth, maxHeight, settings.gridColumns, settings.gridRows, settings.iconSizeDp, settings.showLabels, density.fontScale) {
+        val footerHeightDp = launcherFooterHeightDp(maxWidth, cellsByKey.size)
+        val geometry = remember(maxWidth, maxHeight, settings.gridColumns, settings.gridRows, settings.iconSizeDp, settings.showLabels, density.fontScale, labelHeightDp, actionLineHeightDp, footerHeightDp) {
             LauncherGeometry.resolve(
                 widthDp = maxWidth.value,
                 heightDp = maxHeight.value,
@@ -248,6 +219,9 @@ private fun HomeScreenContent(
                 requestedIconSizeDp = settings.iconSizeDp.toFloat(),
                 showLabels = settings.showLabels,
                 fontScale = density.fontScale,
+                measuredLabelHeightDp = labelHeightDp,
+                measuredHeaderHeightDp = maxOf(56f, actionLineHeightDp + 24f),
+                measuredFooterHeightDp = footerHeightDp,
             )
         }
         val iconSize = geometry.iconSizeDp.dp
@@ -281,86 +255,14 @@ private fun HomeScreenContent(
             onDragMoved = onDragMoved,
         )
 
-        // 单个网格槽的渲染（pager 每页 / 上下滚动摊平列表共用）：空槽注册落点区域，
-        // 占用槽渲染 LauncherCell + 单通道手势状态机。
-        val gridCellContent: @Composable (page: Int, slot: Int, cell: HomeCell?, isAddSlot: Boolean) -> Unit =
-            { page, slot, cell, isAddSlot ->
-                val slotKey = "$page:$slot"
-                DisposableEffect(slotKey) {
-                    onDispose { slotBounds.remove(slotKey) }
-                }
-                if (cell == null) {
-                    // 自由摆放的空槽：末页首个空槽渲染“添加”入口，其余纯占位。
-                    // 空槽同样注册区域，是合法的拖拽落点。
-                    val slotModifier = Modifier
-                        .fillMaxWidth()
-                        .height(cellHeight)
-                        .onGloballyPositioned { coords ->
-                            val topLeft = coords.positionInRoot()
-                            slotBounds[slotKey] = Rect(
-                                topLeft.x.toInt(),
-                                topLeft.y.toInt(),
-                                (topLeft.x + coords.size.width).toInt(),
-                                (topLeft.y + coords.size.height).toInt(),
-                            )
-                        }
-                    if (isAddSlot) {
-                        AddCell(
-                            iconSize = iconSize,
-                            showLabel = settings.showLabels,
-                            cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                            modifier = slotModifier.clickable(onClick = onAddRequested),
-                        )
-                    } else {
-                        Spacer(slotModifier)
-                    }
-                } else {
-                DisposableEffect(cell.key) {
-                    onDispose { cellBounds.remove(cell.key) }
-                }
-                val cellInteraction = remember { MutableInteractionSource() }
-                val cellPressed by cellInteraction.collectIsPressedAsState()
-                LauncherCell(
-                    cell = cell,
-                    iconSize = iconSize,
-                    settings = settings,
-                    isSource = draggingKey == cell.key,
-                    isMergeTarget = folderArmed && folderCandidate == cell.key,
-                    isReorderTarget = dragHoverTarget == cell.key && !folderArmed,
-                    jiggleRotation = jiggleRotation,
-                    isEditMode = editMode,
-                    isEditSelected = editSelection[cell.key] == true,
-                    isPressed = cellPressed,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(cellHeight)
-                        .onGloballyPositioned { coords ->
-                            val topLeft = coords.positionInRoot()
-                            val rect = Rect(
-                                topLeft.x.toInt(),
-                                topLeft.y.toInt(),
-                                (topLeft.x + coords.size.width).toInt(),
-                                (topLeft.y + coords.size.height).toInt(),
-                            )
-                            cellBounds[cell.key] = rect
-                            slotBounds[slotKey] = rect
-                        }
-                        // 单通道手势状态机已抽到 HomeGestures.kt（tap/长按菜单/
-                        // 编辑即拖检测，拖拽条件满足后置位 draggingKey 并交接给
-                        // 下方的根级拖拽会话层）。
-                        .homeCellGesture(
-                            state = ui,
-                            cell = cell,
-                            iconSize = iconSize,
-                            interactionSource = cellInteraction,
-                            haptics = haptics,
-                            onLaunch = onLaunch,
-                            onFolderOpen = { folderOpenFor = it },
-                            onDragMoved = onDragMoved,
-                        ),
-                )
-                }
-            }
+        val gridCellContent: @Composable (Int, Int, HomeCell?, Boolean) -> Unit = { page, slot, cell, isAdd ->
+            HomeGridSlot(
+                page = page, slot = slot, cell = cell, isAddSlot = isAdd,
+                ui = ui, settings = settings, iconSize = iconSize, cellHeight = cellHeight,
+                jiggleRotation = jiggleRotation, onAddRequested = onAddRequested,
+                onLaunch = onLaunch, onFolderOpen = { folderOpenFor = it }, onDragMoved = onDragMoved,
+            )
+        }
 
         // 拖拽会话层（根级，对齐 Launcher3 DragController）：包住 pager/列表的
         // 容器承载拖拽会话主循环（实现见 HomeGestures.kt 的 homeDragSession）。
@@ -383,78 +285,22 @@ private fun HomeScreenContent(
                     onDragMoved = onDragMoved,
                 ),
         ) {
-        if (verticalMode) {
-            // 上下滚动模式：所有页摊平成一条纵向列表，空槽保留 null 占位，
-            // 落点时全局下标换算回 (homePage, homeCellIndex)（数据模型不变）。
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(settings.gridColumns),
-                state = lazyGridState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = geometry.horizontalPaddingDp.dp,
-                    top = geometry.topPaddingDp.dp,
-                    end = geometry.horizontalPaddingDp.dp,
-                    bottom = geometry.bottomPaddingDp.dp,
+            HomeGridPages(
+                layout = HomeGridLayout(
+                    pages = pages, flatCells = flatCells, pageCapacity = pageCapacity,
+                    columns = settings.gridColumns, verticalMode = verticalMode,
+                    freePlacement = freePlacement, tempLeftOffset = tempLeftOffset,
+                    addSlotIndex = addSlotIndex, addFlatIndex = addFlatIndex,
                 ),
-                horizontalArrangement = Arrangement.spacedBy(geometry.columnGapDp.dp),
-                verticalArrangement = Arrangement.spacedBy(geometry.rowGapDp.dp),
-                // 拖拽中禁用列表手势（与 pager 模式一致的不变量）
-                userScrollEnabled = draggingKey == null,
-            ) {
-                itemsIndexed(
-                    items = flatCells,
-                    key = { index, cell -> cell?.key ?: "vslot-$index" },
-                ) { index, cell ->
-                    gridCellContent(index / pageCapacity, index % pageCapacity, cell, index == addFlatIndex)
-                }
-            }
-        } else {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = draggingKey == null,
-            ) { page ->
-                // 临时空白屏（拖拽到末屏右缘/首屏左缘触发）：全空槽，可落子。
-                // 左侧临时屏存在时 pager 页 0 为临时屏，数据页 = pager 页 - 1。
-                val dataPage = page - tempLeftOffset
-                val pageCells = pages.getOrNull(dataPage) ?: List(pageCapacity) { null }
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(settings.gridColumns),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = geometry.horizontalPaddingDp.dp,
-                        top = geometry.topPaddingDp.dp,
-                        end = geometry.horizontalPaddingDp.dp,
-                        bottom = geometry.bottomPaddingDp.dp,
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(geometry.columnGapDp.dp),
-                    verticalArrangement = Arrangement.spacedBy(geometry.rowGapDp.dp),
-                    userScrollEnabled = false,
-                ) {
-                    itemsIndexed(
-                        items = pageCells,
-                        key = { slot, cell -> cell?.key ?: "slot-$page-$slot" },
-                    ) { slot, cell ->
-                        gridCellContent(page, slot, cell, dataPage == pages.lastIndex && slot == addSlotIndex)
-                    }
-                    // 自动整理模式：“添加”入口追加在末页最后一个图标之后；
-                    // 自由摆放模式已在首个空槽内渲染（见上方 itemsIndexed）。
-                    if (!freePlacement && dataPage == pages.lastIndex) {
-                        item(key = "__add__") {
-                            AddCell(
-                                iconSize = iconSize,
-                                showLabel = settings.showLabels,
-                                cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(cellHeight)
-                                    .clickable(onClick = onAddRequested),
-                            )
-                        }
-                    }
-                }
-            }
-        }
+                geometry = geometry, pagerState = pagerState, lazyGridState = lazyGridState,
+                isDragging = draggingKey != null, renderSlot = gridCellContent,
+                renderDenseAdd = {
+                    AddCell(
+                        iconSize, settings.showLabels, settings.iconCornerRadiusPercent,
+                        Modifier.fillMaxWidth().height(cellHeight).clickable(onClick = onAddRequested),
+                    )
+                },
+            )
         }
 
         // iOS home alternates the compact Search capsule with page dots while paging/editing.
@@ -473,17 +319,7 @@ private fun HomeScreenContent(
             visible = apps.isEmpty() && draggingKey == null,
             modifier = Modifier.align(Alignment.Center),
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    stringResource(R.string.home_empty_title),
-                    style = launcherLabelStyle().copy(fontSize = MaterialTheme.typography.titleMedium.fontSize),
-                )
-                Text(
-                    stringResource(R.string.home_empty_description),
-                    style = launcherLabelStyle(),
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+            HomeEmptyState()
         }
 
         // 「全部应用」浮动入口：渲染在 Pager/Grid 之外的 overlay，不参与网格测量；
@@ -581,22 +417,13 @@ private fun HomeScreenContent(
         }
     }
 
-    // 空白处长按菜单（锚定按压点）：编辑模式入口 + 「全部应用」入口显隐。
     blankMenuPoint?.let { point ->
-        AppContextMenu(
-            items = listOf(
-                AppContextMenuItem("编辑模式", Icons.Filled.Edit) {
-                    editMode = true
-                },
-                AppContextMenuItem(
-                    if (settings.allAppsEntryVisible) "隐藏全部应用入口" else "显示全部应用入口",
-                    Icons.Filled.Apps,
-                ) {
-                    viewModel.setAllAppsEntryVisible(!settings.allAppsEntryVisible)
-                },
-            ),
-            onDismiss = { blankMenuPoint = null },
+        HomeBlankMenu(
+            entryVisible = settings.allAppsEntryVisible,
             anchorPoint = IntOffset(point.x.roundToInt(), point.y.roundToInt()),
+            onEdit = { editMode = true },
+            onToggleEntry = { viewModel.setAllAppsEntryVisible(!settings.allAppsEntryVisible) },
+            onDismiss = { blankMenuPoint = null },
         )
     }
 
@@ -617,205 +444,76 @@ private fun HomeScreenContent(
     }
 
     menuFor?.let { cell ->
-        val isFolder = cell.isFolder
-        val items = buildList {
-            if (isFolder) {
-                add(
-                    AppContextMenuItem("打开文件夹", Icons.Filled.FolderOpen) {
-                        folderOpenFor = cell.app.folderId
-                    },
-                )
-                add(
-                    AppContextMenuItem("解散文件夹", Icons.Filled.FolderOff) {
-                        viewModel.dissolveFolder(cell.app.folderId.orEmpty())
-                    },
-                )
-            } else {
-                add(
-                    AppContextMenuItem("打开", Icons.Filled.Launch) {
-                        onLaunch(cell.app.id, cell.app.url)
-                    },
-                )
-                add(
-                    AppContextMenuItem("重命名", Icons.Filled.Edit) {
-                        renameFor = cell
-                    },
-                )
-                add(
-                    AppContextMenuItem("更改图标", Icons.Filled.Image) {
-                        iconEditFor = cell
-                    },
-                )
-                add(
-                    AppContextMenuItem("强制刷新", Icons.Filled.Refresh) {
-                        viewModel.refreshMetadata(cell.app.id)
-                    },
-                )
-                add(
-                    AppContextMenuItem(
-                        if (cell.app.desktopMode) "切回手机版" else "桌面版网页",
-                        Icons.Filled.DesktopWindows,
-                    ) {
-                        viewModel.toggleDesktopMode(cell.app.id)
-                    },
-                )
-                add(
-                    AppContextMenuItem(
-                        if (cell.app.keepAlive) "关闭后台保活" else "开启后台保活",
-                        Icons.Filled.Bedtime,
-                    ) {
-                        viewModel.toggleKeepAlive(cell.app.id)
-                    },
-                )
-                if (cell.app.folderId != null) {
-                    add(
-                        AppContextMenuItem("移出文件夹", Icons.Filled.FolderOff) {
-                            viewModel.removeFromFolder(cell.app.id)
-                        },
-                    )
-                }
-            }
-            add(
-                AppContextMenuItem(
-                    if (isFolder) "删除文件夹" else "删除",
-                    Icons.Filled.Delete,
-                    destructive = true,
-                ) {
-                    confirmDeleteFor = cell
-                },
-            )
-        }
-        AppContextMenu(
-            items = items,
-            onDismiss = {
-                menuFor = null
-                menuPressPoint = null
+        HomeCellMenu(
+            cell = cell,
+            anchorPoint = menuPressPoint?.let { IntOffset(it.x.roundToInt(), it.y.roundToInt()) },
+            onOpen = {
+                if (cell.isFolder) folderOpenFor = cell.app.folderId else onLaunch(cell.app.id, cell.app.url)
             },
-            anchorPoint = menuPressPoint?.let {
-                IntOffset(it.x.roundToInt(), it.y.roundToInt())
+            onDissolve = { confirmDissolveFor = cell },
+            onCopyLink = {
+                clipboardManager.setText(AnnotatedString(cell.app.url))
+                toast = linkCopiedMessage
             },
+            onRename = { renameFor = cell },
+            onChangeIcon = { iconEditFor = cell },
+            onRefresh = { viewModel.refreshMetadata(cell.app.id) },
+            onToggleDesktop = { viewModel.toggleDesktopMode(cell.app.id) },
+            onToggleKeepAlive = { viewModel.toggleKeepAlive(cell.app.id) },
+            onRemoveFromFolder = { viewModel.removeFromFolder(cell.app.id) },
+            onDelete = { confirmDeleteFor = cell },
+            onDismiss = { menuFor = null; menuPressPoint = null },
         )
     }
 
     renameFor?.let { cell ->
-        var text by remember(cell.key) { mutableStateOf(cell.app.title) }
-        AlertDialog(
-            onDismissRequest = { renameFor = null },
-            title = { Text("重命名") },
-            text = {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("应用名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.rename(cell.app.id, text)
-                    renameFor = null
-                }) { Text("确定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameFor = null }) { Text("取消") }
-            },
+        HomeRenameDialog(
+            app = cell.app,
+            onConfirm = { title -> viewModel.rename(cell.app.id, title); renameFor = null },
+            onDismiss = { renameFor = null },
         )
     }
 
     iconEditFor?.let { cell ->
-        // 草稿图标地址：预填当前值，留空 = 清除图标回首字母兜底。
-        var draft by remember(cell.key) { mutableStateOf(cell.app.iconUrl.orEmpty()) }
-        val context = LocalContext.current
-        val scope = rememberCoroutineScope()
-        // 上传本地图片作为图标：复制到应用私有 icons 目录后作为 file 路径使用。
-        val pickIcon = rememberLauncherForActivityResult(
-            ActivityResultContracts.PickVisualMedia(),
-        ) { uri ->
-            if (uri != null) {
-                scope.launch {
-                    copyPickedIcon(context, uri)?.let { draft = it }
-                }
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { iconEditFor = null },
-            title = { Text("更改图标") },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    AppIcon(
-                        app = cell.app.copy(iconUrl = draft.ifBlank { null }),
-                        size = 64.dp,
-                        cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = draft,
-                        onValueChange = { draft = it },
-                        label = { Text("图标地址") },
-                        placeholder = { Text("留空则使用首字母图标") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = {
-                        pickIcon.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                        )
-                    }) { Text("上传本地图片") }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.updateIcon(cell.app.id, draft.ifBlank { null })
-                    iconEditFor = null
-                }) { Text("保存") }
-            },
-            dismissButton = {
-                TextButton(onClick = { iconEditFor = null }) { Text("取消") }
-            },
+        HomeIconEditRoute(
+            app = cell.app,
+            cornerRadiusPercent = settings.iconCornerRadiusPercent,
+            onImportIcon = viewModel::importIcon,
+            onConfirm = { url -> viewModel.updateIcon(cell.app.id, url.ifBlank { null }); iconEditFor = null },
+            onDismiss = { iconEditFor = null },
         )
     }
 
     confirmDeleteFor?.let { cell ->
-        if (cell.isFolder) {
-            AlertDialog(
-                onDismissRequest = { confirmDeleteFor = null },
-                title = { Text("删除文件夹？") },
-                text = {
-                    Text("将同时删除文件夹内的 ${cell.folderMembers.size} 个应用图标；网页登录态与本地数据不会删除。")
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.deleteFolder(cell.app.folderId.orEmpty())
-                        confirmDeleteFor = null
-                    }) { Text("删除") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmDeleteFor = null }) { Text("取消") }
-                },
-            )
-        } else {
-            val app = cell.app
-            AlertDialog(
-                onDismissRequest = { confirmDeleteFor = null },
-                title = { Text("删除「${app.title}」？") },
-                text = { Text("网页登录态与本地数据不会删除；删除的只是主页图标。") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val folderId = app.folderId
-                        if (folderId != null && apps.count { it.folderId == folderId } <= 2) {
-                            viewModel.dissolveFolder(folderId)
-                        }
-                        viewModel.delete(app.id)
-                        confirmDeleteFor = null
-                    }) { Text("删除") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { confirmDeleteFor = null }) { Text("取消") }
-                },
-            )
-        }
+        HomeDeleteDialog(
+            cell = cell,
+            onConfirm = {
+                if (cell.isFolder) {
+                    viewModel.deleteFolder(cell.app.folderId.orEmpty())
+                } else {
+                    val folderId = cell.app.folderId
+                    if (folderId != null && apps.count { it.folderId == folderId } <= 2) {
+                        viewModel.dissolveFolder(folderId)
+                    }
+                    viewModel.delete(cell.app.id)
+                }
+                confirmDeleteFor = null
+            },
+            onDismiss = { confirmDeleteFor = null },
+        )
+    }
+
+    // 解散二次确认：取消时保留展开的文件夹，确认后一并关闭。
+    confirmDissolveFor?.let { cell ->
+        HomeDissolveDialog(
+            cell = cell,
+            onConfirm = {
+                viewModel.dissolveFolder(cell.app.folderId.orEmpty())
+                confirmDissolveFor = null
+                folderOpenFor = null
+            },
+            onDismiss = { confirmDissolveFor = null },
+        )
     }
 
     folderOpenFor?.let { folderId ->
@@ -828,24 +526,10 @@ private fun HomeScreenContent(
                 onLaunch(id, url)
             },
             onDissolve = {
-                viewModel.dissolveFolder(folderId)
-                folderOpenFor = null
+                cellsByKey.values.firstOrNull { it.isFolder && it.app.folderId == folderId }
+                    ?.let { confirmDissolveFor = it }
             },
             onDismiss = { folderOpenFor = null },
         )
     }
 }
-
-
-/** 上传的本地图片复制到应用私有 icons 目录（IO 线程），返回绝对路径供图标地址使用。 */
-private suspend fun copyPickedIcon(context: Context, uri: Uri): String? =
-    withContext(Dispatchers.IO) {
-        runCatching {
-            val dir = File(context.filesDir, "icons").apply { mkdirs() }
-            val dest = File(dir, "icon_${System.currentTimeMillis()}.png")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { input.copyTo(it) }
-            }
-            dest.absolutePath
-        }.getOrNull()
-    }

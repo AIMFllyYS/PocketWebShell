@@ -45,6 +45,9 @@ class ShellWebView internal constructor(
 
     var listener: ShellListener? = null
 
+    /** Identity of the current Compose host; an outgoing host cannot detach its successor. */
+    internal var uiHostOwner: Any? = null
+
     /**
      * 持久监听者：随会话存活，不随 Compose 组合摘除（ShellWebViewHost 出组合只清 listener）。
      * 由 ViewModel 层注册/注销，承载按会话归属的状态写回（标题/URL/进度/返回栈）。
@@ -297,6 +300,10 @@ class ShellWebView internal constructor(
             notifyListeners { onPermissionRequested(request) }
         }
 
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            notifyListeners { onPermissionCanceled(request) }
+        }
+
         override fun onGeolocationPermissionsShowPrompt(
             origin: String,
             callback: android.webkit.GeolocationPermissions.Callback,
@@ -416,11 +423,13 @@ class ShellWebView internal constructor(
 
     /** 宿主把系统 insets 写进页面 CSS 变量（WebView 中 env(safe-area-inset-*) 恒为 0） */
     fun updateSafeAreaInsets(top: Int, bottom: Int, left: Int, right: Int, imeHeight: Int = 0) {
-        val js = "document.documentElement.style.setProperty('--ws-safe-top','${top}px');" +
+        val js = "(function(){if(!document.documentElement)return;" +
+            "document.documentElement.style.setProperty('--ws-safe-top','${top}px');" +
             "document.documentElement.style.setProperty('--ws-safe-bottom','${bottom}px');" +
             "document.documentElement.style.setProperty('--ws-safe-left','${left}px');" +
             "document.documentElement.style.setProperty('--ws-safe-right','${right}px');" +
-            "document.documentElement.style.setProperty('--ws-ime-height','${imeHeight}px');"
+            "document.documentElement.style.setProperty('--ws-ime-height','${imeHeight}px');})();"
+        if (lastInsetsJs == js) return
         lastInsetsJs = js
         post { webView.evaluateJavascript(js, null) }
     }
@@ -465,6 +474,11 @@ class ShellWebView internal constructor(
         webView.loadUrl(url)
     }
 
+    /** Already-validated user navigation that must retain a saved site's external-link policy. */
+    fun loadFollowingLinkPolicy(url: String) {
+        if (!routeUrl(url)) webView.loadUrl(url)
+    }
+
     fun goBack(): Boolean = if (webView.canGoBack()) {
         webView.goBack(); true
     } else false
@@ -500,6 +514,8 @@ class ShellWebView internal constructor(
     }
 
     fun release() {
+        listener = null
+        sessionListener = null
         saveSessionState()
         runCatching {
             (parent as? ViewGroup)?.removeView(this)

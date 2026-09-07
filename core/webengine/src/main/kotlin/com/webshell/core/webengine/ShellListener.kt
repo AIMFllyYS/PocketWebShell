@@ -40,6 +40,8 @@ interface ShellListener {
     /** 网页请求摄像头/麦克风等权限，宿主询问用户后调用 grant()/deny() */
     fun onPermissionRequested(request: PermissionRequest) {}
 
+    fun onPermissionCanceled(request: PermissionRequest) {}
+
     /** 网页请求地理定位 */
     fun onGeolocationPrompt(origin: String, callback: (allow: Boolean, retain: Boolean) -> Unit) {}
 

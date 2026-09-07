@@ -2,144 +2,148 @@ package com.webshell.app.shell
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
-import android.os.PowerManager
-import android.provider.Settings
-import com.webshell.core.data.WebAppEntity
+import com.webshell.app.service.WebHostService
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.data.WebAppEntity
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.KeepAliveRegistry
 import com.webshell.core.webengine.LocalWebHost
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.WebViewPool
-import com.webshell.app.service.WebHostService
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.net.URI
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 
 /**
- * 网页应用会话的统一入口：主页点击图标 / 浏览器新建会话都走这里。
- * 负责：会话配置（含 local:// 重写与新列映射）、保活登记、前台服务启停。
+ * Single-site session owner: saved-site config, native operations and optional foreground service.
+ * Browser tabs have their own owner. Neither foreground services nor this pool promise uninterrupted
+ * execution; Android memory, power policy and the website remain authoritative.
  */
 @Singleton
 class ShellSessionController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
 ) {
+    fun configFor(app: WebAppEntity): ShellConfig =
+        requireNotNull(configuredSiteShell(app)) { "Invalid saved-site launch configuration" }
 
-    fun configFor(app: WebAppEntity): ShellConfig {
-        val renderUrl = if (LocalWebHost.isLocalAppUrl(app.url)) {
-            LocalWebHost.toHttpsUrl(app.url)
-        } else {
-            app.url
-        }
-        return ShellConfig(
-            sessionId = app.id,
-            profileId = app.id, // 网页应用壳保持独立 Profile 隔离（站点间互不串号）
-            startUrl = renderUrl,
-            desktopMode = app.desktopMode,
-            algorithmicDark = app.darkMode,
-            textZoomPercent = app.textZoomPercent,
-            thirdPartyCookies = true,
-            pullToRefresh = true,
-            externalLinkPolicy =
-            if (app.externalLinksToBrowser || app.isFavorite) {
-                ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER
-            } else {
-                ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME
-            },
-        )
-    }
-
-    /** 打开一个网页应用会话（主页图标点击）：建会话 + 保活登记 + 前台服务 */
-    suspend fun openSession(app: WebAppEntity) {
-        AppLog.log("session", "打开应用「${app.title}」(${hostOf(app.url)})")
+    /** Resolve/create only; first navigation starts after the host installs its owned listeners. */
+    suspend fun openSession(app: WebAppEntity): ShellConfig {
         val config = configFor(app)
-        val shell = WebViewPool.getOrCreate(context, app.id) { config }
-        if (shell.currentUrl() == null || shell.currentUrl() == "about:blank") {
-            shell.loadWithStateRestore(config.startUrl)
-        }
+        createSession(config)
         if (app.keepAlive && settingsRepository.settings.first().keepAliveServiceEnabled) {
             KeepAliveRegistry.register(app.id, app.title, app.url)
-            ensureServiceRunning()
+            runCatching { ensureServiceRunning() }.onFailure {
+                KeepAliveRegistry.unregister(app.id)
+                AppLog.error("session", "Foreground service unavailable; foreground browsing remains available")
+            }
+        } else {
+            KeepAliveRegistry.unregister(app.id)
+            if (KeepAliveRegistry.entries.isEmpty()) stopService()
         }
+        return config
     }
 
-    /** 沉浸式启动（MainActivity 重新进入并带 url extra） */
-    suspend fun launchImmersive(activityContext: Context, app: WebAppEntity) {
-        openSession(app)
-        activityContext.startActivity(
-            Intent(activityContext, com.webshell.app.MainActivity::class.java).apply {
-                putExtra(com.webshell.app.MainActivity.EXTRA_URL, app.url)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            },
+    fun openDirectSession(url: String): ShellConfig {
+        val validated = requireNotNull(validatedExternalSiteUrl(url)) { "Invalid direct-site URL" }
+        val config = ShellConfig(
+            sessionId = "direct-${UUID.nameUUIDFromBytes(validated.toByteArray(Charsets.UTF_8))}",
+            startUrl = validated,
+            externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
         )
+        createSession(config)
+        return config
     }
 
-    /** 会话被用户关闭/删除 */
+    private fun createSession(config: ShellConfig) {
+        val id = requireNotNull(config.sessionId)
+        WebViewPool.activeSessionId = id
+        WebViewPool.getOrCreate(context, id) { config }
+    }
+
+    fun ensureLoaded(config: ShellConfig): Boolean {
+        val shell = config.sessionId?.let(WebViewPool::get) ?: return false
+        if (shell.currentUrl().isNullOrBlank() || shell.currentUrl() == "about:blank") {
+            shell.loadWithStateRestore(config.startUrl)
+        }
+        return shell.canGoBack()
+    }
+
+    fun canGoBack(sessionId: String): Boolean = WebViewPool.get(sessionId)?.canGoBack() == true
+    fun goBack(sessionId: String): Boolean = WebViewPool.get(sessionId)?.goBack() == true
+    fun reload(sessionId: String) { WebViewPool.get(sessionId)?.reload() }
+
+    /** target=_blank is validated before reusing the same site session/link policy. */
+    fun openWindow(config: ShellConfig, url: String) {
+        val validated = validatedSiteNavigation(url, config) ?: return
+        config.sessionId?.let { WebViewPool.get(it)?.loadFollowingLinkPolicy(validated) }
+    }
+
     fun closeSession(sessionId: String) {
-        AppLog.log("session", "关闭会话 $sessionId")
         KeepAliveRegistry.unregister(sessionId)
         WebViewPool.suspendSession(sessionId)
         if (KeepAliveRegistry.entries.isEmpty()) stopService()
     }
 
     fun ensureServiceRunning() {
-        AppLog.log("session", "启动前台保活服务")
-        val intent = Intent(context, WebHostService::class.java)
-            .setAction(KeepAliveRegistry.ACTION_START)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
+        val intent = Intent(context, WebHostService::class.java).setAction(KeepAliveRegistry.ACTION_START)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+        else context.startService(intent)
     }
 
     fun stopService() {
-        AppLog.log("session", "停止前台保活服务")
-        context.startService(
-            Intent(context, WebHostService::class.java)
-                .setAction(KeepAliveRegistry.ACTION_STOP),
-        )
+        // Do not start a background service just to ask it to stop.
+        context.stopService(Intent(context, WebHostService::class.java))
     }
 
-    /** 全局开关只控制前台服务；会话实例仍保留，重新开启时可以继续接管。 */
     fun setServiceEnabled(enabled: Boolean) {
-        if (enabled) {
-            if (KeepAliveRegistry.entries.isNotEmpty()) ensureServiceRunning()
-        } else {
-            stopService()
-        }
+        if (enabled && KeepAliveRegistry.entries.isNotEmpty()) runCatching { ensureServiceRunning() }
+            .onFailure { AppLog.error("session", "Foreground service start rejected by platform") }
+        else if (!enabled) stopService()
     }
+}
 
-    // -------------------------------------------------- 电池白名单（可靠性向导）
+/** Pure launch mapping, including the legacy stored webpage zoom (independent of app font scale). */
+internal fun configuredSiteShell(app: WebAppEntity): ShellConfig? {
+    val uri = runCatching { URI(app.url.trim()) }.getOrNull() ?: return null
+    val renderUrl = if (uri.scheme == LocalWebHost.LOCAL_SCHEME) {
+        if (uri.host != app.id || uri.userInfo != null || uri.port != -1 || !safeLocalPath(uri.path)) return null
+        LocalWebHost.toHttpsUrl(uri.toASCIIString())
+    } else validatedExternalSiteUrl(app.url) ?: return null
+    return ShellConfig(
+        sessionId = app.id, profileId = app.id, startUrl = renderUrl,
+        desktopMode = app.desktopMode, algorithmicDark = app.darkMode,
+        textZoomPercent = app.textZoomPercent, thirdPartyCookies = true, pullToRefresh = true,
+        externalLinkPolicy = if (app.externalLinksToBrowser || app.isFavorite) {
+            ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER
+        } else ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
+    )
+}
 
-    fun isIgnoringBatteryOptimizations(): Boolean {
-        val pm = context.getSystemService(PowerManager::class.java)
-        return pm.isIgnoringBatteryOptimizations(context.packageName)
-    }
+/** No file/content/javascript/data/intent schemes, credentials, control characters or private import URLs. */
+internal fun validatedExternalSiteUrl(raw: String): String? {
+    val value = raw.trim()
+    if (value.isEmpty() || value.any { it.isISOControl() || it.isWhitespace() }) return null
+    val uri = runCatching { URI(value) }.getOrNull() ?: return null
+    if (uri.scheme?.lowercase() !in setOf("http", "https") || uri.host.isNullOrBlank() || uri.userInfo != null ||
+        uri.port !in -1..65535) return null
+    if (uri.host.equals(LocalWebHost.HOST, ignoreCase = true) && uri.path.orEmpty().startsWith(LocalWebHost.LOCAL_PREFIX)) return null
+    return uri.toASCIIString()
+}
 
-    /** 系统白名单对话框（非 Play 分发场景合法使用） */
-    fun requestBatteryWhitelist(activityContext: Context) {
-        val pm = activityContext.getSystemService(PowerManager::class.java)
-        if (pm.isIgnoringBatteryOptimizations(activityContext.packageName)) return
-        runCatching {
-            activityContext.startActivity(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                    .setData(Uri.parse("package:${activityContext.packageName}"))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
-    }
+private fun safeLocalPath(path: String?): Boolean =
+    !path.isNullOrBlank() && path.startsWith('/') && '\\' !in path && path.none { it.isISOControl() } &&
+        path.split('/').none { it == "." || it == ".." }
 
-    fun batteryOptimizationSettingsIntent(): Intent =
-        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-    /** 日志只落 host（隐私纪律），解析失败截断到 64 字符内兜底 */
-    private fun hostOf(url: String): String =
-        runCatching { Uri.parse(url).host?.takeIf { it.isNotBlank() } }.getOrNull()
-            ?: url.take(64)
+private fun validatedSiteNavigation(raw: String, config: ShellConfig): String? {
+    validatedExternalSiteUrl(raw)?.let { return it }
+    val uri = runCatching { URI(raw) }.getOrNull() ?: return null
+    val ownPrefix = "${LocalWebHost.LOCAL_PREFIX}${config.sessionId}/"
+    return if (config.profileId == config.sessionId && config.profileId != null && uri.scheme == "https" &&
+        uri.host == LocalWebHost.HOST && uri.userInfo == null && uri.path.startsWith(ownPrefix) && safeLocalPath(uri.path)
+    ) uri.toASCIIString() else null
 }

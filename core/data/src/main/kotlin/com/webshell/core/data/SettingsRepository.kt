@@ -6,12 +6,16 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.webshell.core.model.AppFontFamily
+import com.webshell.core.model.AppFontScale
 
 private val Context.settingsStore by preferencesDataStore(name = "webshell_settings")
 
@@ -43,6 +47,12 @@ data class HomeSettings(
      */
     val allAppsEntryPosX: Float = -1f,
     val allAppsEntryPosY: Float = -1f,
+    val appFontFamily: String = AppFontFamily.MISANS,
+    val appFontScalePercent: Int = AppFontScale.DEFAULT,
+    val browserAutoCollapse: Boolean = true,
+    /** User-selected normalized center; -1 means the safe bottom-right default. */
+    val browserOrbX: Float = -1f,
+    val browserOrbY: Float = -1f,
 )
 
 /** 主题模式取值，见 docs/DESIGN.md */
@@ -82,9 +92,15 @@ class SettingsRepository @Inject constructor(
         val ALL_APPS_ENTRY_VISIBLE = booleanPreferencesKey("all_apps_entry_visible")
         val ALL_APPS_ENTRY_X = floatPreferencesKey("all_apps_entry_x")
         val ALL_APPS_ENTRY_Y = floatPreferencesKey("all_apps_entry_y")
+        val APP_FONT_FAMILY = stringPreferencesKey("app_font_family")
+        val APP_FONT_SCALE = intPreferencesKey("app_font_scale_percent")
+        val BROWSER_AUTO_COLLAPSE = booleanPreferencesKey("browser_auto_collapse")
+        val BROWSER_ORB_X = floatPreferencesKey("browser_orb_x")
+        val BROWSER_ORB_Y = floatPreferencesKey("browser_orb_y")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
+        val (fontFamily, fontScale) = readAppTypography(prefs)
         HomeSettings(
             gridColumns = prefs[Keys.GRID_COLUMNS] ?: 4,
             gridRows = prefs[Keys.GRID_ROWS] ?: 5,
@@ -102,6 +118,11 @@ class SettingsRepository @Inject constructor(
             allAppsEntryVisible = prefs[Keys.ALL_APPS_ENTRY_VISIBLE] ?: false,
             allAppsEntryPosX = prefs[Keys.ALL_APPS_ENTRY_X] ?: -1f,
             allAppsEntryPosY = prefs[Keys.ALL_APPS_ENTRY_Y] ?: -1f,
+            appFontFamily = fontFamily,
+            appFontScalePercent = fontScale,
+            browserAutoCollapse = prefs[Keys.BROWSER_AUTO_COLLAPSE] ?: true,
+            browserOrbX = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_X]),
+            browserOrbY = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_Y]),
         )
     }
 
@@ -159,4 +180,37 @@ class SettingsRepository @Inject constructor(
         context.settingsStore.edit {
             if (value == null) it.remove(Keys.PHOTO_WALLPAPER) else it[Keys.PHOTO_WALLPAPER] = value
         }
+
+    /** One atomic edit prevents a temporary mixed font/scale appearance during apply. */
+    suspend fun setAppTypography(fontFamily: String, scalePercent: Int) {
+        context.settingsStore.edit {
+            writeAppTypography(it, fontFamily, scalePercent)
+        }
+    }
+
+    suspend fun setBrowserAutoCollapse(enabled: Boolean) {
+        context.settingsStore.edit { it[Keys.BROWSER_AUTO_COLLAPSE] = enabled }
+    }
+
+    suspend fun setBrowserOrbPosition(x: Float, y: Float) {
+        context.settingsStore.edit {
+            it[Keys.BROWSER_ORB_X] = normalizedOrbCoordinate(x)
+            it[Keys.BROWSER_ORB_Y] = normalizedOrbCoordinate(y)
+        }
+    }
+
+    internal companion object {
+        /** Shared by persisted read/write paths and round-trip tests; key spelling stays in one place. */
+        fun readAppTypography(prefs: Preferences): Pair<String, Int> =
+            AppFontFamily.normalize(prefs[Keys.APP_FONT_FAMILY]) to
+                AppFontScale.normalize(prefs[Keys.APP_FONT_SCALE])
+
+        fun writeAppTypography(prefs: MutablePreferences, fontFamily: String, scalePercent: Int) {
+            prefs[Keys.APP_FONT_FAMILY] = AppFontFamily.normalize(fontFamily)
+            prefs[Keys.APP_FONT_SCALE] = AppFontScale.normalize(scalePercent)
+        }
+    }
 }
+
+internal fun normalizedOrbCoordinate(value: Float?): Float =
+    value?.takeIf { it.isFinite() && it >= 0f }?.coerceIn(0f, 1f) ?: -1f

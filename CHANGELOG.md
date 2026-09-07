@@ -2,6 +2,44 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.16] - 2026-09-07
+
+### Added
+
+- 解散文件夹二次确认：主页长按菜单与文件夹展开页的「解散文件夹」均先弹出确认对话框（复用 `AppConfirmDialog`），确认后才解散；文件夹成员移回主屏幕，应用本身不会被删除。
+- 长按应用 Logo 的情境菜单新增「复制应用链接」，一键把站点 URL 写入剪贴板并弹出底部浮层提示。
+- 设置页「后台会话」收敛为最多展示前 3 条；超过 3 条时提供「全部会话」入口，进入独立页面统一管理全部保活会话（含逐条结束）。
+
+### Testing
+
+- `testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleDebugAndroidTest` 通过。
+- `:app:connectedDebugAndroidTest` 在 `webshell-ios-qa-api35`（API 35）上全部通过。
+- 手动冒烟（API 35 模拟器）：长按图标菜单出现「复制应用链接」并复制成功；解散文件夹弹确认弹窗、取消不生效、确认才解散；后台会话超过 3 条时出现「全部会话」入口并可逐条结束。
+
+## [0.1.15] - 2026-09-07
+
+### Changed
+
+- 清理页面层旧控件与重复实现，统一表单、图标、选择行、弹窗、面板和设置分组；应用层 Playbook 聚合各模块的真实生产组件，并使用隔离夹具演示。
+- 设置 → 外观与主题新增 MiSans、系统字体、Noto Sans SC 和 90%–130% 界面字号；字号只影响应用界面，不覆盖网站自身的文字缩放。
+- 浏览器顶部收敛为菜单、地址和标签的一行工具栏；进入网页后底部导航直接收成玻璃 Orb（进入网页、切换标签或页内导航时立即收缩，不再依赖滚动检测），Orb 支持边缘停靠并可点击召回完整导航。
+
+### Fixed
+
+- 恢复添加网址时的站点图标发现：补齐 Coil 3 网络加载组件（`coil-network-okhttp`），抓取的网站图标重新作为应用 Logo 显示，无图标站点仍回退为首字符。
+- 修复深色模式下浏览器菜单按钮（⋯）呈灰色难以辨认的问题，图标改用 `onSurface` 前景色，随主题自动适配。
+- 修复浏览网页时内容区域闪烁：浏览器底部 Dock/Orb 改为静态玻璃材质，不再对 WebView 逐帧实时模糊采样；同时移除阅读手势的 JS 探测注入。
+- 保留已有网站的 `textZoomPercent`，新添加的网站固定从 100% 网页字号开始；修复页面层重构过程中旧网站缩放被应用字体设置覆盖的风险。
+- 修正 WebView 宿主安全区、会话监听和原生视图绑定，确保回调按 `sessionId` 更新对应标签页，并避免重复网页壳造成的状态串扰。
+- 目录回归使用本地化资源查找交互入口，滚动页面的端侧查找只接受实际位于视口内的节点，避免误点被 Dock 覆盖的控件。
+
+### Testing
+
+- `testDebugUnitTest`、`:app:assembleDebug` 与 `:app:assembleDebugAndroidTest` 通过。
+- `:app:connectedDebugAndroidTest` 在 `webshell-ios-qa-api35`（API 35）上 17/17 通过；滚动检测手势及其用例随功能一并移除。
+- 手动冒烟（API 35 模拟器）：添加 github.com 后主屏显示抓取的网站图标；进入网页、页内导航与新建标签页时底部导航立即收成 Orb，点击 Orb 召回完整 Dock；深色模式下浏览器菜单按钮为白色。
+- API 30/31 回退实机/模拟器验收未执行：当前工作环境没有可用的 API 30/31 设备；未将其标记为通过。
+
 ## [0.1.14] - 2026-09-06
 
 ### Changed

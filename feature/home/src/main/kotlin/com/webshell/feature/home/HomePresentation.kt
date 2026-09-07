@@ -15,24 +15,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,9 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -58,7 +45,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -69,11 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
 import com.webshell.core.data.HomeSettings
-import com.webshell.core.data.WebAppEntity
 import com.webshell.core.designsystem.components.staticGlassSurface
 
 /** The app root draws one wallpaper. Home only consumes its legibility contract. */
@@ -128,13 +110,13 @@ internal fun HomeSearchPill(
     ) {
         Row(
             modifier = Modifier
-                .height(30.dp)
+                .heightIn(min = 30.dp)
                 .staticGlassSurface(
                     shape = CircleShape,
                     tint = if (wallpaper) Color.Black else MaterialTheme.colorScheme.surfaceContainerHigh,
                     opacity = if (wallpaper) 0.20f else 0.88f,
                 )
-                .padding(horizontal = 13.dp)
+                .padding(horizontal = 13.dp, vertical = 6.dp)
                 .then(if (showPages) Modifier.semantics { contentDescription = description } else Modifier),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -155,133 +137,6 @@ internal fun HomeSearchPill(
             } else {
                 Icon(Icons.Filled.Search, contentDescription = null, tint = contentColor, modifier = Modifier.size(13.dp))
                 Text(stringResource(R.string.home_search), style = MaterialTheme.typography.labelSmall, color = contentColor)
-            }
-        }
-    }
-}
-
-/** iOS folder: title outside the glass sheet, nine fixed cells per page, no unbounded column. */
-@Composable
-internal fun FolderExpandedPage(
-    members: List<WebAppEntity>,
-    cornerRadiusPercent: Int,
-    onLaunch: (String, String) -> Unit,
-    onDissolve: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val folderPages = remember(members) { members.chunked(9).ifEmpty { listOf(emptyList()) } }
-    val pagerState = rememberPagerState(pageCount = { folderPages.size })
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        LaunchedEffect(window) { window?.setDimAmount(0f) }
-        Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)).clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-        ) {
-            // Scrim covers system bars; only interactive folder content consumes safe insets.
-            BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
-                val sheetHeight = (maxHeight * 0.58f).coerceAtMost(368.dp)
-                val memberSize = ((maxWidth - 48.dp - 48.dp) / 3).coerceAtMost(60.dp).coerceAtLeast(24.dp)
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 24.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.home_folder),
-                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Normal),
-                        color = Color.White,
-                        modifier = Modifier.padding(bottom = 24.dp),
-                    )
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.widthIn(max = 380.dp).fillMaxWidth()
-                            .staticGlassSurface(shape = RoundedCornerShape(36.dp), opacity = 0.88f)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                            ) { /* Keep taps on the sheet out of the dismiss target. */ }
-                            .padding(top = 18.dp, bottom = 12.dp),
-                    ) {
-                        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth().height(sheetHeight)) { page ->
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalArrangement = Arrangement.spacedBy(18.dp),
-                            ) {
-                                items(folderPages[page], key = { it.id }) { member ->
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.fillMaxWidth().height(memberSize + 28.dp)
-                                            .clickable { onLaunch(member.id, member.url) },
-                                    ) {
-                                        AppIcon(member, memberSize, cornerRadiusPercent)
-                                        Text(
-                                            member.title,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                            textAlign = TextAlign.Center,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if (folderPages.size > 1) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-                                repeat(folderPages.size) { index ->
-                                    Box(Modifier.size(6.dp).background(
-                                        MaterialTheme.colorScheme.onSurface.copy(alpha = if (pagerState.currentPage == index) 0.9f else 0.2f),
-                                        CircleShape,
-                                    ))
-                                }
-                            }
-                        }
-                    }
-                    TextButton(onClick = onDissolve, modifier = Modifier.padding(top = 16.dp)) {
-                        Text(stringResource(R.string.home_folder_dissolve), color = Color.White.copy(alpha = 0.9f))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun EditModeOverlay(
-    selectedCount: Int,
-    totalCount: Int,
-    onSelectAll: () -> Unit,
-    onClearSelection: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
-            .staticGlassSurface(shape = RoundedCornerShape(26.dp), opacity = 0.88f)
-            .padding(horizontal = 16.dp),
-    ) {
-        Text(
-            stringResource(R.string.home_selection_count, selectedCount, totalCount),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Row {
-            TextButton(onClick = onSelectAll) {
-                Text(stringResource(if (selectedCount == totalCount) R.string.home_deselect_all else R.string.home_select_all))
-            }
-            TextButton(onClick = onClearSelection, enabled = selectedCount > 0) {
-                Text(stringResource(R.string.home_clear))
             }
         }
     }
@@ -388,5 +243,25 @@ internal fun AddCell(
         if (showLabel) {
             Text(stringResource(R.string.home_add), style = launcherLabelStyle(), modifier = Modifier.padding(top = 5.dp))
         }
+    }
+}
+
+@Composable
+internal fun HomeEmptyState(modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.padding(horizontal = 24.dp),
+    ) {
+        Text(
+            stringResource(R.string.home_empty_title),
+            style = launcherLabelStyle().copy(
+                fontSize = MaterialTheme.typography.titleMedium.fontSize,
+                lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
+            ),
+        )
+        Text(
+            stringResource(R.string.home_empty_description), style = launcherLabelStyle(),
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
 }

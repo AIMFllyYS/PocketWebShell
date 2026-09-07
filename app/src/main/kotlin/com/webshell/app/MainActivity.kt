@@ -29,6 +29,8 @@ class MainActivity : ComponentActivity() {
                 themeMode = theme.mode,
                 photoWallpaperPath = theme.wallpaperPath,
                 transitionStyle = theme.transitionStyle,
+                appFontFamily = theme.appFontFamily,
+                appFontScalePercent = theme.appFontScalePercent,
             ) {
                 MainScaffold(launchUrl = launchUrl)
             }
