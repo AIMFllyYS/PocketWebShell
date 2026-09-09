@@ -27,6 +27,10 @@ data class WebAppEntity(
     val externalLinksToBrowser: Boolean = false,
     /** 页面文本缩放百分比（80–130，100 = 不缩放） */
     val textZoomPercent: Int = 100,
+    /** 文件夹名（可空）：挂在每个成员行上，与隐式分组模型一致；重命名 = 更新全部成员行。 */
+    val folderName: String? = null,
+    /** 文件夹内序号（可空）：展开文件夹中的成员顺序；null 视为排最后（回落 createdAt）。 */
+    val folderCellIndex: Int? = null,
 )
 
 /** 自由摆放模式下的槽位分配：与 feature/home 的稀疏分页规则保持一致。 */
