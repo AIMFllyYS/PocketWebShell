@@ -44,7 +44,7 @@ class IosPresentationInstrumentedTest {
     @Before
     fun setUp(): Unit = runBlocking {
         database = Room.databaseBuilder(context, WebShellDatabase::class.java, WebShellDatabase.NAME)
-            .addMigrations(WebShellDatabase.MIGRATION_2_3).build()
+            .addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
         originalApps = database.webAppDao().observeAll().first()
         originalSettings = settings.settings.first()
         originalApps.forEach { database.webAppDao().deleteById(it.id) }
