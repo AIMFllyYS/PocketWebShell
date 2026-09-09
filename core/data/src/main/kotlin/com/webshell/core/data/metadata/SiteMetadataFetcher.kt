@@ -9,6 +9,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URI
+import java.net.InetAddress
 
 /** 抓取到的站点元数据 */
 data class SiteMetadata(
@@ -26,11 +27,13 @@ data class SiteMetadata(
 class SiteMetadataFetcher @javax.inject.Inject constructor(
     private val client: OkHttpClient,
 ) {
+    private val noRedirectClient: OkHttpClient by lazy {
+        client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+    }
 
     suspend fun fetch(url: String): Result<SiteMetadata> = withContext(Dispatchers.IO) {
         runCatching {
-            val doc = getDocument(url)
-            val finalUrl = doc.location() ?: url
+            val (doc, finalUrl) = getDocument(url)
             val title = doc.title().trim()
                 .ifBlank { doc.selectFirst("meta[property=og:title]")?.attr("content")?.trim().orEmpty() }
                 .ifBlank { hostLabel(finalUrl) }
@@ -46,12 +49,27 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
         }
     }
 
-    private fun getDocument(url: String): Document {
-        val response = client.newCall(request(url)).execute()
-        response.use { resp ->
-            check(resp.isSuccessful) { "HTTP ${resp.code}" }
-            val body = checkNotNull(resp.body) { "Empty response body" }
-            return Jsoup.parse(body.byteStream(), null, url)
+    private fun getDocument(url: String): Pair<Document, String> {
+        var current = validatePublicHttpUrl(url)
+        var redirects = 0
+        while (true) {
+            val response = noRedirectClient.newCall(request(current)).execute()
+            response.use { resp ->
+                if (resp.isRedirect) {
+                    check(redirects++ < MAX_REDIRECTS) { "Too many redirects" }
+                    val location = resp.header("Location") ?: error("Redirect without location")
+                    current = validatePublicHttpUrl(URI(current).resolve(location).toString())
+                    return@use
+                }
+                check(resp.isSuccessful) { "HTTP ${resp.code}" }
+                val type = resp.header("Content-Type").orEmpty().lowercase()
+                check(type.isBlank() || type.contains("text/html") || type.contains("application/xhtml+xml")) {
+                    "Non-HTML response"
+                }
+                val body = checkNotNull(resp.body) { "Empty response body" }
+                val bytes = readBounded(body.byteStream(), MAX_HTML_BYTES)
+                return Jsoup.parse(bytes.inputStream(), null, current) to current
+            }
         }
     }
 
@@ -86,7 +104,8 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
     /** 仅接受 http(s) 图标地址；data:/blob: 等伪 URL 一律视为无图标 */
     private fun sanitizeIconUrl(url: String): String? =
         url.takeIf {
-            it.startsWith("http://") || it.startsWith("https://")
+            (it.startsWith("http://") || it.startsWith("https://")) &&
+                runCatching { validatePublicHttpUrl(it) }.isSuccess
         }
 
     /** rel 关键字匹配（rel 属性是多值空格分隔列表，如 "shortcut icon"） */
@@ -100,11 +119,14 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
 
     /** 拉取 web manifest 并把 icons[] 转为 map 列表；任何失败都安静降级为 null */
     private fun manifestIconCandidates(manifestUrl: String): List<Map<String, String>>? = runCatching {
-        val response = client.newCall(request(manifestUrl)).execute()
+        val response = noRedirectClient.newCall(request(validatePublicHttpUrl(manifestUrl))).execute()
         response.use { resp ->
             if (!resp.isSuccessful) return null
-            val body = resp.body ?: return null
-            val icons = JSONObject(body.string()).optJSONArray("icons") ?: return null
+            val type = resp.header("Content-Type").orEmpty().lowercase()
+            if (type.isNotBlank() && !type.contains("json")) return null
+            val body = resp.body
+            val icons = JSONObject(String(readBounded(body.byteStream(), MAX_MANIFEST_BYTES), Charsets.UTF_8))
+                .optJSONArray("icons") ?: return null
             iconsToCandidates(icons)
         }
     }.getOrNull()
@@ -160,9 +182,43 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
         spec
     }
 
+    /** Public for deterministic unit tests and for callers that preflight icon URLs. */
+    fun validatePublicHttpUrl(raw: String): String {
+        val value = raw.trim()
+        val uri = URI(value)
+        check(uri.scheme?.lowercase() in setOf("http", "https")) { "Unsupported URL scheme" }
+        check(uri.host.isNullOrBlank().not() && uri.userInfo == null && uri.port in -1..65535) { "Invalid URL" }
+        check(!value.any { it.isISOControl() || it.isWhitespace() }) { "Invalid URL characters" }
+        val addresses = runCatching { InetAddress.getAllByName(uri.host) }.getOrElse { emptyArray() }
+        check(addresses.isNotEmpty()) { "Unresolvable host" }
+        check(addresses.none { it.isAnyLocalAddress || it.isLoopbackAddress || it.isLinkLocalAddress || it.isSiteLocalAddress || it.isMulticastAddress }) {
+            "Private address blocked"
+        }
+        return uri.toASCIIString()
+    }
+
+    private fun readBounded(input: java.io.InputStream, maxBytes: Int): ByteArray {
+        input.use { stream ->
+            val out = java.io.ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+            val buffer = ByteArray(16 * 1024)
+            var total = 0
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                total += read
+                check(total <= maxBytes) { "Response body too large" }
+                out.write(buffer, 0, read)
+            }
+            return out.toByteArray()
+        }
+    }
+
     private companion object {
         const val DEFAULT_FAVICON_PATH = "/favicon.ico"
         const val MIN_ICON_SIDE = 129
         const val PREFERRED_SIDE = 512
+        const val MAX_HTML_BYTES = 2 * 1024 * 1024
+        const val MAX_MANIFEST_BYTES = 512 * 1024
+        const val MAX_REDIRECTS = 5
     }
 }

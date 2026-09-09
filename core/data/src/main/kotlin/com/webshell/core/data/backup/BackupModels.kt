@@ -28,7 +28,7 @@ data class BackupApp(
     val folderKey: String? = null,
     /** 文件夹内相对顺序。 */
     val folderCellIndex: Int? = null,
-    /** 导出时的原始应用 id：profiles/ 与 localapps/ 归档条目的映射键，仅导出器写入。 */
+    /** 原始应用映射键（localapps/ 与旧版 profiles/ 归档仍使用；共享 Profile 不新增此目录）。 */
     val sourceId: String? = null,
 )
 
@@ -54,7 +54,7 @@ data class BackupManifest(
     val apps: List<BackupApp> = emptyList(),
     /** 仅 FULL：设置快照（字符串编码的白名单子集）。 */
     val settings: Map<String, String>? = null,
-    /** FULL：压缩包内是否含 profiles/ 运行数据。 */
+    /** FULL：旧版兼容包是否含 profiles/ 运行数据。共享 Profile 运行数据另行迁移。 */
     val includesRuntimeData: Boolean = false,
     /** 压缩包内是否含 localapps/ 本地网页文件。 */
     val includesLocalApps: Boolean = false,

@@ -71,4 +71,14 @@ class SiteMetadataFetcherIconRankingTest {
         assertEquals(0, fetcher.parseIconSize(""))
         assertEquals(180, fetcher.parseIconSize("180x180"))
     }
+
+    @Test(expected = IllegalStateException::class)
+    fun `rejects non-http metadata urls before making a request`() {
+        fetcher.validatePublicHttpUrl("file:///etc/passwd")
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `rejects loopback metadata targets`() {
+        fetcher.validatePublicHttpUrl("http://127.0.0.1/index.html")
+    }
 }

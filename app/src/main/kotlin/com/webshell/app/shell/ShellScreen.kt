@@ -41,7 +41,14 @@ fun ShellScreen(
     var message by remember { mutableStateOf<String?>(null) }
     val requests = rememberWebSessionRequests(
         sessionId = sessionId, visible = true,
-        onNewWindow = viewModel::openWindow, onMessage = { message = it },
+        // Saved/direct shells reuse the same WebView for popup navigation; the
+        // transport already performs the navigation, so avoid a duplicate load.
+        onNewWindow = { request ->
+            if (request.targetSessionId != request.sourceSessionId) {
+                viewModel.openWindow(request.initialUrl ?: request.sourceUrl.orEmpty())
+            }
+        },
+        onMessage = { message = it },
     )
     val navigationListener = remember(config?.sessionId) {
         config?.sessionId?.let(viewModel::listenerFor)
@@ -58,7 +65,8 @@ fun ShellScreen(
     LaunchedEffect(message) {
         if (message != null) { kotlinx.coroutines.delay(2500); message = null }
     }
-    BackHandler { if (!viewModel.goBack()) onLeave() }
+    BackHandler(enabled = requests.fullScreenView != null) { requests.exitFullScreen() }
+    BackHandler(enabled = requests.fullScreenView == null) { if (!viewModel.goBack()) onLeave() }
 
     Box(Modifier.fillMaxSize()) {
         when (state) {
@@ -90,4 +98,5 @@ fun ShellScreen(
         }
     }
     WebSessionDialogs(requests, onRetry = viewModel::reload, onLeave = onLeave)
+    if (requests.fullScreenView != null) com.webshell.feature.browser.WebSessionFullScreen(requests)
 }

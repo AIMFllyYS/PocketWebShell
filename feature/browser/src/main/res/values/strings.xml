@@ -43,6 +43,8 @@
     <string name="browser_clear_history_message">清空本机保存的浏览历史？此操作无法撤销。</string>
     <string name="browser_cancel">取消</string>
     <string name="browser_download_started">开始下载：%1$s</string>
+    <string name="browser_download_finished">下载完成：%1$s</string>
+    <string name="browser_download_failed">下载失败，未写入不受信任的文件路径。</string>
     <string name="browser_external_failed">无法打开外部应用</string>
     <string name="browser_bookmark_added">已收藏</string>
     <string name="browser_bookmark_removed">已取消收藏</string>
@@ -57,6 +59,13 @@
     <string name="browser_allow">允许</string>
     <string name="browser_deny">拒绝</string>
     <string name="browser_page_loading_error">网页暂时无法载入</string>
+    <string name="browser_http_failed">此 HTTP 网页无法安全载入。请联系网站升级 HTTPS 后重试。</string>
+    <string name="browser_invalid_url">网址格式不受支持。请输入 HTTP 或 HTTPS 网站地址。</string>
+    <string name="browser_renderer_recovering">网页渲染进程已重启，正在恢复当前页面。</string>
+    <string name="browser_location_title">网站申请定位</string>
+    <string name="browser_location_message">%1$s 申请访问你的位置信息。仅在你信任该网站且正在使用定位功能时允许。</string>
+    <string name="browser_http_auth_unsupported">网站 %1$s 需要 HTTP 身份验证，已安全拦截。请使用系统浏览器完成认证。</string>
+    <string name="browser_client_cert_unsupported">网站 %1$s 请求客户端证书，当前版本未导入证书，已拒绝。</string>
     <string name="browser_catalog_address_title">地址工具栏</string>
     <string name="browser_catalog_address_description">单行菜单、完整网址编辑器和标签计数；透明材质不增加实时模糊。</string>
     <string name="browser_catalog_menu_title">浏览操作菜单</string>

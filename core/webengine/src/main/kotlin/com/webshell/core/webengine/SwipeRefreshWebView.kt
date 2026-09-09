@@ -11,7 +11,9 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
  */
 open class SwipeRefreshWebView(context: Context) : SwipeRefreshLayout(context) {
 
-    val webView: WebView = WebView(context)
+    /** The child can be replaced after a renderer crash while the Compose host remains stable. */
+    var webView: WebView = WebView(context)
+        private set
 
     var onUserRefresh: (() -> Unit)? = null
 
@@ -33,6 +35,16 @@ open class SwipeRefreshWebView(context: Context) : SwipeRefreshLayout(context) {
 
     fun setRefreshingInternal(refreshing: Boolean) {
         isRefreshing = refreshing
+    }
+
+    /** Replace the renderer-backed child without replacing this view's identity. */
+    protected fun replaceWebView(): WebView {
+        val old = webView
+        removeView(old)
+        runCatching { old.destroy() }
+        webView = WebView(context)
+        addView(webView, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        return webView
     }
 
     override fun canChildScrollUp(): Boolean =

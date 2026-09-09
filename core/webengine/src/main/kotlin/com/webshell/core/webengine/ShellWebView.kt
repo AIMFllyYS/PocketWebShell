@@ -10,8 +10,14 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.ClientCertRequest
+import android.webkit.HttpAuthHandler
 import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
@@ -24,21 +30,25 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.net.toUri
+import androidx.core.content.FileProvider
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.webshell.core.model.AppLog
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
 
 /**
  * "原生感"网页壳引擎：零浏览器 UI、下拉刷新容器、SPA 返回、外链路由、
- * 下载/上传/权限、可选独立 Profile 隔离（config.profileId）、渲染进程自愈。
+ * 下载/上传/权限、共享默认 Profile、渲染进程自愈。
  * 设计约束：必须在主线程创建与使用（WebView 要求）。
  * 对外暴露 [view]（装入布局）与 [webView]（WebView 能力）。
  */
 @SuppressLint("SetJavaScriptEnabled")
 class ShellWebView internal constructor(
     context: Context,
-    val config: ShellConfig,
+    @Volatile var config: ShellConfig,
 ) : SwipeRefreshWebView(context) {
 
     val sessionId: String = config.sessionId ?: "anon-${System.nanoTime()}"
@@ -65,6 +75,12 @@ class ShellWebView internal constructor(
     private var savedStateBundle: Bundle? = null
 
     internal var pendingRecoveryUrl: String? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingSsl: SslErrorHandler? = null
+    private var recoveryInProgress = false
+    private var customView: View? = null
+    private var blobRequestToken = 0L
+    private var activeBlobToken: Long? = null
 
     init {
         // Profile 必须先于任何 settings 触碰完成切换，失败仅降级回默认共享 Profile。
@@ -117,6 +133,7 @@ class ShellWebView internal constructor(
     }
 
     fun setDesktopMode(enabled: Boolean) {
+        config = config.copy(desktopMode = enabled)
         webView.settings.userAgentString =
             if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else WebEngineDefaults.MOBILE_USER_AGENT
         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
@@ -133,6 +150,21 @@ class ShellWebView internal constructor(
                 )
             }
         }
+    }
+
+    /** Re-apply persisted site settings to an already pooled WebView. */
+    fun reconfigure(newConfig: ShellConfig) {
+        if (newConfig.sessionId != null && newConfig.sessionId != sessionId) return
+        val old = config
+        config = config.mergedWith(newConfig)
+        val needsReload = old.desktopMode != config.desktopMode ||
+            old.textZoomPercent != config.textZoomPercent ||
+            old.algorithmicDark != config.algorithmicDark ||
+            old.thirdPartyCookies != config.thirdPartyCookies ||
+            old.autoplayMedia != config.autoplayMedia
+        configureBaseSettings()
+        applyPullToRefresh()
+        if (needsReload && !webView.url.isNullOrBlank() && webView.url != "about:blank") webView.reload()
     }
 
     private fun applyProfile() {
@@ -191,6 +223,13 @@ class ShellWebView internal constructor(
         ): Boolean = routeUrl(request.url.toString())
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            activeBlobToken?.let {
+                activeBlobToken = null
+                notifyListeners { onDownloadFailed("cancelled") }
+            }
+            blobRequestToken++
+            pendingSsl?.let { runCatching { it.cancel() } }
+            pendingSsl = null
             AppLog.log("web", "加载 ${logHost(url)}")
             notifyListeners { onPageStarted(url) }
         }
@@ -222,15 +261,53 @@ class ShellWebView internal constructor(
                     "web",
                     "加载失败 ${logHost(request.url?.toString())}: ${error.errorCode} ${error.description}",
                 )
-                notifyListeners { onPageFinished(request.url.toString()) }
+                val failedUrl = request.url?.toString().orEmpty()
+                val insecureHttp = failedUrl.startsWith("http://", ignoreCase = true)
+                notifyListeners { onPageError(failedUrl, error.errorCode, error.description?.toString().orEmpty(), insecureHttp) }
+                // Complete the navigation state even when Chromium gives us an error page.
+                notifyListeners { onPageFinished(failedUrl) }
+            }
+        }
+
+        override fun onReceivedHttpError(
+            view: WebView,
+            request: WebResourceRequest,
+            errorResponse: WebResourceResponse,
+        ) {
+            if (request.isForMainFrame && errorResponse.statusCode >= 400) {
+                val failedUrl = request.url?.toString().orEmpty()
+                notifyListeners {
+                    onPageError(
+                        failedUrl,
+                        errorResponse.statusCode,
+                        errorResponse.reasonPhrase.orEmpty(),
+                        failedUrl.startsWith("http://", ignoreCase = true),
+                    )
+                }
             }
         }
 
         override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
             AppLog.error("web", "SSL 错误 ${logHost(view.url)}: ${error.primaryError}")
-            // 不静默放行：拒绝并回调宿主展示拦截页，由用户显式决定
-            handler.cancel()
-            notifyListeners { onSslError(view.url ?: "", error.primaryError.toString()) { handler.proceed() } }
+            // Hold the request only for an explicit, one-shot user decision. A timeout
+            // prevents a renderer/network request from waiting forever on a dead dialog.
+            pendingSsl?.let { runCatching { it.cancel() } }
+            pendingSsl = handler
+            val url = view.url.orEmpty()
+            val cancel = {
+                if (pendingSsl === handler) {
+                    pendingSsl = null
+                    runCatching { handler.cancel() }
+                }
+            }
+            val proceed = {
+                if (pendingSsl === handler) {
+                    pendingSsl = null
+                    runCatching { handler.proceed() }
+                }
+            }
+            notifyListeners { onSslError(url, error.primaryError.toString(), proceed, cancel) }
+            mainHandler.postDelayed(cancel, SSL_DECISION_TIMEOUT_MS)
         }
 
         override fun shouldInterceptRequest(
@@ -245,10 +322,23 @@ class ShellWebView internal constructor(
             view: WebView,
             detail: android.webkit.RenderProcessGoneDetail,
         ): Boolean {
-            // 官方建议：不让宿主进程陪葬。记录 URL，标记恢复，宿主重建会话。
-            pendingRecoveryUrl = view.url
-            notifyListeners { onRenderProcessRecovered() }
+            // 官方建议：不让宿主进程陪葬。Replace only the child WebView so the
+            // Compose host and its session listeners remain attached.
+            if (!recoveryInProgress) recoverRenderer(view.url)
             return true
+        }
+
+        override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String, realm: String?) {
+            // Credentials are never collected or cached by the shell. Cancel the
+            // request and surface a clear state so the user can use an external
+            // browser/password manager if needed.
+            handler.cancel()
+            notifyListeners { onHttpAuthRequested(host, realm) { _, _ -> } }
+        }
+
+        override fun onReceivedClientCertRequest(view: WebView, request: ClientCertRequest) {
+            request.cancel()
+            notifyListeners { onClientCertificateRequested(request.host) { } }
         }
     }
 
@@ -268,27 +358,33 @@ class ShellWebView internal constructor(
             isUserGesture: Boolean,
             resultMsg: android.os.Message,
         ): Boolean {
-            // 用临时探针 WebView 捕获新窗口最终 URL，交给宿主决定去处
+            // Supply a real pooled WebView to Chromium. A short-lived probe loses
+            // cookies, JS state and OAuth redirects before the user can interact.
             val transport = view.WebViewTransport()
-            val probe = WebView(view.context)
-            probe.webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(
-                    v: WebView,
-                    request: WebResourceRequest,
-                ): Boolean {
-                    notifyListeners { onNewWindow(request.url.toString()) }
-                    return true
+            val targetSessionId = if (sessionId.startsWith("browser-")) {
+                val id = "browser-window-${UUID.randomUUID().toString().take(12)}"
+                val target = WebViewPool.getOrCreate(view.context, id) {
+                    config.copy(sessionId = id, profileId = null, startUrl = "about:blank")
                 }
+                transport.setWebView(target.webView)
+                id
+            } else {
+                // A saved-site/direct shell has no tab switcher. Reuse its real
+                // WebView so popup/OAuth navigation remains visible in that shell.
+                transport.setWebView(view)
+                sessionId
             }
-            transport.setWebView(probe)
             resultMsg.obj = transport
             resultMsg.sendToTarget()
-            probe.postDelayed({
-                runCatching {
-                    (probe.parent as? ViewGroup)?.removeView(probe)
-                    probe.destroy()
-                }
-            }, 1500)
+            val request = NewWindowRequest(
+                sourceSessionId = sessionId,
+                sourceUrl = view.url,
+                isUserGesture = isUserGesture,
+                isDialog = isDialog,
+                initialUrl = view.hitTestResult?.extra,
+                targetSessionId = targetSessionId,
+            )
+            notifyListeners { onNewWindow(request) }
             return true
         }
 
@@ -317,6 +413,16 @@ class ShellWebView internal constructor(
                 callback.invoke(origin, allow, retain)
             } }
         }
+
+        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+            customView?.let { notifyListeners { onHideCustomView() } }
+            customView = view
+            notifyListeners { onShowCustomView(view) { callback.onCustomViewHidden(); hideCustomView() } }
+        }
+
+        override fun onHideCustomView() {
+            hideCustomView()
+        }
     }
 
     // ---------------------------------------------------------------- routing
@@ -333,9 +439,10 @@ class ShellWebView internal constructor(
 
     /** @return true 表示本引擎已处理（不交给 WebView 加载） */
     private fun routeUrl(url: String): Boolean {
-        val uri = url.toUri()
-        return when (uri.scheme?.lowercase()) {
-            "http", "https" -> {
+        val decision = UrlRouter.classify(url)
+        val uri = runCatching { url.toUri() }.getOrNull()
+        return when (decision.route) {
+            UrlRoute.WEB -> {
                 if (config.externalLinkPolicy == ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER &&
                     !LocalWebHost.isLocalUrl(url) && isForeignHost(url)
                 ) {
@@ -343,11 +450,15 @@ class ShellWebView internal constructor(
                     true
                 } else false
             }
-            "about", "data", "blob", "javascript" -> false
-            "intent" -> launchIntentUri(url)
-            "tel", "sms", "mailto", "geo", "market" -> { launchExternal(url); true }
-            null -> true
-            else -> { launchExternal(url); true }
+            UrlRoute.ABOUT_BLANK, UrlRoute.DATA, UrlRoute.BLOB -> false
+            UrlRoute.JAVASCRIPT -> true
+            UrlRoute.EXTERNAL_INTENT -> if (uri?.scheme.equals("intent", ignoreCase = true)) {
+                launchIntentUri(url)
+            } else { launchExternal(url); true }
+            UrlRoute.BLOCKED, UrlRoute.UNKNOWN -> {
+                notifyListeners { onExternalLaunchFailed(url) }
+                true
+            }
         }
     }
 
@@ -359,16 +470,65 @@ class ShellWebView internal constructor(
 
     private fun launchExternal(url: String) {
         runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+            check(intent.resolveActivity(context.packageManager) != null) { "No handler" }
+            context.startActivity(intent)
         }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
     }
 
     private fun launchIntentUri(url: String): Boolean {
         runCatching {
             val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+            // Do not allow an embedded page to select an arbitrary explicit
+            // component. Only dispatch intents that the system can resolve.
+            check(intent.component == null && intent.selector == null) { "Explicit component blocked" }
+            check(intent.resolveActivity(context.packageManager) != null) { "No handler" }
             context.startActivity(intent)
         }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
         return true
+    }
+
+    private fun hideCustomView() {
+        if (customView != null) {
+            customView = null
+            notifyListeners { onHideCustomView() }
+        }
+    }
+
+    private fun recoverRenderer(url: String?) {
+        if (recoveryInProgress) return
+        recoveryInProgress = true
+        WebViewPool.markLifecycle(sessionId, SessionLifecycleState.RECOVERING)
+        pendingRecoveryUrl = url
+        notifyListeners { onPageError(url.orEmpty(), ERROR_RENDERER_GONE, "网页渲染进程已重启", false) }
+        val state = Bundle()
+        val saved = runCatching { webView.saveState(state); state }.getOrNull()
+        runCatching { hideCustomView() }
+        val replacement = runCatching { replaceWebView() }.getOrNull()
+        if (replacement == null) {
+            recoveryInProgress = false
+            WebViewPool.markLifecycle(sessionId, SessionLifecycleState.BACKGROUND)
+            notifyListeners { onRenderProcessRecoveryFailed() }
+            return
+        }
+        applyProfile()
+        configureBaseSettings()
+        applyChromeClients()
+        applyPullToRefresh()
+        applyFindListener()
+        injectBootstrapOnce()
+        val hasSavedState = saved != null && saved.size() > 0
+        if (hasSavedState) runCatching { webView.restoreState(saved) }
+        val restoreUrl = url?.takeIf { it.isNotBlank() && it != "about:blank" }
+        // A saved back/forward list will navigate itself; only fall back to a
+        // direct URL when Chromium could not serialize the old state.
+        if (!hasSavedState && (webView.url.isNullOrBlank() || webView.url == "about:blank")) {
+            restoreUrl?.let(webView::loadUrl)
+        }
+        pendingRecoveryUrl = null
+        recoveryInProgress = false
+        WebViewPool.markLifecycle(sessionId, SessionLifecycleState.ACTIVE)
+        notifyListeners { onRenderProcessRecovered() }
     }
 
     private fun handleDownload(
@@ -379,10 +539,11 @@ class ShellWebView internal constructor(
     ) {
         if (url.startsWith("blob:")) {
             notifyListeners { onDownloadStarted("(blob)") }
+            downloadBlob(url)
             return
         }
         runCatching {
-            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            val fileName = DownloadPolicy.safeFileName(URLUtil.guessFileName(url, contentDisposition, mimeType))
             val request = DownloadManager.Request(url.toUri())
                 .setMimeType(mimeType)
                 .setTitle(fileName)
@@ -390,9 +551,82 @@ class ShellWebView internal constructor(
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
                 .addRequestHeader("User-Agent", userAgent)
+            DownloadPolicy.requestHeaders(
+                url = url,
+                userAgent = userAgent,
+                referer = webView.url,
+                cookie = CookieManager.getInstance().getCookie(url),
+            ).forEach { (name, value) -> request.addRequestHeader(name, value) }
             context.getSystemService(DownloadManager::class.java).enqueue(request)
             notifyListeners { onDownloadStarted(fileName) }
-        }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
+        }.onFailure {
+            notifyListeners { onDownloadFailed(it.message ?: "download-failed") }
+        }
+    }
+
+    /**
+     * Read a blob only from the current document, with a hard encoded and decoded
+     * size limit. No JavaScript bridge is exposed to the origin.
+     */
+    private fun downloadBlob(url: String) {
+        val token = ++blobRequestToken
+        activeBlobToken = token
+        val script = """
+            (async function(){
+              try {
+                const b = await fetch(${org.json.JSONObject.quote(url)}).then(r => r.blob());
+                if (b.size > ${MAX_BLOB_BYTES}) return 'ERR:too-large';
+                const a = new Uint8Array(await b.arrayBuffer());
+                let s=''; for(let i=0;i<a.length;i+=0x8000) s += String.fromCharCode(...a.subarray(i,i+0x8000));
+                return 'OK:' + b.type + ':' + btoa(s);
+              } catch(e) { return 'ERR:' + (e && e.message ? e.message : 'blob-failed'); }
+            })()
+        """.trimIndent()
+        webView.evaluateJavascript(script) { raw ->
+            if (token != blobRequestToken) return@evaluateJavascript
+            activeBlobToken = null
+            val result = raw?.removeSurrounding("\"")?.replace("\\\"", "\"") ?: "ERR:empty"
+            if (!result.startsWith("OK:")) {
+                notifyListeners { onDownloadFailed(result.removePrefix("ERR:").take(120)) }
+                return@evaluateJavascript
+            }
+            val first = result.indexOf(':', 3)
+            val second = result.indexOf(':', first + 1)
+            if (first < 0 || second < 0) {
+                notifyListeners { onDownloadFailed("blob-format") }
+                return@evaluateJavascript
+            }
+            val mime = result.substring(first + 1, second).take(96).ifBlank { "application/octet-stream" }
+            val encoded = result.substring(second + 1)
+            if (encoded.length > MAX_BLOB_BASE64_CHARS) {
+                notifyListeners { onDownloadFailed("blob-too-large") }
+                return@evaluateJavascript
+            }
+            val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()
+            if (bytes == null || bytes.size > MAX_BLOB_BYTES) {
+                notifyListeners { onDownloadFailed("blob-too-large") }
+                return@evaluateJavascript
+            }
+            val extension = when {
+                mime.contains("pdf") -> ".pdf"
+                mime.contains("json") -> ".json"
+                mime.contains("text/") -> ".txt"
+                mime.contains("zip") -> ".zip"
+                mime.contains("png") -> ".png"
+                mime.contains("jpeg") -> ".jpg"
+                else -> ".bin"
+            }
+            val fileName = "download-${System.currentTimeMillis()}$extension"
+            val out = File(context.cacheDir, "downloads/$fileName")
+            runCatching {
+                out.parentFile?.mkdirs()
+                FileOutputStream(out).use { it.write(bytes) }
+                val shareUri = runCatching {
+                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", out)
+                }.getOrElse { Uri.fromFile(out) }
+                notifyListeners { onDownloadFinished(fileName, shareUri) }
+            }.onFailure { notifyListeners { onDownloadFailed(it.message ?: "blob-write-failed") } }
+        }
     }
 
     // ---------------------------------------------------------------- find in page
@@ -504,9 +738,9 @@ class ShellWebView internal constructor(
         runCatching { webView.stopLoading() }
     }
 
-    fun captureThumbnail(maxWidth: Int = 360): Bitmap? {
+    fun captureThumbnail(maxWidth: Int = 360, maxHeight: Int = 640): Bitmap? {
         if (webView.width == 0 || webView.height == 0) return null
-        val scale = maxWidth.toFloat() / webView.width
+        val scale = minOf(1f, maxWidth.toFloat() / webView.width, maxHeight.toFloat() / webView.height)
         val bmp = Bitmap.createBitmap(
             (webView.width * scale).toInt().coerceAtLeast(1),
             (webView.height * scale).toInt().coerceAtLeast(1),
@@ -521,6 +755,12 @@ class ShellWebView internal constructor(
     fun release() {
         listener = null
         sessionListener = null
+        mainHandler.removeCallbacksAndMessages(null)
+        blobRequestToken++
+        activeBlobToken = null
+        pendingSsl?.let { runCatching { it.cancel() } }
+        pendingSsl = null
+        hideCustomView()
         saveSessionState()
         runCatching {
             (parent as? ViewGroup)?.removeView(this)
@@ -542,5 +782,14 @@ class ShellWebView internal constructor(
 
     fun resumeRendering() {
         webView.onResume()
+    }
+
+    private companion object {
+        // evaluateJavascript returns through a Binder transaction; keep the
+        // payload comfortably below the platform transaction limit.
+        const val MAX_BLOB_BYTES = 512 * 1024
+        const val MAX_BLOB_BASE64_CHARS = MAX_BLOB_BYTES * 4 / 3 + 8
+        const val SSL_DECISION_TIMEOUT_MS = 15_000L
+        const val ERROR_RENDERER_GONE = -99
     }
 }

@@ -309,14 +309,12 @@ private fun StorageOverviewSection(state: StorageUiState, onClearAll: () -> Unit
                         ),
                     )
                 }
-                if (!overview.multiProfile) {
-                    Spacer(Modifier.height(AppSpacing.md))
-                    Text(
-                        stringResource(R.string.me_storage_profile_limited),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Spacer(Modifier.height(AppSpacing.md))
+                Text(
+                    stringResource(R.string.me_storage_profile_limited),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (state.scanning) {
                     Spacer(Modifier.height(AppSpacing.sm))
                     Text(

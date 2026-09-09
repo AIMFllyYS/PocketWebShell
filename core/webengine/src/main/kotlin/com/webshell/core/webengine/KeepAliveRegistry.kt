@@ -3,7 +3,7 @@ package com.webshell.core.webengine
 /**
  * 后台静默会话登记表：记录"正在运行/保活中"的网页应用会话。
  * WebHostService（app 模块的前台服务）据此刻画通知；即使进程被杀，
- * 磁盘上的 cookie/存储（Profile）也保证登录态不丢。
+ * 磁盘上的默认共享 cookie/存储也保证登录态不丢。
  */
 object KeepAliveRegistry {
 
@@ -23,10 +23,12 @@ object KeepAliveRegistry {
         synchronized(active) {
             active[sessionId] = Entry(sessionId, title, url, System.currentTimeMillis())
         }
+        WebViewPool.protect(sessionId, WebViewPool.ProtectionReason.KEEP_ALIVE)
     }
 
     fun unregister(sessionId: String) {
         synchronized(active) { active.remove(sessionId) }
+        WebViewPool.unprotect(sessionId, WebViewPool.ProtectionReason.KEEP_ALIVE)
     }
 
     fun isAlive(sessionId: String): Boolean =

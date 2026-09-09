@@ -2,7 +2,7 @@ package com.webshell.core.model
 
 /**
  * 用户通过网址（或本地 HTML 导入）创建的"网页应用"。
- * 它不是真正的 APK，而是本应用内的一份壳配置 + 独立 Profile 的 WebView 会话。
+ * 它不是真正的 APK，而是本应用内的一份壳配置 + 共享默认 Profile 的 WebView 会话。
  */
 data class WebApp(
     val id: String,

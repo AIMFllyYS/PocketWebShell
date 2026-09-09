@@ -17,10 +17,10 @@ class SiteShellConfigTest {
         textZoomPercent = 125,
     )
 
-    @Test fun savedAppOwnsExactSessionProfileAndStoredWebZoom() {
+    @Test fun savedAppUsesSharedProfileAndStoredWebZoom() {
         val config = requireNotNull(configuredSiteShell(site()))
         assertEquals("saved-app", config.sessionId)
-        assertEquals("saved-app", config.profileId)
+        assertNull(config.profileId)
         assertEquals(125, config.textZoomPercent)
         assertTrue(config.desktopMode)
         assertTrue(config.algorithmicDark)

@@ -38,7 +38,7 @@ data class StorageOverview(
     val appBytes: Long,
     val sites: List<SiteStorageStats>,
     val unmeasurableSiteIds: List<String>,
-    /** 设备是否支持 MULTI_PROFILE；不支持时各站点数据物理上落在默认共享 Profile，UI 可据此提示统计限制。 */
+    /** WebView capability only; the product deliberately uses the shared Default profile today. */
     val multiProfile: Boolean,
     val scannedAt: Long,
     /**

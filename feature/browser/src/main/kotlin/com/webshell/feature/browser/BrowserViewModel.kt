@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.BrowserSavedPagesRepository
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.ShellListener
+import com.webshell.core.webengine.UrlRoute
+import com.webshell.core.webengine.UrlRouter
 import com.webshell.core.webengine.WebViewPool
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
@@ -62,9 +64,12 @@ class BrowserViewModel @Inject constructor(
      * 不依赖"当前激活 tab"——后台 tab 的回调不再丢失、不再串台。
      */
     private val sessionListeners = mutableMapOf<String, ShellListener>()
+    private val thumbnailRevisions = mutableMapOf<String, Long>()
     private var browserVisible = false
     private val evictionListener: (String) -> Unit = { sessionId ->
-        if (sessionId.startsWith("browser-")) removeTabState(sessionId.removePrefix("browser-"))
+        // Eviction removes only the renderer instance. UI tab state and the
+        // pool's recovery bundle remain so selecting the tab recreates it.
+        if (sessionId.startsWith("browser-")) AppLog.log("browser", "后台会话暂时淘汰，保留标签状态")
     }
 
     init {
@@ -73,7 +78,7 @@ class BrowserViewModel @Inject constructor(
                 _bookmarkedUrls.value = list.map { it.url }.toSet()
             }
         }
-        // 池满淘汰时同步移除对应 tab（实例已被池销毁并留存快照，这里不重复 destroy）
+        // 池满淘汰时仅移除 renderer，实例快照和对应 tab UI 状态继续保留。
         WebViewPool.onSessionEvicted = evictionListener
     }
 
@@ -95,10 +100,30 @@ class BrowserViewModel @Inject constructor(
                 override fun onPageStarted(url: String) {
                     updateTabMeta(tabId, url = url)
                     updateTabNav(tabId, progress = 0, loading = true)
+                    updateTabError(tabId, null)
+                }
+
+                override fun onFirstPaint(url: String) {
+                    // Capture only after the first composited frame; capturing when
+                    // opening the tab switcher can otherwise produce a blank/loading card.
+                    captureThumbnail(tabId, url)
                 }
 
                 override fun onProgress(progress: Int) {
                     updateTabNav(tabId, progress = progress, loading = progress < 100)
+                }
+
+                override fun onPageError(url: String, errorCode: Int, description: String, insecureHttp: Boolean) {
+                    updateTabError(tabId, if (errorCode == -99) BrowserLoadError.RENDERER_RECOVERING
+                    else if (insecureHttp) BrowserLoadError.INSECURE_HTTP else BrowserLoadError.NETWORK)
+                }
+
+                override fun onRenderProcessRecovered() {
+                    updateTabError(tabId, null)
+                }
+
+                override fun onRenderProcessRecoveryFailed() {
+                    updateTabError(tabId, BrowserLoadError.NETWORK)
                 }
 
                 override fun onTitleReceived(title: String) {
@@ -107,6 +132,7 @@ class BrowserViewModel @Inject constructor(
 
                 override fun onPageFinished(url: String) {
                     updateTabNav(tabId, progress = 100, loading = false)
+                    captureThumbnail(tabId, url)
                     // 入历史（同 URL 合并为最新一条），标题取该 tab 自己的最新值
                     val title = _tabs.value.firstOrNull { it.tabId == tabId }?.title.orEmpty()
                     recordHistory(url, title)
@@ -125,14 +151,45 @@ class BrowserViewModel @Inject constructor(
     /** 打开新标签；activate=false 时留在后台（供 target=_blank 备用） */
     fun createTab(startUrl: String, activate: Boolean): String {
         val tabId = UUID.randomUUID().toString().take(8)
+        return createTabForSession("browser-$tabId", startUrl, activate)
+    }
+
+    /** Adopt the session created by WebView.onCreateWindow so it is never a naked probe. */
+    fun createTabForSession(sessionId: String, startUrl: String, activate: Boolean): String {
+        val tabId = sessionId.removePrefix("browser-").ifBlank { UUID.randomUUID().toString().take(8) }
+        val safeStartUrl = UrlRouter.classify(startUrl).let { decision ->
+            if (decision.route == UrlRoute.WEB || decision.route == UrlRoute.ABOUT_BLANK) decision.normalized
+            else "about:blank"
+        }
+        if (_tabs.value.any { it.tabId == tabId }) {
+            if (activate) setActive(tabId)
+            return tabId
+        }
         _tabs.value = _tabs.value + BrowserTab(
             tabId = tabId,
-            title = if (startUrl == "about:blank") "" else startUrl,
-            url = startUrl,
+            title = if (safeStartUrl == "about:blank") "" else safeStartUrl,
+            url = safeStartUrl,
         )
         AppLog.log("browser", "新建标签 $tabId（共 ${_tabs.value.size} 个）")
         if (activate) setActive(tabId)
         return tabId
+    }
+
+    private fun captureThumbnail(tabId: String, expectedUrl: String) {
+        val revision = (thumbnailRevisions[tabId] ?: 0L) + 1L
+        thumbnailRevisions[tabId] = revision
+        viewModelScope.launch {
+            repeat(4) { attempt ->
+                val shell = WebViewPool.get("browser-$tabId")
+                val bitmap = runCatching { shell?.captureThumbnail() }.getOrNull()
+                if (bitmap != null && thumbnailRevisions[tabId] == revision && shell?.currentUrl() == expectedUrl) {
+                    updateTabThumbnail(tabId, bitmap)
+                    return@launch
+                }
+
+                if (attempt < 3) kotlinx.coroutines.delay(80L * (attempt + 1))
+            }
+        }
     }
 
     fun activateTab(tabId: String) {
@@ -146,11 +203,17 @@ class BrowserViewModel @Inject constructor(
     private fun setActive(tabId: String?) {
         val previous = _activeTabId.value
         if (previous != tabId) {
-            previous?.let { WebViewPool.suspendSession("browser-$it") }
+            previous?.let {
+                WebViewPool.suspendSession("browser-$it")
+                WebViewPool.unprotect("browser-$it", WebViewPool.ProtectionReason.ACTIVE)
+            }
             _findState.value = FindState()
         }
         _activeTabId.value = tabId
-        if (browserVisible) WebViewPool.activeSessionId = tabId?.let { "browser-$it" }
+        if (browserVisible) {
+            tabId?.let { WebViewPool.protect("browser-$it", WebViewPool.ProtectionReason.ACTIVE) }
+            WebViewPool.activeSessionId = tabId?.let { "browser-$it" }
+        }
     }
 
     fun setVisible(visible: Boolean) {
@@ -158,8 +221,10 @@ class BrowserViewModel @Inject constructor(
         val sid = activeSessionId() ?: return
         if (visible) {
             WebViewPool.activeSessionId = sid
+            WebViewPool.protect(sid, WebViewPool.ProtectionReason.ACTIVE)
         } else if (WebViewPool.activeSessionId == sid) {
             WebViewPool.activeSessionId = null
+            WebViewPool.unprotect(sid, WebViewPool.ProtectionReason.ACTIVE)
         }
     }
 
@@ -179,8 +244,11 @@ class BrowserViewModel @Inject constructor(
 
     fun captureActiveThumbnail() {
         val tabId = _activeTabId.value ?: return
+        val expectedUrl = _tabs.value.firstOrNull { it.tabId == tabId }?.url
+        thumbnailRevisions[tabId] = (thumbnailRevisions[tabId] ?: 0L) + 1L
         runCatching { WebViewPool.get("browser-$tabId")?.captureThumbnail() }
-            .getOrNull()?.let { updateTabThumbnail(tabId, it) }
+            .getOrNull()?.takeIf { WebViewPool.get("browser-$tabId")?.currentUrl() == expectedUrl }
+            ?.let { updateTabThumbnail(tabId, it) }
     }
 
     fun openUrl(url: String) {
@@ -238,6 +306,10 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    private fun updateTabError(tabId: String, error: BrowserLoadError?) {
+        _tabs.value = _tabs.value.map { if (it.tabId == tabId) it.copy(loadError = error) else it }
+    }
+
     /** 关闭标签：彻底销毁池中会话（不留快照），并清理会话监听者与桌面模式记忆 */
     fun closeTab(tabId: String) {
         val sessionId = "browser-$tabId"
@@ -245,6 +317,7 @@ class BrowserViewModel @Inject constructor(
         sessionListeners.remove(sessionId)
         WebViewPool.destroyAndForget(sessionId)
         removeTabState(tabId)
+        thumbnailRevisions.remove(tabId)
         AppLog.log("browser", "关闭标签 $tabId（剩 ${_tabs.value.size} 个）")
     }
 
@@ -257,16 +330,14 @@ class BrowserViewModel @Inject constructor(
             WebViewPool.destroyAndForget(sessionId)
         }
         _desktopModes.value = emptyMap()
+        thumbnailRevisions.clear()
         _tabs.value = emptyList()
         setActive(null)
         _findState.value = FindState()
         AppLog.log("browser", "关闭全部标签（$count 个）")
     }
 
-    /**
-     * 移除 tab 的 UI 状态（不动池实例）：closeTab 在 destroy 后调用，
-     * 池淘汰回调在实例已销毁后调用；若关的是激活 tab 则向前继/后续补位。
-     */
+    /** Remove a tab's UI state after an explicit user close. */
     private fun removeTabState(tabId: String) {
         val current = _tabs.value
         val index = current.indexOfFirst { it.tabId == tabId }
