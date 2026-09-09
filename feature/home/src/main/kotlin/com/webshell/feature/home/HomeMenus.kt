@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Launch
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
@@ -27,6 +28,7 @@ internal fun HomeCellMenu(
     onDissolve: () -> Unit,
     onCopyLink: () -> Unit,
     onRename: () -> Unit,
+    onShare: () -> Unit,
     onChangeIcon: () -> Unit,
     onRefresh: () -> Unit,
     onToggleDesktop: () -> Unit,
@@ -38,6 +40,8 @@ internal fun HomeCellMenu(
     val items = buildList {
         if (cell.isFolder) {
             add(AppContextMenuItem(stringResource(R.string.home_open_folder), Icons.Filled.FolderOpen, onClick = onOpen))
+            add(AppContextMenuItem(stringResource(R.string.home_rename), Icons.Filled.Edit, onClick = onRename))
+            add(AppContextMenuItem(stringResource(R.string.home_share_folder), Icons.Filled.Share, onClick = onShare))
             add(AppContextMenuItem(stringResource(R.string.home_folder_dissolve), Icons.Filled.FolderOff, onClick = onDissolve))
         } else {
             add(AppContextMenuItem(stringResource(R.string.home_open), Icons.Filled.Launch, onClick = onOpen))

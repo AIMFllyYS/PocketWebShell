@@ -7,6 +7,8 @@ data class HomeCell(
     val key: String,
     val app: WebAppEntity,
     val folderMembers: List<WebAppEntity> = emptyList(),
+    /** 文件夹名：成员中第一个非空 folderName；null → UI 回落到「文件夹」。 */
+    val folderName: String? = null,
 ) {
     val isFolder: Boolean get() = folderMembers.isNotEmpty()
 }
@@ -167,7 +169,7 @@ object HomePages {
         pageCapacity: Int,
     ): List<WebAppEntity> {
         val capacity = pageCapacity.coerceAtLeast(1)
-        val members = apps.filter { it.folderId == folderId }.sortedWith(entityOrder())
+        val members = apps.filter { it.folderId == folderId }.sortedWith(folderMemberOrder())
         if (members.isEmpty()) return emptyList()
         val sparse = buildSparse(apps, capacity)
         val occupied = HashSet<Pair<Int, Int>>()
@@ -189,6 +191,8 @@ object HomePages {
             occupied += cursor / capacity to cursor % capacity
             updates += member.copy(
                 folderId = null,
+                folderName = null,
+                folderCellIndex = null,
                 homePage = cursor / capacity,
                 homeCellIndex = cursor % capacity,
             )
@@ -220,9 +224,27 @@ object HomePages {
         while ((cursor / capacity to cursor % capacity) in occupied) cursor++
         return app.copy(
             folderId = null,
+            folderName = null,
+            folderCellIndex = null,
             homePage = cursor / capacity,
             homeCellIndex = cursor % capacity,
         )
+    }
+
+    /**
+     * 文件夹内把 fromIndex 成员移动到 toIndex，返回需要落库的成员
+     * （folderCellIndex 重写为稠密 0..n-1）。越界/相同索引返回 emptyList。
+     * [members] 须已按 folderMemberOrder 排序（与展开视图的全局下标一致）。
+     */
+    fun resolveFolderMemberMove(
+        members: List<WebAppEntity>,
+        fromIndex: Int,
+        toIndex: Int,
+    ): List<WebAppEntity> {
+        if (fromIndex == toIndex) return emptyList()
+        if (fromIndex !in members.indices || toIndex !in members.indices) return emptyList()
+        val reordered = members.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+        return reordered.mapIndexed { index, entity -> entity.copy(folderCellIndex = index) }
     }
 
     /**
@@ -240,7 +262,10 @@ object HomePages {
         return out
     }
 
-    /** 根级应用 + 文件夹聚合为 cell 列表，按 (页, 槽, 创建时间) 排序。 */
+    /**
+     * 根级应用 + 文件夹聚合为 cell 列表，按 (页, 槽, 创建时间) 排序。
+     * 文件夹成员按 folderMemberOrder 排序；文件夹名取成员中第一个非空 folderName。
+     */
     private fun aggregateCells(apps: List<WebAppEntity>): List<HomeCell> {
         val byId = apps.associateBy { it.id }
 
@@ -248,12 +273,13 @@ object HomePages {
             .groupBy { it.folderId!! }
 
         val folderCells = folderGroups.map { (_, members) ->
-            val ordered = members.sortedWith(entityOrder())
+            val ordered = members.sortedWith(folderMemberOrder())
             val anchor = ordered.minBy { it.homePage * 100_000 + orderKey(it) }
             HomeCell(
                 key = "folder-${anchor.folderId}",
                 app = anchor,
                 folderMembers = ordered,
+                folderName = ordered.firstNotNullOfOrNull { it.folderName },
             )
         }
 
@@ -267,8 +293,13 @@ object HomePages {
         )
     }
 
-    private fun entityOrder(): Comparator<WebAppEntity> =
-        compareBy<WebAppEntity> { it.homePage }.thenBy { orderKey(it) }.thenBy { it.createdAt }
+    /**
+     * 文件夹成员排序：folderCellIndex（null 视为排最后）→ createdAt。
+     * 成员共享同一 (homePage, homeCellIndex)，网格坐标不参与成员间排序；
+     * 历史数据（folderCellIndex 全 null）退化为按创建时间，与旧行为一致。
+     */
+    internal fun folderMemberOrder(): Comparator<WebAppEntity> =
+        compareBy<WebAppEntity> { it.folderCellIndex ?: Int.MAX_VALUE }.thenBy { it.createdAt }
 
     private fun orderKey(entity: WebAppEntity): Int =
         if (entity.homeCellIndex < 0) Int.MAX_VALUE / 2 else entity.homeCellIndex

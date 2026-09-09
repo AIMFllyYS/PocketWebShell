@@ -102,6 +102,14 @@ object AllAppsIndex {
         return FlatList(items = items, sectionFirstIndex = firstIndex)
     }
 
+    /** 时间序扁平列表（新建在前，同时刻按标题稳定排序）：无分区头，右侧字母索引条不适用。 */
+    fun flattenByTime(sections: List<Section>): FlatList {
+        val apps = sections.flatMap { it.apps }.sortedWith(
+            compareByDescending<WebAppEntity> { it.createdAt }.thenBy { it.title },
+        )
+        return FlatList(items = apps.map { Item.Entry(it) }, sectionFirstIndex = emptyMap())
+    }
+
     /** pinyin4j 首个读音（如 "zhong1"）；非汉字或转换失败返回 null。 */
     private fun firstPinyinReading(c: Char): String? =
         runCatching { PinyinHelper.toHanyuPinyinStringArray(c) }.getOrNull()?.firstOrNull()

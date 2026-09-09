@@ -12,6 +12,8 @@ class HomePagesTest {
         cell: Int = -1,
         folder: String? = null,
         createdAt: Long = 0L,
+        folderName: String? = null,
+        folderCellIndex: Int? = null,
     ) = WebAppEntity(
         id = id,
         title = id,
@@ -25,6 +27,8 @@ class HomePagesTest {
         homeCellIndex = cell,
         folderId = folder,
         createdAt = createdAt,
+        folderName = folderName,
+        folderCellIndex = folderCellIndex,
     )
 
     @Test
@@ -336,5 +340,147 @@ class HomePagesTest {
             emptyList<WebAppEntity>(),
             HomePages.resolvePrependMove(apps, "missing", toSlot = 0, pageCapacity = 20),
         )
+    }
+
+    // ---------- 文件夹：命名与成员排序 ----------
+
+    @Test
+    fun `folder cell name comes from first non-null member folderName`() {
+        val pages = HomePages.build(
+            listOf(
+                app("x", cell = 0, folder = "f1", folderName = "甲", folderCellIndex = 1),
+                app("y", cell = 0, folder = "f1", folderCellIndex = 0),
+                app("z", cell = 0, folder = "f1", folderName = "乙", folderCellIndex = 2),
+            ),
+        )
+        // 成员顺序 y(null), x(甲), z(乙) → 第一个非空 folderName 是「甲」
+        assertEquals("甲", pages[0].first { it.isFolder }.folderName)
+    }
+
+    @Test
+    fun `folder cell name is null without member folderName`() {
+        val pages = HomePages.build(
+            listOf(
+                app("x", cell = 0, folder = "f1"),
+                app("y", cell = 0, folder = "f1"),
+            ),
+        )
+        assertEquals(null, pages[0].first { it.isFolder }.folderName)
+    }
+
+    @Test
+    fun `folder members sort by folderCellIndex before createdAt`() {
+        val pages = HomePages.build(
+            listOf(
+                app("a", cell = 0, folder = "f1", createdAt = 1, folderCellIndex = 2),
+                app("b", cell = 0, folder = "f1", createdAt = 2, folderCellIndex = 0),
+                app("c", cell = 0, folder = "f1", createdAt = 3, folderCellIndex = 1),
+            ),
+        )
+        val folder = pages[0].first { it.isFolder }
+        assertEquals(listOf("b", "c", "a"), folder.folderMembers.map { it.id })
+    }
+
+    @Test
+    fun `folder members with null folderCellIndex sort last by createdAt`() {
+        val pages = HomePages.build(
+            listOf(
+                app("legacy-new", cell = 0, folder = "f1", createdAt = 2),
+                app("indexed", cell = 0, folder = "f1", createdAt = 3, folderCellIndex = 0),
+                app("legacy-old", cell = 0, folder = "f1", createdAt = 1),
+            ),
+        )
+        val folder = pages[0].first { it.isFolder }
+        assertEquals(listOf("indexed", "legacy-old", "legacy-new"), folder.folderMembers.map { it.id })
+    }
+
+    @Test
+    fun `folder member move from middle to start`() {
+        val members = listOf(
+            app("a", folder = "f1", folderCellIndex = 0),
+            app("b", folder = "f1", folderCellIndex = 1),
+            app("c", folder = "f1", folderCellIndex = 2),
+        )
+        val updates = HomePages.resolveFolderMemberMove(members, fromIndex = 1, toIndex = 0)
+        assertEquals(listOf("b", "a", "c"), updates.map { it.id })
+        // folderCellIndex 重写为稠密 0..n-1
+        assertEquals(listOf(0, 1, 2), updates.map { it.folderCellIndex })
+    }
+
+    @Test
+    fun `folder member move from start to end`() {
+        val members = listOf(
+            app("a", folder = "f1", folderCellIndex = 0),
+            app("b", folder = "f1", folderCellIndex = 1),
+            app("c", folder = "f1", folderCellIndex = 2),
+        )
+        val updates = HomePages.resolveFolderMemberMove(members, fromIndex = 0, toIndex = 2)
+        assertEquals(listOf("b", "c", "a"), updates.map { it.id })
+        assertEquals(listOf(0, 1, 2), updates.map { it.folderCellIndex })
+    }
+
+    @Test
+    fun `folder member move with same index is a no-op`() {
+        val members = listOf(
+            app("a", folder = "f1", folderCellIndex = 0),
+            app("b", folder = "f1", folderCellIndex = 1),
+        )
+        assertEquals(
+            emptyList<WebAppEntity>(),
+            HomePages.resolveFolderMemberMove(members, fromIndex = 1, toIndex = 1),
+        )
+    }
+
+    @Test
+    fun `folder member move rejects out-of-range indices`() {
+        val members = listOf(
+            app("a", folder = "f1", folderCellIndex = 0),
+            app("b", folder = "f1", folderCellIndex = 1),
+            app("c", folder = "f1", folderCellIndex = 2),
+        )
+        assertEquals(
+            emptyList<WebAppEntity>(),
+            HomePages.resolveFolderMemberMove(members, fromIndex = -1, toIndex = 1),
+        )
+        assertEquals(
+            emptyList<WebAppEntity>(),
+            HomePages.resolveFolderMemberMove(members, fromIndex = 0, toIndex = 3),
+        )
+        assertEquals(
+            emptyList<WebAppEntity>(),
+            HomePages.resolveFolderMemberMove(emptyList(), fromIndex = 0, toIndex = 0),
+        )
+    }
+
+    @Test
+    fun `dissolve clears folder name and member index`() {
+        val updates = HomePages.resolveDissolve(
+            apps = listOf(
+                app("x", cell = 5, folder = "f1", folderName = "工具", folderCellIndex = 0),
+                app("y", cell = 5, folder = "f1", folderName = "工具", folderCellIndex = 1),
+            ),
+            folderId = "f1",
+            pageCapacity = 12,
+        ).associateBy { it.id }
+        assertEquals(null, updates.getValue("x").folderId)
+        assertEquals(null, updates.getValue("x").folderName)
+        assertEquals(null, updates.getValue("x").folderCellIndex)
+        assertEquals(null, updates.getValue("y").folderName)
+        assertEquals(null, updates.getValue("y").folderCellIndex)
+    }
+
+    @Test
+    fun `remove from folder clears folder name and member index`() {
+        val updated = HomePages.resolveRemoveFromFolder(
+            apps = listOf(
+                app("x", cell = 5, folder = "f1", folderName = "工具", folderCellIndex = 0),
+                app("y", cell = 5, folder = "f1", folderName = "工具", folderCellIndex = 1),
+            ),
+            appId = "y",
+            pageCapacity = 12,
+        )!!
+        assertEquals(null, updated.folderId)
+        assertEquals(null, updated.folderName)
+        assertEquals(null, updated.folderCellIndex)
     }
 }

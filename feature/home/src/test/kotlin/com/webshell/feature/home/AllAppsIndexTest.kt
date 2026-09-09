@@ -2,6 +2,7 @@ package com.webshell.feature.home
 
 import com.webshell.core.data.WebAppEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AllAppsIndexTest {
@@ -104,6 +105,38 @@ class AllAppsIndexTest {
         assertEquals(
             mapOf("B" to 0),
             AllAppsIndex.flatten(AllAppsIndex.filterSections(sections, "百度")).sectionFirstIndex,
+        )
+    }
+
+    @Test
+    fun `flattenByTime sorts newest first without headers`() {
+        val sections = AllAppsIndex.buildSections(
+            listOf(
+                app("Apple", createdAt = 10),
+                app("知乎", createdAt = 30),
+                app("Banana", createdAt = 20),
+                app("Avocado", createdAt = 30),
+            ),
+        )
+        val flat = AllAppsIndex.flattenByTime(sections)
+        // 新建在前；同时刻（30）按标题稳定排序
+        assertEquals(
+            listOf("Avocado", "知乎", "Banana", "Apple"),
+            flat.items.map { (it as AllAppsIndex.Item.Entry).app.title },
+        )
+        assertTrue(flat.items.all { it is AllAppsIndex.Item.Entry })
+        assertEquals(emptyMap<String, Int>(), flat.sectionFirstIndex)
+    }
+
+    @Test
+    fun `flattenByTime composes with search filtering`() {
+        val sections = AllAppsIndex.buildSections(
+            listOf(app("Apple", createdAt = 1), app("Banana", createdAt = 2)),
+        )
+        val flat = AllAppsIndex.flattenByTime(AllAppsIndex.filterSections(sections, "ban"))
+        assertEquals(
+            listOf("Banana"),
+            flat.items.map { (it as AllAppsIndex.Item.Entry).app.title },
         )
     }
 }
