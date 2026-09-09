@@ -2,4 +2,6 @@
 <paths>
     <!-- 日志导出 TXT 的分享目录（FileProvider） -->
     <cache-path name="logs" path="logs/" />
+    <!-- 备份/导出 .pws 文件的分享目录（FileProvider） -->
+    <cache-path name="backup" path="backup/" />
 </paths>

@@ -7,9 +7,12 @@ import com.webshell.core.data.WebAppEntity
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.UserIconRepository
+import com.webshell.core.data.backup.BackupRepository
+import com.webshell.core.data.backup.BackupType
 import com.webshell.core.data.metadata.SiteMetadataFetcher
 import com.webshell.core.model.AppLog
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,6 +33,7 @@ class HomeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val fetcher: SiteMetadataFetcher,
     private val icons: UserIconRepository,
+    private val backupRepository: BackupRepository,
 ) : ViewModel() {
 
     val apps: StateFlow<List<WebAppEntity>> = dao.observeAll()
@@ -141,21 +145,32 @@ class HomeViewModel @Inject constructor(
             val a = source.app
             val folderId = target.app.folderId
                 ?: "f-${a.id.takeLast(4)}${target.app.id.takeLast(4)}"
-            dao.upsert(
-                a.copy(
+            if (target.isFolder) {
+                // 合入已有文件夹：现有成员按当前展示顺序重写为稠密序号
+                // （顺带修复历史 null 值），新成员追加到末尾。
+                val existing = all.filter { it.folderId == folderId }
+                    .sortedWith(HomePages.folderMemberOrder())
+                val updates = existing.mapIndexed { index, entity ->
+                    entity.copy(folderCellIndex = index)
+                } + a.copy(
                     folderId = folderId,
                     homePage = target.app.homePage,
                     homeCellIndex = target.app.homeCellIndex,
-                ),
-            )
-            if (!target.isFolder) {
-                val b = target.app
-                dao.upsert(
-                    b.copy(
+                    folderCellIndex = existing.size,
+                )
+                dao.upsertAll(updates)
+            } else {
+                // 新建文件夹：两名成员按当前展示顺序赋 0..1。
+                val members = listOf(
+                    a.copy(
                         folderId = folderId,
-                        homePage = b.homePage,
-                        homeCellIndex = b.homeCellIndex,
+                        homePage = target.app.homePage,
+                        homeCellIndex = target.app.homeCellIndex,
                     ),
+                    target.app.copy(folderId = folderId),
+                ).sortedWith(HomePages.folderMemberOrder())
+                dao.upsertAll(
+                    members.mapIndexed { index, entity -> entity.copy(folderCellIndex = index) },
                 )
             }
             AppLog.log("home", "创建文件夹（「${a.title}」+「${target.app.title}」）")
@@ -180,7 +195,15 @@ class HomeViewModel @Inject constructor(
             val members = apps.value.filter { it.folderId == folderId }
             val page = members.minOfOrNull { it.homePage } ?: return@launch
             members.forEachIndexed { index, entity ->
-                dao.upsert(entity.copy(folderId = null, homePage = page, homeCellIndex = -1 - index))
+                dao.upsert(
+                    entity.copy(
+                        folderId = null,
+                        folderName = null,
+                        folderCellIndex = null,
+                        homePage = page,
+                        homeCellIndex = -1 - index,
+                    ),
+                )
             }
             AppLog.log("home", "解散文件夹（${members.size} 个成员）")
         }
@@ -201,7 +224,7 @@ class HomeViewModel @Inject constructor(
                 return@launch
             }
             apps.value.firstOrNull { it.id == appId }?.let {
-                dao.upsert(it.copy(folderId = null, homeCellIndex = -1))
+                dao.upsert(it.copy(folderId = null, folderName = null, folderCellIndex = null, homeCellIndex = -1))
                 AppLog.log("home", "「${it.title}」移出文件夹")
             }
         }
@@ -234,6 +257,39 @@ class HomeViewModel @Inject constructor(
                 dao.upsert(it.copy(title = title))
                 AppLog.log("home", "「${it.title}」重命名为「$title」")
             }
+        }
+    }
+
+    /** 文件夹重命名：folderName 挂在全部成员行上（隐式分组模型），空白输入忽略。 */
+    fun renameFolder(folderId: String, name: String) {
+        val folderName = name.trim()
+        if (folderName.isEmpty()) return
+        viewModelScope.launch {
+            val members = apps.value.filter { it.folderId == folderId }
+            if (members.isEmpty()) return@launch
+            dao.upsertAll(members.map { it.copy(folderName = folderName) })
+            AppLog.log("home", "文件夹重命名为「$folderName」")
+        }
+    }
+
+    /** 分享文件夹：导出为 .pws 归档（cacheDir/backup/），由 UI 层经 FileProvider 调起系统分享。 */
+    suspend fun exportFolderShare(folderId: String): File? {
+        val folderName = apps.value.firstOrNull { it.folderId == folderId }?.folderName ?: folderId
+        return backupRepository.export(BackupType.FOLDER, folderId)
+            .onSuccess { AppLog.log("home", "分享文件夹「$folderName」：已生成 ${it.name}") }
+            .onFailure { AppLog.log("home", "分享文件夹「$folderName」失败：${it.message}") }
+            .getOrNull()
+    }
+
+    /** 文件夹内排序：from/to 为按 folderMemberOrder 排序后的全局成员下标（跨页摊平）。 */
+    fun moveFolderMember(folderId: String, fromIndex: Int, toIndex: Int) {
+        viewModelScope.launch {
+            val members = apps.value.filter { it.folderId == folderId }
+                .sortedWith(HomePages.folderMemberOrder())
+            val updates = HomePages.resolveFolderMemberMove(members, fromIndex, toIndex)
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            AppLog.log("home", "文件夹内移动「${updates[toIndex].title}」到第 ${toIndex + 1} 位")
         }
     }
 

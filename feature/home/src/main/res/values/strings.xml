@@ -18,12 +18,18 @@
     <string name="home_empty_description">点按添加，轻触图标即可打开</string>
     <string name="home_no_search_results">未找到相关应用</string>
     <string name="home_all_apps">全部应用</string>
+    <string name="home_view_switcher">切换视图</string>
+    <string name="home_view_grid">网格视图</string>
+    <string name="home_view_list_letter">列表视图 · 按首字母</string>
+    <string name="home_view_list_time">列表视图 · 按时间</string>
     <string name="home_hide_all_apps_entry">隐藏全部应用入口</string>
     <string name="home_page_description">第 %1$d 页，共 %2$d 页</string>
     <string name="home_confirm">确定</string>
     <string name="home_save">保存</string>
     <string name="home_rename">重命名</string>
     <string name="home_app_name">应用名称</string>
+    <string name="home_folder_name">文件夹名称</string>
+    <string name="home_folder_rename_hint">重命名文件夹「%1$s」</string>
     <string name="home_change_icon">更改图标</string>
     <string name="home_icon_address">图标地址</string>
     <string name="home_icon_placeholder">留空则使用首字母图标</string>
@@ -48,6 +54,9 @@
     <string name="home_dissolve_folder_message">文件夹内的 %1$d 个应用将移回主屏幕；应用本身不会被删除。</string>
     <string name="home_copy_link">复制应用链接</string>
     <string name="home_link_copied">已复制应用链接</string>
+    <string name="home_share_folder">分享文件夹</string>
+    <string name="home_share_folder_generating">正在生成分享文件…</string>
+    <string name="home_share_folder_failed">分享失败，请稍后重试</string>
     <string name="home_edit_mode">编辑模式</string>
     <string name="home_show_all_apps_entry">显示全部应用入口</string>
     <string name="home_catalog_cells">桌面 · 固定网格单元</string>
@@ -60,7 +69,7 @@
     <string name="home_catalog_empty">桌面 · 空状态</string>
     <string name="home_catalog_empty_detail">生产空桌面说明，使用全局字阶并随系统与应用字号换行。</string>
     <string name="home_catalog_library">资源库 · 搜索与字母索引</string>
-    <string name="home_catalog_library_detail">完整生产资源库，共享搜索框、固定网格和字母索引；标题与网址可搜索，不启动网页。</string>
+    <string name="home_catalog_library_detail">完整生产资源库，共享搜索框、固定网格、字母索引与视图切换（网格 / 列表·首字母 / 列表·时间）；标题与网址可搜索，不启动网页。</string>
     <string name="home_catalog_library_empty">资源库 · 空搜索结果</string>
     <string name="home_catalog_library_empty_detail">空数据状态仍保留搜索与关闭入口，不生成远程请求。</string>
     <string name="home_catalog_entry">桌面 · 浮动资源库入口</string>

@@ -25,6 +25,12 @@ object AppMotion {
     const val FastMs = 150
     const val NormalMs = 250
 
+    /** 展开的文件夹进场总时长：scrim 淡入 + 面板 0.92→1 缩放淡入（比常规过渡略慢）。 */
+    const val FolderEnterMs = 380
+
+    /** 展开的文件夹退场时长：先播完退场动画再移除 Dialog。 */
+    const val FolderExitMs = 240
+
     fun <T> fade() = tween<T>(FastMs)
 
     fun <T> spring(): SpringSpec<T> = SpringSpec(

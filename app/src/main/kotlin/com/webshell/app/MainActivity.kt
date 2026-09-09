@@ -6,12 +6,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.webshell.app.ui.AppSplash
 import com.webshell.app.ui.AppThemeViewModel
 import com.webshell.app.ui.MainScaffold
 import com.webshell.core.designsystem.theme.WebShellTheme
 import com.webshell.core.model.AppLog
+import com.webshell.core.webengine.KeepAliveRegistry
+import com.webshell.core.webengine.WebViewPool
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -23,6 +32,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         logAppLaunch()
         val launchUrl = intent?.getStringExtra(EXTRA_URL)
+        val skipSplash = launchUrl != null ||
+            WebViewPool.liveSessions().isNotEmpty() ||
+            KeepAliveRegistry.entries.isNotEmpty()
         setContent {
             val theme by themeViewModel.theme.collectAsStateWithLifecycle()
             WebShellTheme(
@@ -32,7 +44,13 @@ class MainActivity : ComponentActivity() {
                 appFontFamily = theme.appFontFamily,
                 appFontScalePercent = theme.appFontScalePercent,
             ) {
-                MainScaffold(launchUrl = launchUrl)
+                Box(Modifier.fillMaxSize()) {
+                    MainScaffold(launchUrl = launchUrl)
+                    var splashVisible by rememberSaveable { mutableStateOf(!skipSplash) }
+                    if (splashVisible) {
+                        AppSplash(onFinished = { splashVisible = false })
+                    }
+                }
             }
         }
     }

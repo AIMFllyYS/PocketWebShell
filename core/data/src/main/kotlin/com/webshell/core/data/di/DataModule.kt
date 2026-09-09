@@ -25,7 +25,8 @@ object DataModule {
             // v1 → v2：新增 isLocal/externalLinksToBrowser/textZoomPercent 三列，
             // 里程碑阶段无迁移需求，直接重建库。
             // v2 → v3：显式迁移新增 app_log 表；fallback 仅作兜底，不能依赖它（会清掉用户数据）。
-            .addMigrations(WebShellDatabase.MIGRATION_2_3)
+            // v3 → v4：显式迁移新增 web_apps.folderName/folderCellIndex 两列。
+            .addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 

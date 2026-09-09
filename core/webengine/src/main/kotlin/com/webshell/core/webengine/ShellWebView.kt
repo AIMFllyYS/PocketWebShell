@@ -67,8 +67,9 @@ class ShellWebView internal constructor(
     internal var pendingRecoveryUrl: String? = null
 
     init {
-        configureBaseSettings()
+        // Profile 必须先于任何 settings 触碰完成切换，失败仅降级回默认共享 Profile。
         applyProfile()
+        configureBaseSettings()
         applyChromeClients()
         applyPullToRefresh()
         applyFindListener()
@@ -141,6 +142,10 @@ class ShellWebView internal constructor(
         runCatching {
             androidx.webkit.ProfileStore.getInstance().getOrCreateProfile(profileId)
             WebViewCompat.setProfile(webView, profileId)
+        }.onSuccess {
+            AppLog.log("webengine", "已应用独立 Profile profileId=$profileId")
+        }.onFailure { e ->
+            AppLog.warn("webengine", "设置独立 Profile 失败 profileId=$profileId : ${e.message}")
         }
     }
 

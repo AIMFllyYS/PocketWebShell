@@ -48,6 +48,7 @@ fun homeCatalog(): List<CatalogEntry> = listOf(
     },
     CatalogEntry("home.library", CatalogCategory.HOME, R.string.home_catalog_library, R.string.home_catalog_library_detail) {
         val apps = rememberHomeCatalogApps()
+        var view by remember { mutableStateOf(AllAppsView.GRID) }
         AllAppsContent(
             sections = listOf(
                 AllAppsIndex.Section("A", listOf(apps[3], apps[7])),
@@ -56,11 +57,13 @@ fun homeCatalog(): List<CatalogEntry> = listOf(
                 AllAppsIndex.Section("D", listOf(apps[4])),
                 AllAppsIndex.Section("Y", listOf(apps[0], apps[2])),
             ),
-            columns = 4, iconSize = 60.dp, cornerRadiusPercent = 26, onLaunch = { _, _ -> }, onDismiss = {},
+            columns = 4, iconSize = 60.dp, cornerRadiusPercent = 26,
+            view = view, onViewChange = { view = it }, onLaunch = { _, _ -> }, onDismiss = {},
         )
     },
     CatalogEntry("home.library.empty", CatalogCategory.HOME, R.string.home_catalog_library_empty, R.string.home_catalog_library_empty_detail) {
-        AllAppsContent(emptyList(), 4, 60.dp, 26, onLaunch = { _, _ -> }, onDismiss = {})
+        var view by remember { mutableStateOf(AllAppsView.GRID) }
+        AllAppsContent(emptyList(), 4, 60.dp, 26, view = view, onViewChange = { view = it }, onLaunch = { _, _ -> }, onDismiss = {})
     },
     CatalogEntry("home.entry", CatalogCategory.HOME, R.string.home_catalog_entry, R.string.home_catalog_entry_detail) {
         FloatingEntrySample()
@@ -160,9 +163,13 @@ private fun HomeOverlaySample(kind: HomeOverlayKind) {
         AppPrimaryButton(stringResource(R.string.home_catalog_show), onClick = { open = true })
     }
     if (open) when (kind) {
-        HomeOverlayKind.FOLDER -> FolderExpandedPage(apps, 26, onLaunch = { _, _ -> dismiss() }, onDissolve = dismiss, onDismiss = dismiss)
+        HomeOverlayKind.FOLDER -> FolderExpandedPage(
+            apps, 26,
+            onLaunch = { _, _ -> dismiss() }, onDissolve = dismiss, onDismiss = dismiss,
+            onRenameFolder = {}, onMoveMember = { _, _ -> },
+        )
         HomeOverlayKind.MENU -> HomeCellMenu(
-            cell, null, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss,
+            cell, null, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss, dismiss,
         )
         HomeOverlayKind.BLANK_MENU -> HomeBlankMenu(true, null, dismiss, dismiss, dismiss)
         HomeOverlayKind.RENAME -> HomeRenameDialog(apps[0], onConfirm = { dismiss() }, onDismiss = dismiss)

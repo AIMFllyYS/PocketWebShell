@@ -10,10 +10,12 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.ImportExport
 import androidx.compose.material.icons.filled.NewReleases
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -86,6 +88,13 @@ internal fun MeHome(
                 SettingsMenuEntry(Icons.Filled.BatterySaver, stringResource(R.string.me_background), Color(0xFF34C759)) { onOpenSection(MeSection.BACKGROUND) }
                 AppListDivider()
                 SettingsMenuEntry(Icons.Filled.Public, stringResource(R.string.me_engine), Color(0xFF007AFF)) { onOpenSection(MeSection.ENGINE) }
+            }
+        }
+        item(key = "data-storage-settings") {
+            AppSettingsSection(stringResource(R.string.me_data_storage_section), Modifier.padding(bottom = 24.dp)) {
+                SettingsMenuEntry(Icons.Filled.Storage, stringResource(R.string.me_storage_title), Color(0xFFFF9500)) { onOpenSection(MeSection.STORAGE) }
+                AppListDivider()
+                SettingsMenuEntry(Icons.Filled.ImportExport, stringResource(R.string.me_data_title), Color(0xFF007AFF)) { onOpenSection(MeSection.DATA) }
             }
         }
         item(key = "about-settings") {

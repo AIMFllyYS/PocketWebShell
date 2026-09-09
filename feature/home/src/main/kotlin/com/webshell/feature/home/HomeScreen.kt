@@ -1,5 +1,6 @@
 package com.webshell.feature.home
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -26,6 +27,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,16 +39,19 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.data.SCROLL_MODE_VERTICAL
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 手机桌面式主页。
@@ -148,15 +154,25 @@ private fun HomeScreenContent(
     var allAppsEntryRect by ui::allAppsEntryRect
     // 「全部应用」抽屉开关。
     var allAppsOpen by remember { mutableStateOf(false) }
+    // 抽屉视图偏好（网格 / 列表·首字母 / 列表·时间）：会话内跨开关保留，随进程状态恢复。
+    var allAppsView by rememberSaveable { mutableStateOf(AllAppsView.GRID) }
     var folderOpenFor by remember { mutableStateOf<String?>(null) }
     var confirmDeleteFor by remember { mutableStateOf<HomeCell?>(null) }
     var confirmDissolveFor by remember { mutableStateOf<HomeCell?>(null) }
     var renameFor by remember { mutableStateOf<HomeCell?>(null) }
+    var renameFolderFor by remember { mutableStateOf<HomeCell?>(null) }
     var iconEditFor by remember { mutableStateOf<HomeCell?>(null) }
     // ViewModel 一次性消息（刷新成功/失败等）的轻量 toast 浮层。
     var toast by remember { mutableStateOf<String?>(null) }
     val clipboardManager = LocalClipboardManager.current
     val linkCopiedMessage = stringResource(R.string.home_link_copied)
+    // 文件夹分享：zip 生成期间防重入，完成后经 FileProvider 调起系统分享。
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var shareInProgress by remember { mutableStateOf(false) }
+    val shareFolderTitle = stringResource(R.string.home_share_folder)
+    val shareGeneratingMessage = stringResource(R.string.home_share_folder_generating)
+    val shareFailedMessage = stringResource(R.string.home_share_folder_failed)
     // 编辑（jiggle）模式：双指捏合进入，点选图标做批量整理。
     var editMode by ui::editMode
     val editSelection = ui.editSelection
@@ -427,7 +443,7 @@ private fun HomeScreenContent(
         )
     }
 
-    // 全部应用抽屉：首字母分区网格 + 右侧字母索引条。
+    // 全部应用抽屉：首字母分区网格 + 右侧字母索引条；可切换列表视图（按首字母/时间）。
     if (allAppsOpen) {
         val sections by viewModel.allAppsSections.collectAsStateWithLifecycle()
         AllAppsDrawer(
@@ -435,6 +451,8 @@ private fun HomeScreenContent(
             columns = settings.gridColumns,
             iconSize = settings.iconSizeDp.dp,
             cornerRadiusPercent = settings.iconCornerRadiusPercent,
+            view = allAppsView,
+            onViewChange = { allAppsView = it },
             onLaunch = { id, url ->
                 allAppsOpen = false
                 onLaunch(id, url)
@@ -455,7 +473,34 @@ private fun HomeScreenContent(
                 clipboardManager.setText(AnnotatedString(cell.app.url))
                 toast = linkCopiedMessage
             },
-            onRename = { renameFor = cell },
+            onRename = { if (cell.isFolder) renameFolderFor = cell else renameFor = cell },
+            onShare = {
+                val folderId = cell.app.folderId
+                if (folderId != null && !shareInProgress) {
+                    shareInProgress = true
+                    toast = shareGeneratingMessage
+                    scope.launch {
+                        val file = viewModel.exportFolderShare(folderId)
+                        shareInProgress = false
+                        if (file == null) {
+                            toast = shareFailedMessage
+                        } else {
+                            toast = null
+                            val uri = FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file,
+                            )
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "application/octet-stream"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(send, shareFolderTitle))
+                        }
+                    }
+                }
+            },
             onChangeIcon = { iconEditFor = cell },
             onRefresh = { viewModel.refreshMetadata(cell.app.id) },
             onToggleDesktop = { viewModel.toggleDesktopMode(cell.app.id) },
@@ -471,6 +516,17 @@ private fun HomeScreenContent(
             app = cell.app,
             onConfirm = { title -> viewModel.rename(cell.app.id, title); renameFor = null },
             onDismiss = { renameFor = null },
+        )
+    }
+
+    renameFolderFor?.let { cell ->
+        HomeFolderRenameDialog(
+            initialName = cell.folderName.orEmpty(),
+            onConfirm = { name ->
+                viewModel.renameFolder(cell.app.folderId.orEmpty(), name)
+                renameFolderFor = null
+            },
+            onDismiss = { renameFolderFor = null },
         )
     }
 
@@ -530,6 +586,11 @@ private fun HomeScreenContent(
                     ?.let { confirmDissolveFor = it }
             },
             onDismiss = { folderOpenFor = null },
+            onRenameFolder = {
+                cellsByKey.values.firstOrNull { it.isFolder && it.app.folderId == folderId }
+                    ?.let { renameFolderFor = it }
+            },
+            onMoveMember = { from, to -> viewModel.moveFolderMember(folderId, from, to) },
         )
     }
 }

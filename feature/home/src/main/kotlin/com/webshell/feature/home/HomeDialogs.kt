@@ -50,6 +50,29 @@ internal fun HomeRenameDialog(app: WebAppEntity, onConfirm: (String) -> Unit, on
     )
 }
 
+/** 文件夹重命名弹窗：与应用重命名共享弹窗与表单，初始值为当前文件夹名（可能为空）。 */
+@Composable
+internal fun HomeFolderRenameDialog(initialName: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var draft by rememberSaveable { mutableStateOf(initialName) }
+    AppConfirmDialog(
+        title = stringResource(R.string.home_rename),
+        text = "",
+        confirmText = stringResource(R.string.home_confirm),
+        dismissText = stringResource(R.string.home_cancel),
+        onConfirm = { onConfirm(draft.trim()) },
+        onDismiss = onDismiss,
+        confirmEnabled = draft.isNotBlank(),
+        content = {
+            AppFormField(
+                value = draft, onValueChange = { draft = it },
+                label = stringResource(R.string.home_folder_name),
+                placeholder = stringResource(R.string.home_folder),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+    )
+}
+
 /** Activity-result adapter only. Import I/O is owned by the injected repository behind the VM. */
 @Composable
 internal fun HomeIconEditRoute(

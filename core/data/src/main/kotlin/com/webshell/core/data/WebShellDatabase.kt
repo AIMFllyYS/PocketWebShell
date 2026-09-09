@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [WebAppEntity::class, HistoryEntity::class, BookmarkEntity::class, LogEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class WebShellDatabase : RoomDatabase() {
@@ -30,6 +30,14 @@ abstract class WebShellDatabase : RoomDatabase() {
                         "`tag` TEXT NOT NULL, " +
                         "`message` TEXT NOT NULL)",
                 )
+            }
+        }
+
+        /** v3 → v4：web_apps 新增 folderName/folderCellIndex 两列（文件夹重命名 + 文件夹内排序）。 */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE web_apps ADD COLUMN folderName TEXT")
+                db.execSQL("ALTER TABLE web_apps ADD COLUMN folderCellIndex INTEGER")
             }
         }
     }

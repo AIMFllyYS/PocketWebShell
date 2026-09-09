@@ -209,7 +209,7 @@ internal fun LauncherCell(
         }
         if (settings.showLabels) {
             Text(
-                text = if (cell.isFolder) stringResource(R.string.home_folder) else cell.app.title,
+                text = if (cell.isFolder) (cell.folderName ?: stringResource(R.string.home_folder)) else cell.app.title,
                 style = launcherLabelStyle(),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

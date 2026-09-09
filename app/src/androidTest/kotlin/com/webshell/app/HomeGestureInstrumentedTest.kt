@@ -267,7 +267,7 @@ class HomeGestureInstrumentedTest {
             instrumentation.targetContext,
             WebShellDatabase::class.java,
             WebShellDatabase.NAME,
-        ).addMigrations(WebShellDatabase.MIGRATION_2_3).build()
+        ).addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
         try {
             return runBlocking { db.webAppDao().getById(id) }
         } finally {
@@ -288,7 +288,7 @@ class HomeGestureInstrumentedTest {
                 context,
                 WebShellDatabase::class.java,
                 WebShellDatabase.NAME,
-            ).addMigrations(WebShellDatabase.MIGRATION_2_3).build()
+            ).addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
             try {
                 val apps = listOf("alpha" to "Alpha", "beta" to "Beta", "gamma" to "Gamma", "delta" to "Delta")
                     .mapIndexed { index, (id, title) ->
