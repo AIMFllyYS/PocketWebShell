@@ -16,7 +16,7 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 
 | # | 根因 | 位置 | 机理 |
 |---|------|------|------|
-| R1 | 每会话独立 Profile 隔离 | `ShellWebView.applyProfile()` | 每个 tab/session 用 `sessionId` 建独立 WebView Profile，cookie/存储互不共享 → 跨标签 SSO 失效、"共享 Token"不可能；老 WebView 不支持 MULTI_PROFILE 时静默回退默认 Profile，行为随设备漂移 |
+| R1 | Profile 策略不一致 | `ShellSessionController` / `ShellWebView.applyProfile()` | 当前产品明确使用 WebView 默认共享 Profile；浏览器标签、桌面入口、直链和本地导入统一共享 Cookie/存储，只有未来扩展才允许非空 profileId |
 | R2 | WebView 默认 UA 含 `; wv)` | `ShellWebView.configureBaseSettings()` | WebView 默认 UA 带 `Version/4.0` + `wv` 标记，部分站点（含 Google 登录、若干移动站点）识别为"内嵌壳"而拒绝/降级服务 |
 | R3 | 弹窗探针 hack | `ShellWebView.onCreateWindow` | 用裸 WebView 探针截 URL、1.5s 后强销毁；依赖 `window.open` 的登录/OAuth 流程会断 |
 | R4 | 设备 WebView 过旧 | 环境 | 无 Play 商店的国产机型 WebView 版本可能很旧，新网站特性/证书/安全策略不支持——这是"有的手机打不开"的最大环境变量，需要在应用内可观测（开发者中心展示 WebView 版本并提示更新） |
@@ -54,8 +54,8 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 在 `refactor/browser-session-engine` 分支实施，全部落在引擎集成层，不动引擎本身：
 
 1. **回调按会话归属（修 B1/B2/B3）**：`ShellWebView` 增加持久 `sessionListener`（随会话存活，出组合不摘除），BrowserViewModel 为每个 tab 注册；标题/URL/进度/返回栈状态**按 tabId 存入 per-tab 状态**，后台 tab 更新不再丢失；UI 从 ViewModel 的 per-tab 状态读取。
-2. **池语义修正（修 B4/C2）**：LinkedHashMap 改 access-order 真 LRU；**激活会话受保护不被淘汰**；淘汰/关闭时快照写入池级 `sessionId → Bundle`，重建时恢复（打通 C2）；淘汰回调通知 BrowserViewModel 同步移除 tab。
-3. **共享登录态（修 R1）**：浏览器标签统一使用 WebView **默认共享 Profile**（cookie/token 全标签共享）；网页应用壳保留独立 Profile 隔离（产品语义：不同站点互不串号）。
+2. **池语义修正（修 B4/C2）**：LinkedHashMap 改 access-order 真 LRU；**激活、保活、权限/文件/全屏操作中的会话受保护不被淘汰**；淘汰/关闭时快照写入池级 `sessionId → Bundle`，重建时恢复（打通 C2）；淘汰只移除 renderer，不删除标签 UI 状态。
+3. **共享登录态（修 R1）**：所有当前入口统一使用 WebView **默认共享 Profile**（cookie/token 全入口共享）；`MULTI_PROFILE` 仅展示为未来能力，不作为本版本安全边界。
 4. **兼容加固（修 R2/R5）**：移动模式默认使用不含 `wv` 的 Chrome 移动 UA；`thirdPartyCookies` 显式双向设置；`onPause`/`onStop` 等关键时机 flush Cookie。
 5. **泄漏与生命周期（修 C3/C4/C5）**：切走的 tab `onPause` 暂停渲染/媒体，切回 `onResume`；`ShellScreen.onNewWindow` 先销毁旧 `browse-*` 会话；`closeTab` 清理 `desktopModes`。
 6. **可观测（对 R4）**：开发者中心展示 WebView 包名/版本，版本过旧时引导用户到应用商店更新。
@@ -64,3 +64,16 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 
 - 必跑：`gradlew testDebugUnitTest :app:assembleDebug`（AGENTS.md 测试矩阵，Browser/WebView/session 域）。
 - 手测清单（需真机）：B 站首页与视频页加载、登录态跨标签共享、开 2+ 标签互切无串台、池满后激活 tab 不被杀、关闭 tab 后音频停止。
+
+## 7. 0.1.22 核心闭环补强
+
+- `UrlRouter` 是地址栏与 WebView 回调共用的 scheme allowlist；外部 Intent 必须通过
+  `resolveActivity()`，`file/content/javascript` 不会从地址栏进入 WebView。
+- `onCreateWindow` 为浏览器标签创建真实的 pooled WebView；保存网站/直链在没有标签切换器时
+  复用当前真实 WebView，OAuth 不再依赖短生命周期探针。
+- `WebViewPool` 的保护原因集合覆盖活动、保活、文件/权限、全屏和认证；淘汰保存快照但保留
+  标签 UI 状态。renderer gone 在原壳中替换 child WebView、恢复历史并自动重试一次。
+- 文件、摄像头/麦克风、定位、全屏、下载和 SSL 请求都以当前 session 的生命周期为边界；
+  默认拒绝未知能力，Blob 仅通过受限的一次性 JS 读取且有大小上限。
+- 本地资源处理器先解析 appId 再做 canonical 子路径检查，故共享 Cookie/Profile 不会扩大本地
+  文件读权限；元数据抓取限制响应体、重定向、最终协议并阻断私网地址。

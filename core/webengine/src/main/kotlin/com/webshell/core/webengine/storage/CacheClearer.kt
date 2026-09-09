@@ -1,6 +1,8 @@
 package com.webshell.core.webengine.storage
 
 import android.content.Context
+import android.webkit.CookieManager
+import android.webkit.WebStorage
 import androidx.webkit.WebViewFeature
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.KeepAliveRegistry
@@ -29,8 +31,9 @@ data class ClearAllResult(
 )
 
 /**
- * 缓存清理器：只删除各 Profile 的缓存子目录（Cache / Code Cache / GPUCache），
- * 绝不触碰 Cookies、Local Storage、IndexedDB、Service Worker 等站点数据。
+ * 缓存清理器：只删除共享 Default（以及旧版遗留 Profile）的缓存子目录
+ * （Cache / Code Cache / GPUCache），绝不触碰 Cookies、Local Storage、IndexedDB、
+ * Service Worker 等站点数据。
  */
 @Singleton
 class CacheClearer @Inject constructor(
@@ -42,7 +45,9 @@ class CacheClearer @Inject constructor(
 
     /** 浏览器标签 / 直接打开的会话（默认共享 Profile 的使用者）。 */
     fun runningSharedSessions(): List<String> =
-        liveSessions().filter { it.startsWith("browser-") || it.startsWith("direct-") }
+        // All current sessions deliberately use the Default profile. There is
+        // no safe site-level cache boundary to infer from a session id.
+        liveSessions()
 
     /**
      * 关闭会话：WebViewPool.destroy 保留返回栈快照（Profile 数据在磁盘），并注销保活。
@@ -73,7 +78,40 @@ class CacheClearer @Inject constructor(
             AppLog.warn(TAG, "跳过清理 $appId：会话正在运行")
             return@withContext ClearOutcome.Failed("会话正在运行")
         }
+        if (!multiProfileSupported()) {
+            return@withContext ClearOutcome.Failed("当前使用共享默认 Profile，请使用“清理浏览器缓存”")
+        }
         clearSiteCacheInternal(appId)
+    }
+
+    /** Clear only re-creatable browser cache. Cookies and LocalStorage remain intact. */
+    suspend fun clearBrowserCache(): ClearOutcome = withContext(Dispatchers.IO) {
+        if (runningSharedSessions().isNotEmpty()) return@withContext ClearOutcome.Failed("浏览器仍有活动会话")
+        val root = File(context.dataDir, "app_webview")
+        val before = measureAllCacheBytes(root)
+        val failure = CACHE_DIR_NAMES.filter { name ->
+            val candidates = listOf(File(root, name), File(root, "Default/$name"))
+            candidates.any { it.exists() && !runCatching { it.deleteRecursively() }.getOrDefault(false) }
+        }
+        if (failure.isNotEmpty()) return@withContext ClearOutcome.Failed(failure.joinToString())
+        val after = measureAllCacheBytes(root)
+        ClearOutcome.Done(if (before != null && after != null) (before - after).coerceAtLeast(0) else null)
+    }
+
+    /** Explicit destructive operation: removes shared cookies/site storage and logs the user out. */
+    suspend fun clearAllWebViewData(): ClearOutcome = withContext(Dispatchers.IO) {
+        if (liveSessions().isNotEmpty()) return@withContext ClearOutcome.Failed("请先关闭所有浏览器会话")
+        runCatching {
+            withContext(Dispatchers.Main.immediate) {
+                WebStorage.getInstance().deleteAllData()
+                kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+                    CookieManager.getInstance().removeAllCookies { continuation.resume(Unit) { _, _, _ -> } }
+                }
+                CookieManager.getInstance().flush()
+            }
+            WebViewPool.clearSavedStates()
+            ClearOutcome.Done(null)
+        }.getOrElse { ClearOutcome.Failed("无法清除 WebView 数据") }
     }
 
     /**
@@ -93,6 +131,10 @@ class CacheClearer @Inject constructor(
                 failed++
                 failures += id
                 AppLog.warn(TAG, "跳过清理 $id：${running.size} 个会话正在运行")
+                continue
+            }
+            if (!File(context.dataDir, "app_webview/profiles/$id").exists()) {
+                // Current sessions all use Default; the shared cache is handled below.
                 continue
             }
             when (val outcome = clearSiteCacheInternal(id)) {
@@ -149,8 +191,8 @@ class CacheClearer @Inject constructor(
     private fun clearSiteCacheInternal(appId: String): ClearOutcome {
         val profileDir = File(context.dataDir, "app_webview/profiles/$appId")
         if (!profileDir.exists()) {
-            AppLog.log(TAG, "清理 $appId：无 Profile 目录，无需清理")
-            return ClearOutcome.Done(0L)
+            AppLog.log(TAG, "清理 $appId：当前为共享默认 Profile，拒绝伪装成单站点清理")
+            return ClearOutcome.Failed("当前使用共享默认 Profile")
         }
         val before = measureCacheBytes(profileDir)
             ?: return ClearOutcome.Failed("无法读取缓存目录")
@@ -211,6 +253,12 @@ class CacheClearer @Inject constructor(
             }
         }
         return total
+    }
+
+    private fun measureAllCacheBytes(webviewRoot: File): Long? {
+        val root = measureCacheBytes(webviewRoot) ?: return null
+        val default = measureCacheBytes(File(webviewRoot, "Default")) ?: return null
+        return root + default
     }
 
     private companion object {

@@ -3,13 +3,13 @@ package com.webshell.core.webengine
 /**
  * 一个"网页应用壳"会话的配置。
  * @param sessionId 唯一会话 ID，仅用于池内实例复用（切 tab/主页往返不丢状态）。
- * @param profileId 独立 WebView Profile ID；null = 使用 WebView 默认共享 Profile
- *   （浏览器多标签走默认 Profile，cookie/登录态全标签共享）；非空时启用独立 Profile
- *   （cookie/存储/HTTP 缓存/SW 全隔离）——网页应用壳用 app.id 保持站点间互不串号。
+ * @param profileId 可选的未来扩展 Profile ID；null = 使用 WebView 默认共享 Profile。
+ *   PocketWebShell 的所有当前入口都显式传 null，确保标签页、桌面入口、直链和本地导入
+ *   共享 Cookie/LocalStorage/IndexedDB/Service Worker。非空仅供未来多用户/隐身能力使用。
  */
 data class ShellConfig(
     val sessionId: String? = null,
-    /** 独立 Profile ID；null = 默认共享 Profile */
+    /** Optional future isolated Profile ID; null is the product-default shared profile. */
     val profileId: String? = null,
     val startUrl: String = "about:blank",
     /** 桌面模式：桌面 UA + UA-CH + 宽视口 */
@@ -29,6 +29,13 @@ data class ShellConfig(
     /** 文本缩放百分比（100 = 不缩放） */
     val textZoomPercent: Int = 100,
 ) {
+    /** Merge persisted settings without allowing a UI refresh to change identity/profile. */
+    fun mergedWith(updated: ShellConfig): ShellConfig = updated.copy(
+        sessionId = sessionId,
+        profileId = profileId,
+        startUrl = startUrl,
+    )
+
     enum class InsetMode {
         /** 系统 bar/IME 以 padding 形式避让（适合未适配刘海的普通网站） */
         PAD,

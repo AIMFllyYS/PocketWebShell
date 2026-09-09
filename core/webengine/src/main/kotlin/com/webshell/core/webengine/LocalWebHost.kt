@@ -3,6 +3,9 @@ package com.webshell.core.webengine
 import android.content.Context
 import androidx.webkit.WebViewAssetLoader
 import java.io.File
+import java.io.FileInputStream
+import android.webkit.WebResourceResponse
+import java.net.URLConnection
 
 /**
  * 本地 HTML 宿主：把打包在 assets 以及用户导入到内部存储的 HTML 以真实 https 源提供，
@@ -29,18 +32,13 @@ object LocalWebHost {
             .addPathHandler(ASSET_PREFIX, WebViewAssetLoader.AssetsPathHandler(context))
             .addPathHandler(
                 LOCAL_PREFIX,
-                // filesDir/localapps/ 位于 dataDir 下的允许目录内；
-                // 请求 /local/<appId>/<file> 时 WebViewAssetLoader 会把前缀剥离，
-                // 以剩余相对路径在目录内解析（含路径穿越防护）。
-                WebViewAssetLoader.InternalStoragePathHandler(
-                    context,
-                    File(context.filesDir, LOCAL_APPS_DIR),
-                ),
+                LocalAppPathHandler(context),
             )
             .build()
 
     fun isLocalUrl(url: String): Boolean = try {
-        android.net.Uri.parse(url).host == HOST
+        val uri = android.net.Uri.parse(url)
+        uri.scheme.equals("https", ignoreCase = true) && uri.host.equals(HOST, ignoreCase = true)
     } catch (_: Exception) {
         false
     }
@@ -71,4 +69,46 @@ object LocalWebHost {
     /** 导入应用在内部存储中的目录 */
     fun localAppDir(context: Context, appId: String): File =
         File(File(context.filesDir, LOCAL_APPS_DIR), appId)
+
+    /** Pure boundary check shared by tests and the path handler. */
+    fun isSafeLocalPath(appId: String, path: String): Boolean {
+        if (appId.isBlank() || !isSafeSegment(appId)) return false
+        val clean = path.trimStart('/')
+        val parts = clean.split('/')
+        return parts.isNotEmpty() && parts.none { !isSafeSegment(it) }
+    }
+
+    private fun isSafeSegment(segment: String): Boolean =
+        segment.isNotEmpty() && segment != "." && segment != ".." &&
+            segment.none { it == '/' || it == '\\' || it.isISOControl() }
+
+    /**
+     * The stock InternalStoragePathHandler protects against `..` escaping its
+     * root, but a shared `/local/` root would still allow app-A to address
+     * app-B by naming B's first path segment. Resolve the app id first and
+     * then enforce the canonical child path stays below that app directory.
+     */
+    private class LocalAppPathHandler(context: Context) : WebViewAssetLoader.PathHandler {
+        private val root = File(context.filesDir, LOCAL_APPS_DIR).canonicalFile
+
+        override fun handle(path: String): WebResourceResponse? {
+            val clean = path.trimStart('/')
+            val appId = clean.substringBefore('/', missingDelimiterValue = "")
+            val relative = clean.substringAfter('/', missingDelimiterValue = "")
+            if (!isSafeLocalPath(appId, relative) || relative.isBlank()) return null
+            val appRoot = File(root, appId).canonicalFile
+            if (!isWithin(appRoot, root)) return null
+            val target = File(appRoot, relative).canonicalFile
+            if (!isWithin(target, appRoot) || !target.isFile) return null
+            val mime = URLConnection.guessContentTypeFromName(target.name) ?: "application/octet-stream"
+            val encoding = if (mime.startsWith("text/") || mime == "application/javascript" || mime == "application/json") "UTF-8" else null
+            return runCatching { WebResourceResponse(mime, encoding, FileInputStream(target)) }.getOrNull()
+        }
+
+        private fun isWithin(child: File, parent: File): Boolean {
+            val prefix = parent.path + File.separator
+            return child.path == parent.path || child.path.startsWith(prefix)
+        }
+
+    }
 }

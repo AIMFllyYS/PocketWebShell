@@ -50,6 +50,10 @@ fun ShellWebViewHost(
 
     SideEffect {
         shell.uiHostOwner = ownership
+        // The pooled instance outlives this composition. Re-apply the latest
+        // settings whenever the host observes a changed config (UA, zoom,
+        // darkening, cookie policy, autoplay, refresh and inset behavior).
+        shell.reconfigure(configFactory())
         shell.listener = if (isVisible) listener else null
         shell.onFindResult = if (isVisible) onFindResult else null
         if (sessionListener != null) shell.sessionListener = sessionListener
@@ -59,10 +63,12 @@ fun ShellWebViewHost(
     DisposableEffect(shell, lifecycleOwner, isVisible) {
         if (isVisible) {
             WebViewPool.activeSessionId = sessionId
+            WebViewPool.protect(sessionId, WebViewPool.ProtectionReason.ACTIVE)
             if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) shell.resumeRendering()
         } else {
             shell.suspendRendering()
             if (WebViewPool.activeSessionId == sessionId) WebViewPool.activeSessionId = null
+            WebViewPool.unprotect(sessionId, WebViewPool.ProtectionReason.ACTIVE)
         }
         val observer = LifecycleEventObserver { _, event ->
             if (shell.uiHostOwner == ownership) {
@@ -80,6 +86,7 @@ fun ShellWebViewHost(
                 shell.listener = null
                 shell.onFindResult = null
                 shell.suspendRendering()
+                WebViewPool.unprotect(sessionId, WebViewPool.ProtectionReason.ACTIVE)
                 shell.uiHostOwner = null
                 if (WebViewPool.activeSessionId == sessionId) WebViewPool.activeSessionId = null
             }

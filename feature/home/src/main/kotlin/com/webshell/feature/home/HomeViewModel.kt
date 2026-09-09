@@ -309,13 +309,14 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** 强制刷新站点元数据：成功时把非空的 iconUrl/title 写回实体，失败仅提示。 */
+    /** 强制刷新站点元数据：成功时同步最终 URL/title/icon；失败不泄露完整 URL 或响应详情。 */
     fun refreshMetadata(appId: String) {
         viewModelScope.launch {
             val app = apps.value.firstOrNull { it.id == appId } ?: return@launch
             fetcher.fetch(app.url)
                 .onSuccess { metadata ->
                     val updated = app.copy(
+                        url = metadata.finalUrl,
                         title = metadata.title.ifBlank { app.title },
                         iconUrl = metadata.iconUrl ?: app.iconUrl,
                     )
@@ -323,9 +324,9 @@ class HomeViewModel @Inject constructor(
                     AppLog.log("home", "刷新「${updated.title}」站点信息成功")
                     _messages.tryEmit("已刷新「${updated.title}」")
                 }
-                .onFailure { e ->
-                    AppLog.log("home", "刷新「${app.title}」站点信息失败：${e.message}")
-                    _messages.tryEmit("刷新失败：${e.message ?: "未知错误"}")
+                .onFailure {
+                    AppLog.warn("home", "站点元数据刷新失败")
+                    _messages.tryEmit("刷新失败，请检查网络或稍后重试")
                 }
         }
     }
