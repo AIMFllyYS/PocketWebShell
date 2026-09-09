@@ -18,7 +18,7 @@
     <string name="me_updates">项目更新日志</string>
     <string name="me_developer">开发者选项</string>
     <string name="me_engine_version">版本</string>
-    <string name="me_engine_profiles">独立存储 Profile</string>
+    <string name="me_engine_profiles">多 Profile 能力（当前未启用）</string>
     <string name="me_engine_document_start">文档启动注入</string>
     <string name="me_engine_darkening">网页深色适配</string>
     <string name="me_supported">支持</string>
@@ -150,7 +150,7 @@
     <string name="me_storage_clearable_label">可清理缓存</string>
     <string name="me_storage_cat_site_data">网站数据</string>
     <string name="me_storage_cat_app">应用与其他数据</string>
-    <string name="me_storage_profile_limited">此设备不支持各网站独立存储，单个网站的占用可能无法准确拆分；共享存储只统计一次。</string>
+    <string name="me_storage_profile_limited">PocketWebShell 当前所有网站入口共享默认 WebView 存储与登录态；单个网站占用无法安全独立清理，本页会把共享存储只统计一次。</string>
     <string name="me_storage_clear_all">清理全部可清理缓存</string>
     <string name="me_storage_measuring">正在统计…</string>
     <string name="me_storage_scan_failed">存储统计失败，请从右上角刷新重试</string>

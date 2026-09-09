@@ -4,4 +4,6 @@
     <cache-path name="logs" path="logs/" />
     <!-- 备份/导出 .pws 文件的分享目录（FileProvider） -->
     <cache-path name="backup" path="backup/" />
+    <!-- Bounded Blob downloads are written to cache until the user shares them. -->
+    <cache-path name="downloads" path="downloads/" />
 </paths>

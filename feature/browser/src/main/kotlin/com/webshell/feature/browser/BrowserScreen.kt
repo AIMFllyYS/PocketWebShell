@@ -1,6 +1,11 @@
 package com.webshell.feature.browser
 
 import androidx.activity.compose.BackHandler
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.content.Intent
+import com.webshell.core.webengine.UrlRoute
+import com.webshell.core.webengine.UrlRouter
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -58,7 +63,10 @@ fun BrowserScreen(
     var editing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val requests = rememberWebSessionRequests(sessionId, isVisible,
-        onNewWindow = { viewModel.captureActiveThumbnail(); viewModel.createTab(it, activate = true) },
+        onNewWindow = { request ->
+            viewModel.captureActiveThumbnail()
+            viewModel.createTabForSession(request.targetSessionId, request.initialUrl ?: "about:blank", activate = true)
+        },
         onMessage = { message = it })
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
@@ -90,6 +98,24 @@ fun BrowserScreen(
     LaunchedEffect(message) {
         if (message != null) { kotlinx.coroutines.delay(2500); message = null }
     }
+    LaunchedEffect(activeTab?.loadError) {
+        when (activeTab?.loadError) {
+            BrowserLoadError.INSECURE_HTTP -> message = context.getString(R.string.browser_http_failed)
+            BrowserLoadError.RENDERER_RECOVERING -> message = context.getString(R.string.browser_renderer_recovering)
+            BrowserLoadError.NETWORK -> message = context.getString(R.string.browser_page_loading_error)
+            null -> Unit
+        }
+    }
+    DisposableEffect(requests.fullScreenView) {
+        val activity = context as? Activity
+        val decor = activity?.window?.decorView
+        val previous = decor?.systemUiVisibility ?: 0
+        if (requests.fullScreenView != null) {
+            decor?.systemUiVisibility = previous or 0x00000400 or 0x00000002 or 0x00001000
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else decor?.systemUiVisibility = previous
+        onDispose { decor?.systemUiVisibility = previous }
+    }
 
     fun dismissOverlay() = chrome.dispatch(BrowserChromeEvent.ShowOverlay(null))
     fun newTab() {
@@ -99,11 +125,23 @@ fun BrowserScreen(
         viewModel.createTab("about:blank", activate = true)
     }
     fun navigate(url: String) {
-        val normalized = normalizeUrl(url)
-        if (normalized.isNotEmpty()) {
-            dismissOverlay()
-            onOpenUrl(normalized)
-            viewModel.openUrl(normalized)
+        val decision = UrlRouter.normalizeAddressBar(url)
+        when (decision.route) {
+            UrlRoute.WEB, UrlRoute.ABOUT_BLANK -> {
+                dismissOverlay()
+                onOpenUrl(decision.normalized)
+                viewModel.openUrl(decision.normalized)
+            }
+            UrlRoute.EXTERNAL_INTENT -> runCatching {
+                val intent = if (decision.normalized.startsWith("intent:", ignoreCase = true)) {
+                    Intent.parseUri(decision.normalized, Intent.URI_INTENT_SCHEME)
+                } else Intent(Intent.ACTION_VIEW, android.net.Uri.parse(decision.normalized))
+                check(intent.component == null && intent.selector == null)
+                check(intent.resolveActivity(context.packageManager) != null)
+                context.startActivity(intent)
+                dismissOverlay()
+            }.onFailure { message = context.getString(R.string.browser_external_failed) }
+            else -> if (url.isNotBlank()) message = context.getString(R.string.browser_invalid_url)
         }
     }
     fun closeActive() { activeTabId?.let(viewModel::closeTab) }
@@ -129,7 +167,8 @@ fun BrowserScreen(
         }
     }
 
-    BackHandler(enabled = isVisible && (chrome.state.overlay != null || editing || findState.visible || activeTabId != null)) {
+    BackHandler(enabled = isVisible && requests.fullScreenView != null) { requests.exitFullScreen() }
+    BackHandler(enabled = isVisible && requests.fullScreenView == null && (chrome.state.overlay != null || editing || findState.visible || activeTabId != null)) {
         when {
             chrome.state.overlay != null -> dismissOverlay()
             editing -> {
@@ -211,4 +250,5 @@ fun BrowserScreen(
         }
         WebSessionDialogs(requests, onRetry = { viewModel.refreshOrStop(false) }, onLeave = ::closeActive)
     }
+    if (isVisible && requests.fullScreenView != null) WebSessionFullScreen(requests)
 }

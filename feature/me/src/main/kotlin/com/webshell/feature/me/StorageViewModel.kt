@@ -119,9 +119,11 @@ class StorageViewModel @Inject constructor(
     fun clearAllPreview(): ClearAllPreview {
         val overview = _state.value.overview
         val affected = overview?.sites.orEmpty().filter { it.measurable && it.clearableBytes > 0 }
-        val running = affected.flatMap { clearer.runningSessionsFor(it.appId) } + clearer.runningSharedSessions()
+        val sharedRunning = clearer.runningSharedSessions()
+        val sharedCache = (overview?.clearableBytes ?: 0L) > affected.sumOf { it.clearableBytes }
+        val running = affected.flatMap { clearer.runningSessionsFor(it.appId) } + sharedRunning
         return ClearAllPreview(
-            affectedSites = affected.size,
+            affectedSites = affected.size + if (sharedCache) 1 else 0,
             runningSessions = running.distinct().size,
             estimatedBytes = overview?.clearableBytes ?: 0L,
         )
@@ -156,9 +158,9 @@ class StorageViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                AppLog.error(TAG, "清理站点缓存失败：${e.message}")
+                AppLog.error(TAG, "清理站点缓存失败")
                 _state.value = _state.value.copy(
-                    siteClearFailure = SiteClearFailure(appId, e.message ?: "unknown"),
+                    siteClearFailure = SiteClearFailure(appId, "无法安全清理共享缓存"),
                 )
                 _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed))
             } finally {
@@ -172,12 +174,11 @@ class StorageViewModel @Inject constructor(
         val s = _state.value
         if (s.clearingAll || s.clearingSiteId != null) return
         val affected = s.overview?.sites.orEmpty().filter { it.measurable && it.clearableBytes > 0 }
-        if (affected.isEmpty()) return
+        if ((s.overview?.clearableBytes ?: 0L) <= 0L) return
         _state.value = s.copy(clearingAll = true, clearAllFailedSites = 0)
         viewModelScope.launch {
             try {
-                val running = affected.flatMap { clearer.runningSessionsFor(it.appId) } +
-                    clearer.runningSharedSessions()
+                val running = affected.flatMap { clearer.runningSessionsFor(it.appId) } + clearer.runningSharedSessions()
                 clearer.closeSessions(running.distinct())
                 val result = clearer.clearAllClearable(affected.map { it.appId })
                 storageStats.invalidate()
@@ -197,7 +198,7 @@ class StorageViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                AppLog.error(TAG, "全量清理失败：${e.message}")
+                AppLog.error(TAG, "全量清理失败")
                 _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed))
             } finally {
                 _state.value = _state.value.copy(clearingAll = false)

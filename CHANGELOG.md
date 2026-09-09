@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.22] - 2026-09-10
+
+### Added
+
+- 浏览器壳核心能力整合：保存的网站入口与浏览器标签统一使用单用户共享 WebView Profile，跨入口复用 Cookie 与登录态。
+- 地址栏与外部协议路由增加 scheme 校验、Intent 可解析性检查和失败反馈；新增定位权限申请链路。
+- 完成 pooled `target=_blank`/`window.open` 真窗口、会话保护原因（活动/权限/文件/全屏/保活）与动态配置重应用；标签缩略图在首帧后按尺寸和 URL 版本安全更新。
+- 新增全屏视频承载、HTTP/HTTPS 主文档错误分类、HTTP Auth/客户端证书安全拒绝提示、普通下载登录态请求头和受限 Blob 下载。
+- 本地导入资源改为 appId 目录级 canonical 边界；元数据抓取加入 HTML/manifest 体积、重定向、最终协议与私网地址校验。
+
+### Fixed
+
+- 修复保存的网站仍使用独立 Profile、导致浏览器登录态无法复用的问题。
+- 修复外部 Intent 可直接启动显式组件的风险，并为无处理程序的电话、邮件、地图等链接提供失败回调。
+- 修复 renderer gone 后仅记录不恢复、共享缓存被误当作单网站缓存、以及池淘汰导致标签 UI 状态丢失的问题。
+
+### Testing
+
+- `testDebugUnitTest`（全模块）与 `:app:assembleDebug` 通过。
+- 真机 WebView 弹窗、下载、全屏、renderer 崩溃恢复及跨入口 B 站登录态仍需手动回归。
+
 ## [0.1.21] - 2026-09-09
 
 ### Changed

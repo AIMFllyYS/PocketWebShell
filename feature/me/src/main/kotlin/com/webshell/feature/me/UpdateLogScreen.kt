@@ -23,6 +23,15 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.22",
+        date = "2026-09-10",
+        highlights = listOf(
+            "浏览器标签、桌面网站入口、直接链接统一共享单用户 WebView 登录态：在浏览器登录后，从桌面打开同站点会自动复用 Cookie",
+            "地址栏与网页外链增加协议校验和 Intent 处理器检查，电话、邮件、地图等外部链接失败时会明确反馈",
+            "新增网页定位权限申请；权限结果按当前会话归属，切换标签不会串到其他页面",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.21",
         date = "2026-09-09",
         highlights = listOf(
@@ -170,7 +179,7 @@ private val updateEntries = listOf(
             "修复标签页串台：进度/标题/返回状态改为按标签独立记录，多标签互切不再互相污染",
             "修复后台标签回调丢失：新增随会话存活的持久监听器，后台加载的标题/历史不再丢",
             "会话池改真 LRU 且激活标签受保护：不再误杀正在显示的标签，淘汰后返回栈可恢复",
-            "浏览器标签统一共享登录 Profile：cookie/登录态全标签互通（网页应用壳仍独立隔离）",
+            "浏览器标签、桌面网站入口、直链和本地导入统一使用默认共享 Profile：Cookie、LocalStorage 和登录态全局复用；本地文件目录仍按 appId 严格隔离",
             "移动版 UA 换成标准 Chrome Android：修复 Google 登录等站点拒绝服务的问题",
             "切走的后台标签暂停音视频播放；关闭标签彻底清理会话与桌面模式记忆",
             "修复新窗口会话泄漏：不再遗留无人销毁的孤儿会话",

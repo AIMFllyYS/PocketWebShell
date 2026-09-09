@@ -115,7 +115,10 @@ internal fun configuredSiteShell(app: WebAppEntity): ShellConfig? {
         LocalWebHost.toHttpsUrl(uri.toASCIIString())
     } else validatedExternalSiteUrl(app.url) ?: return null
     return ShellConfig(
-        sessionId = app.id, profileId = app.id, startUrl = renderUrl,
+        // This release is intentionally single-user: saved-site launches share the
+        // browser's default WebView profile so a login made in one tab/entry is
+        // available everywhere, just like a normal browser.
+        sessionId = app.id, profileId = null, startUrl = renderUrl,
         desktopMode = app.desktopMode, algorithmicDark = app.darkMode,
         textZoomPercent = app.textZoomPercent, thirdPartyCookies = true, pullToRefresh = true,
         externalLinkPolicy = if (app.externalLinksToBrowser || app.isFavorite) {
@@ -143,7 +146,7 @@ private fun validatedSiteNavigation(raw: String, config: ShellConfig): String? {
     validatedExternalSiteUrl(raw)?.let { return it }
     val uri = runCatching { URI(raw) }.getOrNull() ?: return null
     val ownPrefix = "${LocalWebHost.LOCAL_PREFIX}${config.sessionId}/"
-    return if (config.profileId == config.sessionId && config.profileId != null && uri.scheme == "https" &&
-        uri.host == LocalWebHost.HOST && uri.userInfo == null && uri.path.startsWith(ownPrefix) && safeLocalPath(uri.path)
+    return if (uri.scheme == "https" &&
+        uri.host.equals(LocalWebHost.HOST, ignoreCase = true) && uri.userInfo == null && uri.path.startsWith(ownPrefix) && safeLocalPath(uri.path)
     ) uri.toASCIIString() else null
 }

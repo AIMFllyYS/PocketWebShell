@@ -12,7 +12,10 @@ data class BrowserTab(
     val loading: Boolean = false,
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
+    val loadError: BrowserLoadError? = null,
 )
+
+enum class BrowserLoadError { NETWORK, INSECURE_HTTP, RENDERER_RECOVERING }
 
 data class FindState(
     val visible: Boolean = false,
