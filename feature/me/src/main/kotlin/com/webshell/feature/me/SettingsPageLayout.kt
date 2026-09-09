@@ -1,8 +1,10 @@
 package com.webshell.feature.me
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,12 +21,14 @@ import com.webshell.core.designsystem.components.AppNavigationBar
 internal fun DetailPage(
     title: String,
     onBack: () -> Unit,
+    scrollState: ScrollState = rememberScrollState(),
+    actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        AppNavigationBar(title = title, onBack = onBack)
+        AppNavigationBar(title = title, onBack = onBack, actions = actions)
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             content = content,
         )

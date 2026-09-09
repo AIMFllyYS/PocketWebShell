@@ -18,7 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
 
-internal enum class MeSection { APPEARANCE, FONT, LAYOUT, BACKGROUND, ENGINE, UPDATE_LOG, DEVELOPER, SESSIONS }
+internal enum class MeSection { APPEARANCE, FONT, LAYOUT, BACKGROUND, ENGINE, STORAGE, DATA, UPDATE_LOG, DEVELOPER, SESSIONS }
 
 /** Route/state collection only. Playbook is aggregated by app, not by this feature. */
 @Composable
@@ -93,6 +93,8 @@ fun MeScreen(
                 onAutoCollapse = viewModel::setBrowserAutoCollapse,
                 onBack = ::goBack,
             )
+            MeSection.STORAGE -> StorageManagementPage(onBack = ::goBack)
+            MeSection.DATA -> DataManagementPage(onBack = ::goBack)
             MeSection.UPDATE_LOG -> UpdateLogPage(onBack = ::goBack)
             MeSection.DEVELOPER -> DeveloperCenterPage(onBack = ::goBack, onOpenPlaybook = onOpenPlaybook)
             MeSection.SESSIONS -> SessionsPage(
