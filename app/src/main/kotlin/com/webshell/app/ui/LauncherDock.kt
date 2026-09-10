@@ -114,7 +114,6 @@ internal fun DockItems(selectedTab: MainTab, onSelect: (MainTab) -> Unit, modifi
                     Column(
                         modifier = Modifier.weight(1f).padding(horizontal = 2.dp)
                             .clip(RoundedCornerShape(24.dp))
-                            .background(if (selected) tint.copy(alpha = 0.1f) else Color.Transparent)
                             .selectable(selected, onClick = { onSelect(tab) }, role = Role.Tab)
                             .padding(vertical = 7.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,

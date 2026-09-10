@@ -21,7 +21,7 @@ class MainScaffoldViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
     val browserPreferences = settingsRepository.settings
-        .map { BrowserHostPreferences(it.browserAutoCollapse, it.browserOrbX, it.browserOrbY) }
+        .map { BrowserHostPreferences(it.browserAutoCollapse, it.browserOrbX, it.browserOrbY, it.pullToRefreshEnabled) }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowserHostPreferences())
 
@@ -40,10 +40,21 @@ class MainScaffoldViewModel @Inject constructor(
     fun setKeepAliveServiceEnabled(enabled: Boolean) {
         sessionController.setServiceEnabled(enabled)
     }
+
+    /**
+     * "结束后台会话" is a lifecycle action (stop this site's renderer/keep-alive,
+     * stop the foreground service if nothing else needs it), never a login
+     * action. It must never touch shared cookies/site storage — that is
+     * exclusively the "清除全部网站数据" flow in Storage settings.
+     */
+    fun closeSessions(sessionIds: List<String>) {
+        sessionIds.forEach(sessionController::closeSession)
+    }
 }
 
 data class BrowserHostPreferences(
     val autoCollapse: Boolean = true,
     val orbX: Float = -1f,
     val orbY: Float = -1f,
+    val pullToRefresh: Boolean = false,
 )
