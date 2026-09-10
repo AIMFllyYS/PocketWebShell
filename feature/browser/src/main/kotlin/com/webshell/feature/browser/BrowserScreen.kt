@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.designsystem.components.AppConfirmDialog
+import com.webshell.core.designsystem.theme.LocalOverlayClearance
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.compose.ShellWebViewHost
 
@@ -46,6 +47,7 @@ fun BrowserScreen(
     chrome: BrowserChromeController = rememberBrowserChromeController(),
     isVisible: Boolean = true,
     autoCollapse: Boolean = true,
+    pullToRefresh: Boolean = false,
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -53,6 +55,8 @@ fun BrowserScreen(
     val activeTabId by viewModel.activeTabId.collectAsStateWithLifecycle()
     val findState by viewModel.findState.collectAsStateWithLifecycle()
     val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
+    val bookmarkPages by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val recentPages by viewModel.history.collectAsStateWithLifecycle()
     val desktopModes by viewModel.desktopModes.collectAsStateWithLifecycle()
     val activeTab = tabs.firstOrNull { it.tabId == activeTabId }
     val sessionId = activeTabId?.let { "browser-$it" }
@@ -136,8 +140,9 @@ fun BrowserScreen(
                 val intent = if (decision.normalized.startsWith("intent:", ignoreCase = true)) {
                     Intent.parseUri(decision.normalized, Intent.URI_INTENT_SCHEME)
                 } else Intent(Intent.ACTION_VIEW, android.net.Uri.parse(decision.normalized))
-                check(intent.component == null && intent.selector == null)
+                check(intent.component == null && intent.selector == null && intent.`package` == null)
                 check(intent.resolveActivity(context.packageManager) != null)
+                if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
                 dismissOverlay()
             }.onFailure { message = context.getString(R.string.browser_external_failed) }
@@ -187,6 +192,7 @@ fun BrowserScreen(
             urlInput = urlInput, editing = editing, onUrlInputChanged = { urlInput = it },
             onEditingChanged = { editing = it }, onGo = { navigate(urlInput.text) },
             loading = activeTab?.loading == true, tabCount = tabs.size, progress = activeTab?.progress ?: 0,
+            sessionKey = sessionId,
             onTabSwitcher = {
                 focusManager.clearFocus()
                 viewModel.captureActiveThumbnail()
@@ -197,11 +203,12 @@ fun BrowserScreen(
         if (findState.visible) FindBar(findState.query, findState.active, findState.total,
             viewModel::updateFindQuery, { viewModel.findNext(false) }, { viewModel.findNext(true) }, viewModel::hideFindBar)
         Box(Modifier.weight(1f)) {
-            if (activeTab != null && sessionId != null) {
+            if (activeTab != null && sessionId != null && hasPage) {
                 ShellWebViewHost(
                     sessionId = sessionId,
                     configFactory = { ShellConfig(
                         sessionId = sessionId, startUrl = activeTab.url, desktopMode = desktopOn,
+                        pullToRefresh = pullToRefresh,
                         externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
                     ) },
                     listener = requests.listener,
@@ -211,7 +218,17 @@ fun BrowserScreen(
                     onFindResult = { active, total -> viewModel.onFindResult(sessionId, active, total) },
                     onReady = { viewModel.onHostReady(sessionId) },
                 )
-            } else EmptyTabsPrompt(Modifier.fillMaxSize(), ::newTab)
+            } else if (activeTab != null) {
+                // Ordinary scrolling content, unlike a real page: it has no
+                // ShellWebViewHost/parentHandlesInsets mechanism of its own,
+                // so it must reserve the same Dock clearance every other tab
+                // reserves or the permanently-revealed BrowserDockHost covers
+                // its bottom edge.
+                BrowserStartPage(
+                    bookmarkPages, recentPages, ::navigate,
+                    Modifier.fillMaxSize().padding(bottom = LocalOverlayClearance.current),
+                )
+            } else EmptyTabsPrompt(Modifier.fillMaxSize().padding(bottom = LocalOverlayClearance.current), ::newTab)
             message?.let {
                 WebSessionStatusMessage(it, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp))
             }
@@ -232,7 +249,7 @@ fun BrowserScreen(
                 onDismiss = ::dismissOverlay)
             BrowserOverlay.History, BrowserOverlay.Bookmarks -> {
                 val bookmarks = chrome.state.overlay == BrowserOverlay.Bookmarks
-                val entries by (if (bookmarks) viewModel.bookmarks else viewModel.history).collectAsStateWithLifecycle()
+                val entries = if (bookmarks) bookmarkPages else recentPages
                 SavedPagesSheet(entries, bookmarks, ::navigate, viewModel::removeBookmark,
                     { chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.ClearHistory)) }, ::dismissOverlay)
             }

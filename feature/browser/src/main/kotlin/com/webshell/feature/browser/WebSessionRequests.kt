@@ -22,12 +22,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.webshell.core.designsystem.components.AppConfirmDialog
+import com.webshell.core.designsystem.components.AppFormField
 import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.WebViewPool
@@ -50,7 +54,8 @@ class WebSessionRequests internal constructor() {
         internal set
     var exitFullScreen: () -> Unit = {}
     internal var sslCancel: () -> Unit = {}
-    val busy: Boolean get() = permission != null || sslError != null || fileCallback != null || geolocationOrigin != null || fullScreenView != null
+    internal var jsDialog by mutableStateOf<PendingJsDialog?>(null)
+    val busy: Boolean get() = permission != null || sslError != null || fileCallback != null || geolocationOrigin != null || fullScreenView != null || jsDialog != null
 
     internal fun denyPermission() {
         permission?.deny()
@@ -58,6 +63,21 @@ class WebSessionRequests internal constructor() {
         sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_PERMISSION) }
     }
 
+    /** Deny only the pending geolocation prompt; leaves any unrelated pending request untouched. */
+    internal fun denyGeolocation() {
+        geolocation?.invoke(false, false)
+        geolocation = null
+        geolocationOrigin = null
+        sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_PERMISSION) }
+        allowGeolocation = {}
+    }
+
+    /**
+     * Cancel every pending platform request at once — tab switch/leave, not a
+     * single dialog's own dismiss button. A geolocation prompt's own "deny"
+     * must call [denyGeolocation] instead, or it would also silently
+     * cancel an unrelated pending JS dialog/file chooser/SSL decision.
+     */
     internal fun cancelPending() {
         fileCallback?.onReceiveValue(null)
         fileCallback = null
@@ -66,12 +86,24 @@ class WebSessionRequests internal constructor() {
         sslError = null
         sslCancel()
         sslCancel = {}
-        geolocation?.invoke(false, false)
-        geolocation = null
-        geolocationOrigin = null
-        sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_PERMISSION) }
-        allowGeolocation = {}
+        denyGeolocation()
+        completeJsDialog(accepted = false)
         if (fullScreenView != null) exitFullScreen()
+    }
+
+    internal fun completeJsDialog(accepted: Boolean, promptValue: String? = null) {
+        val current = jsDialog ?: return
+        jsDialog = null
+        current.complete(accepted, promptValue)
+    }
+
+    internal fun presentJsDialog(dialog: PendingJsDialog) {
+        if (!available) {
+            dialog.complete(accepted = dialog is PendingJsDialog.Alert, promptValue = null)
+            return
+        }
+        jsDialog?.complete(accepted = false, promptValue = null)
+        jsDialog = dialog
     }
 
     internal fun clear() {
@@ -197,7 +229,30 @@ fun rememberWebSessionRequests(
                 if (requests.available) message.value(context.getString(R.string.browser_download_started, fileName))
             }
             override fun onDownloadFinished(fileName: String, uri: Uri?) {
-                if (requests.available) message.value(context.getString(R.string.browser_download_finished, fileName))
+                if (!requests.available) return
+                message.value(context.getString(R.string.browser_download_finished, fileName))
+                // Blob files are intentionally written to the app cache and
+                // exposed only through FileProvider. Hand the URI to the user
+                // immediately; otherwise a cache-only download would have no
+                // discoverable destination after the toast disappears.
+                uri?.let { shareUri ->
+                    runCatching {
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/octet-stream"
+                            putExtra(Intent.EXTRA_STREAM, shareUri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        val chooser = Intent.createChooser(
+                            send,
+                            context.getString(R.string.browser_download_share_title),
+                        )
+                        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(chooser)
+                    }.onFailure {
+                        message.value(context.getString(R.string.browser_download_share_failed))
+                    }
+                }
             }
             override fun onDownloadFailed(reason: String) {
                 if (requests.available) message.value(context.getString(R.string.browser_download_failed))
@@ -281,9 +336,64 @@ fun rememberWebSessionRequests(
             override fun onExternalLaunchFailed(url: String) {
                 if (requests.available) message.value(context.getString(R.string.browser_external_failed))
             }
+            override fun onJsAlert(url: String, message: String, confirm: () -> Unit) {
+                requests.presentJsDialog(PendingJsDialog.Alert(url, message, confirm))
+            }
+            override fun onJsConfirm(url: String, message: String, respond: (Boolean) -> Unit) {
+                requests.presentJsDialog(PendingJsDialog.Confirm(url, message, respond))
+            }
+            override fun onJsPrompt(
+                url: String, message: String, defaultValue: String, respond: (String?) -> Unit,
+            ) {
+                requests.presentJsDialog(PendingJsDialog.Prompt(url, message, defaultValue, respond))
+            }
+            override fun onJsBeforeUnload(url: String, message: String, respond: (Boolean) -> Unit) {
+                requests.presentJsDialog(PendingJsDialog.BeforeUnload(url, message, respond))
+            }
         }
     }
     return requests
+}
+
+internal sealed class PendingJsDialog {
+    abstract val url: String
+    abstract val message: String
+    abstract fun complete(accepted: Boolean, promptValue: String?)
+
+    data class Alert(
+        override val url: String,
+        override val message: String,
+        val confirm: () -> Unit,
+    ) : PendingJsDialog() {
+        override fun complete(accepted: Boolean, promptValue: String?) { confirm() }
+    }
+
+    data class Confirm(
+        override val url: String,
+        override val message: String,
+        val respond: (Boolean) -> Unit,
+    ) : PendingJsDialog() {
+        override fun complete(accepted: Boolean, promptValue: String?) { respond(accepted) }
+    }
+
+    data class Prompt(
+        override val url: String,
+        override val message: String,
+        val defaultValue: String,
+        val respond: (String?) -> Unit,
+    ) : PendingJsDialog() {
+        override fun complete(accepted: Boolean, promptValue: String?) {
+            respond(if (accepted) promptValue.orEmpty() else null)
+        }
+    }
+
+    data class BeforeUnload(
+        override val url: String,
+        override val message: String,
+        val respond: (Boolean) -> Unit,
+    ) : PendingJsDialog() {
+        override fun complete(accepted: Boolean, promptValue: String?) { respond(accepted) }
+    }
 }
 
 /** WebKit resource strings are not Android runtime permission names. Unknown resources deny. */
@@ -317,13 +427,80 @@ fun WebSessionDialogs(requests: WebSessionRequests, onRetry: () -> Unit, onLeave
             confirmText = stringResource(R.string.browser_allow),
             dismissText = stringResource(R.string.browser_deny),
             onConfirm = requests.allowGeolocation,
-            onDismiss = requests::cancelPending,
+            onDismiss = requests::denyGeolocation,
         )
     }
     requests.sslError?.let { error ->
         BrowserCertificateDialog(error, onRetry = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {}; onRetry() },
             onLeave = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {}; onLeave() })
     }
+    requests.jsDialog?.let { dialog ->
+        JsDialogPrompt(dialog, onComplete = requests::completeJsDialog)
+    }
+}
+
+@Composable
+private fun JsDialogPrompt(
+    dialog: PendingJsDialog,
+    onComplete: (accepted: Boolean, promptValue: String?) -> Unit,
+) {
+    val host = remember(dialog.url) {
+        runCatching { dialog.url.toUri().host }.getOrNull().orEmpty()
+    }
+    val title = when (dialog) {
+        is PendingJsDialog.BeforeUnload -> stringResource(R.string.browser_js_leave_title)
+        // Which site is asking matters at least as much for a prompt as it
+        // does for an alert/confirm — show the host here too, same as the
+        // other dialog kinds, and only fall back to the generic wording when
+        // the host itself is unknown.
+        is PendingJsDialog.Prompt -> host.ifBlank { stringResource(R.string.browser_js_prompt_title) }
+        else -> host.ifBlank { stringResource(R.string.browser_js_alert_title) }
+    }
+    val text = when {
+        dialog is PendingJsDialog.BeforeUnload && dialog.message.isBlank() ->
+            stringResource(R.string.browser_js_leave_message)
+        dialog is PendingJsDialog.Alert && host.isNotBlank() && dialog.message.isNotBlank() ->
+            dialog.message
+        dialog is PendingJsDialog.Alert && dialog.message.isBlank() ->
+            host.ifBlank { stringResource(R.string.browser_js_alert_title) }
+        else -> dialog.message
+    }
+    val confirmText = when (dialog) {
+        is PendingJsDialog.BeforeUnload -> stringResource(R.string.browser_leave)
+        else -> stringResource(R.string.browser_js_ok)
+    }
+    val dismissText = when (dialog) {
+        is PendingJsDialog.Alert -> null
+        is PendingJsDialog.BeforeUnload -> stringResource(R.string.browser_js_stay)
+        else -> stringResource(R.string.browser_cancel)
+    }
+    var promptValue by remember(dialog) {
+        mutableStateOf((dialog as? PendingJsDialog.Prompt)?.defaultValue.orEmpty())
+    }
+    AppConfirmDialog(
+        title = title,
+        text = text,
+        confirmText = confirmText,
+        dismissText = dismissText,
+        destructive = dialog is PendingJsDialog.BeforeUnload,
+        onConfirm = {
+            onComplete(true, if (dialog is PendingJsDialog.Prompt) promptValue else null)
+        },
+        onDismiss = {
+            onComplete(dialog is PendingJsDialog.Alert, if (dialog is PendingJsDialog.Prompt) promptValue else null)
+        },
+        content = if (dialog is PendingJsDialog.Prompt) {
+            {
+                AppFormField(
+                    value = promptValue,
+                    onValueChange = { promptValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
 
 /** Native custom-view host for HTML5 full-screen video. */
