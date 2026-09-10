@@ -107,7 +107,6 @@ internal fun StorageManagementPage(
                     app = app,
                     stats = statsById[app.id],
                     state = state,
-                    viewModel = viewModel,
                     onBack = { detailAppId = null },
                 )
             }
@@ -138,6 +137,7 @@ private fun StorageListPage(
     var showSortMenu by remember { mutableStateOf(false) }
     var sortAnchor by remember { mutableStateOf(IntOffset.Zero) }
     var clearAllPreview by remember { mutableStateOf<ClearAllPreview?>(null) }
+    var clearWebsiteDataConfirm by remember { mutableStateOf(false) }
 
     val rows = remember(apps, statsById, state.query, state.sortMode) {
         val q = state.query.trim().lowercase()
@@ -180,6 +180,7 @@ private fun StorageListPage(
         StorageOverviewSection(
             state = state,
             onClearAll = { clearAllPreview = viewModel.clearAllPreview() },
+            onClearWebsiteData = { clearWebsiteDataConfirm = true },
         )
         AppSettingsSection(stringResource(R.string.me_storage_sites_section), Modifier.padding(bottom = 24.dp)) {
             if (apps.isNotEmpty()) {
@@ -238,7 +239,6 @@ private fun StorageListPage(
     clearAllPreview?.let { preview ->
         val base = stringResource(
             R.string.me_storage_clear_all_text,
-            preview.affectedSites,
             formatStorageBytes(preview.estimatedBytes),
         )
         val runningSuffix = if (preview.runningSessions > 0) {
@@ -255,10 +255,26 @@ private fun StorageListPage(
             onDismiss = { clearAllPreview = null },
         )
     }
+
+    if (clearWebsiteDataConfirm) {
+        AppConfirmDialog(
+            title = stringResource(R.string.me_storage_clear_data_title),
+            text = stringResource(R.string.me_storage_clear_data_text),
+            confirmText = stringResource(R.string.me_storage_confirm_clear_data),
+            dismissText = stringResource(R.string.me_cancel),
+            destructive = true,
+            onConfirm = { clearWebsiteDataConfirm = false; viewModel.clearWebsiteData() },
+            onDismiss = { clearWebsiteDataConfirm = false },
+        )
+    }
 }
 
 @Composable
-private fun StorageOverviewSection(state: StorageUiState, onClearAll: () -> Unit) {
+private fun StorageOverviewSection(
+    state: StorageUiState,
+    onClearAll: () -> Unit,
+    onClearWebsiteData: () -> Unit,
+) {
     AppSettingsSection(stringResource(R.string.me_storage_usage_section), Modifier.padding(bottom = 24.dp)) {
         val overview = state.overview
         if (overview == null) {
@@ -332,8 +348,24 @@ private fun StorageOverviewSection(state: StorageUiState, onClearAll: () -> Unit
                     },
                     onClick = onClearAll,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = overview.clearableBytes > 0 && !state.clearingAll && state.clearingSiteId == null,
+                    enabled = overview.clearableBytes > 0 && !state.clearingAll,
                     loading = state.clearingAll,
+                )
+                Spacer(Modifier.height(AppSpacing.sm))
+                TextButton(
+                    onClick = onClearWebsiteData,
+                    enabled = !state.clearingAll,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.me_storage_clear_data),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Text(
+                    stringResource(R.string.me_storage_clear_data_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (state.clearAllFailedSites > 0) {
                     Spacer(Modifier.height(AppSpacing.sm))
@@ -348,17 +380,20 @@ private fun StorageOverviewSection(state: StorageUiState, onClearAll: () -> Unit
     }
 }
 
-/** 站点详情子页：头部（图标/名称/域名）+ 分项统计 + 本站点分段条 + 清理按钮。 */
+/**
+ * 站点详情子页：头部（图标/名称/域名）+ 分项统计 + 本站点分段条。
+ *
+ * 这里刻意没有"清理该站点缓存/数据"按钮：本产品所有入口共享同一份 Default
+ * Profile（同一份 Cookie、同一份登录态），不存在可安全单独清理的站点边界——
+ * 唯一真实的操作是页面顶部的「清理全部缓存」与「清除全部网站数据」。
+ */
 @Composable
 private fun StorageDetailPage(
     app: WebAppEntity,
     stats: SiteStorageStats?,
     state: StorageUiState,
-    viewModel: StorageViewModel,
     onBack: () -> Unit,
 ) {
-    var runningAtTap by remember { mutableStateOf<List<String>?>(null) }
-    val clearingThis = state.clearingSiteId == app.id
     val measurable = stats?.measurable != false
 
     DetailPage(title = app.title, onBack = onBack) {
@@ -425,60 +460,14 @@ private fun StorageDetailPage(
                 )
             }
         }
-        if (measurable && stats != null) {
-            AppPrimaryButton(
-                text = when {
-                    clearingThis -> stringResource(R.string.me_storage_clearing)
-                    stats.clearableBytes > 0 -> stringResource(
-                        R.string.me_storage_clear_site_size,
-                        formatStorageBytes(stats.clearableBytes),
-                    )
-                    else -> stringResource(R.string.me_storage_clear_site)
-                },
-                onClick = {
-                    val running = viewModel.runningSessionsFor(app.id)
-                    if (running.isEmpty()) viewModel.clearSite(app.id) else runningAtTap = running
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = stats.clearableBytes > 0 && !clearingThis && !state.clearingAll,
-                loading = clearingThis,
-            )
-            if (!clearingThis && stats.clearableBytes == 0L) {
-                Text(
-                    stringResource(R.string.me_storage_no_clearable),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = AppSpacing.sm),
-                )
-            }
+        if (measurable) {
             Text(
-                stringResource(R.string.me_storage_clear_hint),
+                stringResource(R.string.me_storage_site_shared_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = AppSpacing.sm),
             )
-            val failure = state.siteClearFailure
-            if (failure != null && failure.appId == app.id) {
-                Text(
-                    stringResource(R.string.me_storage_clear_failed_reason, failure.reason),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = AppSpacing.sm),
-                )
-            }
         }
         Spacer(Modifier.height(24.dp))
-    }
-
-    runningAtTap?.let {
-        AppConfirmDialog(
-            title = stringResource(R.string.me_storage_running_title),
-            text = stringResource(R.string.me_storage_running_text, app.title),
-            confirmText = stringResource(R.string.me_storage_close_and_clear),
-            dismissText = stringResource(R.string.me_cancel),
-            onConfirm = { runningAtTap = null; viewModel.clearSite(app.id) },
-            onDismiss = { runningAtTap = null },
-        )
     }
 }
 

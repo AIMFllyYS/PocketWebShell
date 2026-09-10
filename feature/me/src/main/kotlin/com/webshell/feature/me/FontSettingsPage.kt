@@ -32,6 +32,7 @@ import com.webshell.core.designsystem.components.AppSelectionRow
 import com.webshell.core.designsystem.components.AppSettingsSection
 import com.webshell.core.designsystem.components.AppValueStepper
 import com.webshell.core.designsystem.theme.AppTypographyPreview
+import com.webshell.core.designsystem.theme.LocalOverlayClearance
 import com.webshell.core.model.AppFontFamily
 import com.webshell.core.model.AppFontScale
 
@@ -50,7 +51,9 @@ internal fun FontSettingsPage(
     BackHandler(enabled = saving) {}
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AppNavigationBar(stringResource(R.string.me_fonts), onBack = if (saving) null else onBack)
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(bottom = LocalOverlayClearance.current)) {
             FontSettingsContent(
                 family = family, scale = scale,
                 onFamily = { if (!saving) family = it },

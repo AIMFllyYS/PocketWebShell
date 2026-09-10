@@ -137,10 +137,17 @@ class MeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(batteryWhitelisted = whitelisted)
     }
 
-    fun stopSession(sessionId: String) {
-        KeepAliveRegistry.unregister(sessionId)
+    fun stopSession(sessionId: String) = stopSessions(listOf(sessionId))
+
+    fun stopSessions(sessionIds: List<String>) {
+        if (sessionIds.isEmpty()) return
+        sessionIds.forEach(KeepAliveRegistry::unregister)
         _uiState.value = _uiState.value.copy(runningSessions = KeepAliveRegistry.entries)
-        AppLog.log("me", "结束后台会话 $sessionId")
+        AppLog.log("me", "结束后台会话 ${sessionIds.size} 个")
+    }
+
+    fun setPullToRefreshEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setPullToRefreshEnabled(enabled)
     }
 
     fun refreshSessions() {

@@ -60,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.data.LogEntity
 import com.webshell.core.designsystem.components.AppNavigationBar
 import com.webshell.core.designsystem.theme.AppSpacing
+import com.webshell.core.designsystem.theme.LocalOverlayClearance
 import com.webshell.core.model.AppLog
 import java.io.File
 import java.text.SimpleDateFormat
@@ -184,8 +185,10 @@ internal fun LogViewerPage(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = AppSpacing.lg,
-                    vertical = AppSpacing.sm,
+                    start = AppSpacing.lg,
+                    end = AppSpacing.lg,
+                    top = AppSpacing.sm,
+                    bottom = AppSpacing.sm + LocalOverlayClearance.current,
                 ),
             ) {
                 items(state.entries, key = { it.id }) { entry ->

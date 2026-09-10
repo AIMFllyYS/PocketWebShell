@@ -8,6 +8,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -25,6 +26,16 @@ internal enum class MeSection { APPEARANCE, FONT, LAYOUT, BACKGROUND, ENGINE, ST
 fun MeScreen(
     onKeepAliveServiceChanged: (Boolean) -> Unit = {},
     onOpenPlaybook: () -> Unit = {},
+    onHideLauncherDock: (Boolean) -> Unit = {},
+    /**
+     * "结束会话" must actually stop the session's renderer and, if nothing
+     * else needs it, the foreground service — not merely drop it from the
+     * keep-alive list. [MeViewModel] has no access to the app-level session
+     * controller (feature modules do not depend on `app`), so the real
+     * teardown is bridged up to the composition root, mirroring
+     * [onKeepAliveServiceChanged].
+     */
+    onStopSessions: (List<String>) -> Unit = {},
     viewModel: MeViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -32,6 +43,7 @@ fun MeScreen(
     val fontSaveState by viewModel.fontSaveState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     var section by rememberSaveable { mutableStateOf<MeSection?>(null) }
+    var pendingStopIds by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
 
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
@@ -46,6 +58,11 @@ fun MeScreen(
         section = if (section == MeSection.FONT) MeSection.APPEARANCE else null
     }
     BackHandler(enabled = section != null && fontSaveState != FontSaveState.Saving) { goBack() }
+    val hideDock = rememberUpdatedState(onHideLauncherDock)
+    LaunchedEffect(section) { hideDock.value(section == MeSection.SESSIONS) }
+    DisposableEffect(Unit) {
+        onDispose { hideDock.value(false) }
+    }
     LaunchedEffect(fontSaveState) {
         if (fontSaveState == FontSaveState.Saved) {
             section = MeSection.APPEARANCE
@@ -61,7 +78,7 @@ fun MeScreen(
         when (target) {
             null -> MeHome(
                 state = state,
-                onStopSession = viewModel::stopSession,
+                onRequestStop = { pendingStopIds = listOf(it) },
                 onOpenSection = { section = it },
             )
             MeSection.APPEARANCE -> AppearanceSettingsPage(
@@ -90,7 +107,9 @@ fun MeScreen(
             MeSection.ENGINE -> EngineInfoPage(
                 capabilities = state.capabilities,
                 autoCollapse = settings.browserAutoCollapse,
+                pullToRefresh = settings.pullToRefreshEnabled,
                 onAutoCollapse = viewModel::setBrowserAutoCollapse,
+                onPullToRefresh = viewModel::setPullToRefreshEnabled,
                 onBack = ::goBack,
             )
             MeSection.STORAGE -> StorageManagementPage(onBack = ::goBack)
@@ -99,9 +118,20 @@ fun MeScreen(
             MeSection.DEVELOPER -> DeveloperCenterPage(onBack = ::goBack, onOpenPlaybook = onOpenPlaybook)
             MeSection.SESSIONS -> SessionsPage(
                 sessions = state.runningSessions,
-                onStopSession = viewModel::stopSession,
+                onStopSessions = { ids -> viewModel.stopSessions(ids); onStopSessions(ids) },
                 onBack = ::goBack,
             )
         }
+    }
+    if (pendingStopIds.isNotEmpty()) {
+        SessionStopConfirmDialog(
+            count = pendingStopIds.size,
+            onConfirm = {
+                viewModel.stopSessions(pendingStopIds)
+                onStopSessions(pendingStopIds)
+                pendingStopIds = emptyList()
+            },
+            onDismiss = { pendingStopIds = emptyList() },
+        )
     }
 }

@@ -27,19 +27,13 @@ import kotlinx.coroutines.launch
 
 enum class StorageSortMode { SIZE, NAME }
 
-/** 单站点清理失败：详情页据此展示原因与重试提示。 */
-data class SiteClearFailure(val appId: String, val reason: String)
-
 data class StorageUiState(
     val scanning: Boolean = true,
     val overview: StorageOverview? = null,
     val scanFailed: Boolean = false,
     val query: String = "",
     val sortMode: StorageSortMode = StorageSortMode.SIZE,
-    /** 正在清理缓存的站点 id；非空时禁止并发起其他清理。 */
-    val clearingSiteId: String? = null,
     val clearingAll: Boolean = false,
-    val siteClearFailure: SiteClearFailure? = null,
     /** 上次全量清理未完成的站点数；>0 时概览区展示重试提示。 */
     val clearAllFailedSites: Int = 0,
 )
@@ -129,42 +123,36 @@ class StorageViewModel @Inject constructor(
         )
     }
 
-    /** 清理单站点缓存；调用前如仍有会话运行，调用方须已获用户确认（此处先关会话再清盘）。 */
-    fun clearSite(appId: String) {
+    /**
+     * 删除共享 Cookie / WebStorage 并清空会话快照。会退出所有网站登录——这是
+     * 唯一一份登录状态，不存在"只退出某个站点"。调用前必须先经确认弹窗；
+     * 此处会先彻底销毁（不留返回栈快照）全部活动会话。
+     */
+    fun clearWebsiteData() {
         val s = _state.value
-        if (s.clearingSiteId != null || s.clearingAll) return
-        _state.value = s.copy(clearingSiteId = appId, siteClearFailure = null)
+        if (s.clearingAll) return
+        _state.value = s.copy(clearingAll = true, clearAllFailedSites = 0)
         viewModelScope.launch {
             try {
-                clearer.closeSessions(clearer.runningSessionsFor(appId))
-                when (val outcome = clearer.clearSiteCache(appId)) {
+                clearer.destroySessions(clearer.runningSharedSessions())
+                when (val outcome = clearer.clearAllWebViewData()) {
                     is ClearOutcome.Done -> {
+                        clearer.clearAllClearable(apps.value.map { it.id })
                         storageStats.invalidate()
                         scan(forceRefresh = true)
-                        val freed = outcome.freedBytes
-                        _toasts.tryEmit(
-                            if (freed != null) {
-                                StorageToast(R.string.me_storage_cleared_size, formatStorageBytes(freed))
-                            } else {
-                                StorageToast(R.string.me_storage_cleared)
-                            },
-                        )
+                        _toasts.tryEmit(StorageToast(R.string.me_storage_data_cleared))
                     }
                     is ClearOutcome.Failed -> {
-                        _state.value = _state.value.copy(siteClearFailure = SiteClearFailure(appId, outcome.reason))
-                        _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed))
+                        _toasts.tryEmit(StorageToast(R.string.me_storage_data_clear_failed, outcome.reason))
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                AppLog.error(TAG, "清理站点缓存失败")
-                _state.value = _state.value.copy(
-                    siteClearFailure = SiteClearFailure(appId, "无法安全清理共享缓存"),
-                )
-                _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed))
+                AppLog.error(TAG, "清除网站数据失败")
+                _toasts.tryEmit(StorageToast(R.string.me_storage_data_clear_failed, "无法清除 WebView 数据"))
             } finally {
-                _state.value = _state.value.copy(clearingSiteId = null)
+                _state.value = _state.value.copy(clearingAll = false)
             }
         }
     }
@@ -172,7 +160,7 @@ class StorageViewModel @Inject constructor(
     /** 全量清理：关闭受影响站点与共享会话 → 清各站点缓存 + 共享缓存 + 图片缓存 → 重扫。 */
     fun clearAll() {
         val s = _state.value
-        if (s.clearingAll || s.clearingSiteId != null) return
+        if (s.clearingAll) return
         val affected = s.overview?.sites.orEmpty().filter { it.measurable && it.clearableBytes > 0 }
         if ((s.overview?.clearableBytes ?: 0L) <= 0L) return
         _state.value = s.copy(clearingAll = true, clearAllFailedSites = 0)
