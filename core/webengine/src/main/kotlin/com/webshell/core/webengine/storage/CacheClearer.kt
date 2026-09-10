@@ -51,7 +51,7 @@ class CacheClearer @Inject constructor(
 
     /**
      * 关闭会话：WebViewPool.destroy 保留返回栈快照（Profile 数据在磁盘），并注销保活。
-     * 返回实际关闭的 id。
+     * 返回实际关闭的 id。用于"清缓存"一类操作——缓存清完后无缝续用同一标签。
      *
      * 注意：若 [KeepAliveRegistry] 因此变空，停止前台服务通知是调用方（UI）的职责。
      */
@@ -70,18 +70,23 @@ class CacheClearer @Inject constructor(
     }
 
     /**
-     * 删除 app_webview/profiles/<appId> 下的三个缓存子目录。
-     * 调用方须先确认 [runningSessionsFor] 为空；仍有会话运行时直接失败。
+     * "退出登录"专用：销毁会话且不留快照（并清除该会话已有的快照）。
+     * [closeSessions] 保留返回栈快照是为了让"清缓存"后无缝续用；但一次显式的
+     * "退出登录/清除全部网站数据"绝不能让某个标签的返回栈快照，在下次打开时把
+     * 已经失效的登录态页面（甚至其 back-forward 缓存渲染结果）悄悄恢复出来。
      */
-    suspend fun clearSiteCache(appId: String): ClearOutcome = withContext(Dispatchers.IO) {
-        if (runningSessionsFor(appId).isNotEmpty()) {
-            AppLog.warn(TAG, "跳过清理 $appId：会话正在运行")
-            return@withContext ClearOutcome.Failed("会话正在运行")
+    fun destroySessions(sessionIds: List<String>): List<String> {
+        val closed = mutableListOf<String>()
+        for (id in sessionIds) {
+            val inPool = WebViewPool.get(id) != null
+            val inKeepAlive = KeepAliveRegistry.isAlive(id)
+            runCatching { WebViewPool.destroyAndForget(id) }
+                .onFailure { AppLog.warn(TAG, "销毁会话失败: $id") }
+            runCatching { KeepAliveRegistry.unregister(id) }
+            if (inPool || inKeepAlive) closed += id
         }
-        if (!multiProfileSupported()) {
-            return@withContext ClearOutcome.Failed("当前使用共享默认 Profile，请使用“清理浏览器缓存”")
-        }
-        clearSiteCacheInternal(appId)
+        AppLog.log(TAG, "退出登录关闭会话 ${closed.size}/${sessionIds.size}")
+        return closed
     }
 
     /** Clear only re-creatable browser cache. Cookies and LocalStorage remain intact. */
@@ -98,20 +103,55 @@ class CacheClearer @Inject constructor(
         ClearOutcome.Done(if (before != null && after != null) (before - after).coerceAtLeast(0) else null)
     }
 
-    /** Explicit destructive operation: removes shared cookies/site storage and logs the user out. */
+    /**
+     * Explicit destructive operation: removes shared cookies/site storage and
+     * logs the user out of every site, everywhere — the product has exactly
+     * one login state, so there is no such thing as a partial/per-site sign
+     * out. Callers must close every live session (with [destroySessions], not
+     * [closeSessions]) before calling this.
+     */
     suspend fun clearAllWebViewData(): ClearOutcome = withContext(Dispatchers.IO) {
         if (liveSessions().isNotEmpty()) return@withContext ClearOutcome.Failed("请先关闭所有浏览器会话")
-        runCatching {
+        val cleared = runCatching {
             withContext(Dispatchers.Main.immediate) {
+                // These are the platform-sanctioned "sign out of every site"
+                // APIs; they are the guaranteed part of this contract.
                 WebStorage.getInstance().deleteAllData()
                 kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
                     CookieManager.getInstance().removeAllCookies { continuation.resume(Unit) { _, _, _ -> } }
                 }
-                CookieManager.getInstance().flush()
             }
-            WebViewPool.clearSavedStates()
-            ClearOutcome.Done(null)
-        }.getOrElse { ClearOutcome.Failed("无法清除 WebView 数据") }
+        }.isSuccess
+        if (!cleared) return@withContext ClearOutcome.Failed("无法清除 WebView 数据")
+        // A cookie flush is a disk write; it does not need the platform's
+        // main-thread requirement for CookieManager mutation calls above.
+        runCatching { CookieManager.getInstance().flush() }
+        deleteResidualSiteDataDirs()
+        WebViewPool.clearSavedStates()
+        ClearOutcome.Done(null)
+    }
+
+    /**
+     * Defense in depth after the platform sign-out APIs above: explicitly
+     * delete the on-disk site-data directories (IndexedDB, Service Worker
+     * registrations, Cache Storage, Local/Session Storage, …) from the shared
+     * Default profile and any legacy per-site remnant. Best-effort only —
+     * failures are logged, not fatal; [WebStorage.deleteAllData] and
+     * [CookieManager.removeAllCookies] above are the guaranteed contract.
+     */
+    private fun deleteResidualSiteDataDirs() {
+        val webviewRoot = File(context.dataDir, "app_webview")
+        val profileDirs = listOf(File(webviewRoot, "Default")) +
+            File(webviewRoot, "profiles").listFiles()?.filter { it.isDirectory }.orEmpty()
+        for (dir in profileDirs) {
+            for (name in SITE_DATA_DIR_NAMES) {
+                val target = File(dir, name)
+                if (target.exists()) {
+                    runCatching { target.deleteRecursively() }
+                        .onFailure { AppLog.warn(TAG, "站点数据目录删除失败: ${dir.name}/$name") }
+                }
+            }
+        }
     }
 
     /**
@@ -264,5 +304,17 @@ class CacheClearer @Inject constructor(
     private companion object {
         const val TAG = "storage"
         val CACHE_DIR_NAMES = listOf("Cache", "Code Cache", "GPUCache")
+
+        /**
+         * 站点数据目录（非缓存）：这些才是"这个网站还记得你"的真正来源
+         * （IndexedDB / Service Worker 注册 / Cache Storage / Local·Session Storage /
+         * 旧版 WebSQL 等）。缓存目录由 [CACHE_DIR_NAMES] 单独处理——那些始终可安全删除，
+         * 不属于"退出登录"的范畴。
+         */
+        val SITE_DATA_DIR_NAMES = listOf(
+            "IndexedDB", "Local Storage", "Session Storage", "Service Worker",
+            "databases", "blob_storage", "File System", "Platform Notifications",
+            "VideoDecodeStats", "Site Characteristics Database", "shared_proto_db",
+        )
     }
 }

@@ -67,6 +67,18 @@ interface ShellListener {
     fun onSslError(url: String, error: String, proceed: () -> Unit, cancel: () -> Unit) =
         onSslError(url, error, proceed)
 
+    /**
+     * JavaScript dialogs. Default implementations complete immediately so a
+     * background session without UI cannot freeze the renderer. Visible hosts
+     * must override and still invoke the callback exactly once.
+     */
+    fun onJsAlert(url: String, message: String, confirm: () -> Unit) { confirm() }
+    fun onJsConfirm(url: String, message: String, respond: (Boolean) -> Unit) { respond(false) }
+    fun onJsPrompt(url: String, message: String, defaultValue: String, respond: (String?) -> Unit) {
+        respond(null)
+    }
+    fun onJsBeforeUnload(url: String, message: String, respond: (Boolean) -> Unit) { respond(false) }
+
     /** 渲染进程崩溃，引擎已自动重建并恢复当前 URL */
     fun onRenderProcessRecoveryFailed() {}
     fun onRenderProcessRecovered() {}

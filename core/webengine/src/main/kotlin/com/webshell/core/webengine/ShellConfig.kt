@@ -12,6 +12,13 @@ data class ShellConfig(
     /** Optional future isolated Profile ID; null is the product-default shared profile. */
     val profileId: String? = null,
     val startUrl: String = "about:blank",
+    /**
+     * The only imported-local-app directory this session may read. A null value
+     * deliberately denies `/local/<appId>/…` resources; remote/browser sessions
+     * must never inherit access merely because they share the default WebView
+     * profile. Packaged `/assets/…` resources remain available to all sessions.
+     */
+    val localAppId: String? = null,
     /** 桌面模式：桌面 UA + UA-CH + 宽视口 */
     val desktopMode: Boolean = false,
     /** 允许 WebView 算法深色（页面未适配深色时的系统级反色） */
@@ -20,8 +27,8 @@ data class ShellConfig(
     val thirdPartyCookies: Boolean = true,
     /** 无手势自动播放音视频（壳应用一般放开以贴近原生体验） */
     val autoplayMedia: Boolean = true,
-    /** 下拉刷新 */
-    val pullToRefresh: Boolean = true,
+    /** 下拉刷新；产品默认关闭，仅在设置打开且页面已到顶部时拦截。 */
+    val pullToRefresh: Boolean = false,
     /** 内容边距模式 */
     val insetMode: InsetMode = InsetMode.PAD,
     /** 外链（非当前站点域）策略 */
@@ -34,6 +41,7 @@ data class ShellConfig(
         sessionId = sessionId,
         profileId = profileId,
         startUrl = startUrl,
+        localAppId = localAppId,
     )
 
     enum class InsetMode {
