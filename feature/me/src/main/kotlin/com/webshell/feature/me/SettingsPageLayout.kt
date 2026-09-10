@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppNavigationBar
+import com.webshell.core.designsystem.theme.LocalOverlayClearance
 
 /** Fixed navigation above independent scrolling content. Insets belong to the app shell. */
 @Composable
@@ -29,7 +30,8 @@ internal fun DetailPage(
         AppNavigationBar(title = title, onBack = onBack, actions = actions)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(bottom = LocalOverlayClearance.current),
             content = content,
         )
     }

@@ -3,9 +3,7 @@ package com.webshell.feature.browser
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -13,11 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.Tab
+import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Tab
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +33,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppFormField
+import com.webshell.core.designsystem.components.PageLoadIndicator
 import com.webshell.core.designsystem.components.staticGlassSurface
 
 /** One row, three reachable controls. Navigation actions live in the explicit menu. */
@@ -51,6 +49,7 @@ internal fun BrowserTopBar(
     onTabSwitcher: () -> Unit,
     onMenu: () -> Unit,
     progress: Int,
+    sessionKey: Any? = null,
 ) {
     val focusManager = LocalFocusManager.current
     val addressLabel = stringResource(R.string.browser_address)
@@ -65,7 +64,7 @@ internal fun BrowserTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Filled.MoreHoriz, stringResource(R.string.browser_menu), Modifier.size(24.dp),
+                Icon(Icons.Rounded.MoreHoriz, stringResource(R.string.browser_menu), Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.onSurface)
             }
             AppFormField(
@@ -87,14 +86,7 @@ internal fun BrowserTopBar(
                 TabCountBadge(tabCount)
             }
         }
-        // The reserved progress slot prevents navigation/loading from resizing the viewport.
-        Box(Modifier.fillMaxWidth().height(2.dp)) {
-            if (loading) LinearProgressIndicator(
-                progress = { (progress / 100f).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxSize(),
-                trackColor = Color.Transparent,
-            )
-        }
+        PageLoadIndicator(loading = loading, rawProgress = progress, sessionKey = sessionKey)
     }
 }
 
@@ -103,7 +95,7 @@ internal fun TabCountBadge(tabCount: Int) {
     val label = stringResource(R.string.browser_tabs)
     val count = stringResource(R.string.browser_tabs_count, tabCount)
     Box(Modifier.clearAndSetSemantics { contentDescription = label; stateDescription = count }, contentAlignment = Alignment.Center) {
-        Icon(Icons.Filled.Tab, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp))
+        Icon(Icons.Rounded.Tab, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(27.dp))
         Text(tabCount.coerceAtMost(99).toString(), style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 2.dp))
     }

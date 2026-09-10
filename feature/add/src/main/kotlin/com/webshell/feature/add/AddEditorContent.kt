@@ -35,6 +35,7 @@ import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.AppSectionHeader
 import com.webshell.core.designsystem.components.AppToggleRow
 import com.webshell.core.designsystem.components.SiteIcon
+import com.webshell.core.designsystem.theme.LocalOverlayClearance
 
 /** Grouped editor is presentation-only: the route owns pickers and ViewModel owns imports/save. */
 @Composable
@@ -59,7 +60,9 @@ internal fun AddEditorContent(
         )
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth()
-                .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = LocalOverlayClearance.current),
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),

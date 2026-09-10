@@ -28,12 +28,12 @@ class ShellSessionController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
 ) {
-    fun configFor(app: WebAppEntity): ShellConfig =
-        requireNotNull(configuredSiteShell(app)) { "Invalid saved-site launch configuration" }
+    fun configFor(app: WebAppEntity, pullToRefresh: Boolean = false): ShellConfig =
+        requireNotNull(configuredSiteShell(app, pullToRefresh)) { "Invalid saved-site launch configuration" }
 
     /** Resolve/create only; first navigation starts after the host installs its owned listeners. */
     suspend fun openSession(app: WebAppEntity): ShellConfig {
-        val config = configFor(app)
+        val config = configFor(app, settingsRepository.settings.first().pullToRefreshEnabled)
         createSession(config)
         if (app.keepAlive && settingsRepository.settings.first().keepAliveServiceEnabled) {
             KeepAliveRegistry.register(app.id, app.title, app.url)
@@ -48,11 +48,15 @@ class ShellSessionController @Inject constructor(
         return config
     }
 
-    fun openDirectSession(url: String): ShellConfig {
+    suspend fun openDirectSession(url: String): ShellConfig {
         val validated = requireNotNull(validatedExternalSiteUrl(url)) { "Invalid direct-site URL" }
         val config = ShellConfig(
             sessionId = "direct-${UUID.nameUUIDFromBytes(validated.toByteArray(Charsets.UTF_8))}",
             startUrl = validated,
+            // A direct link is still this same single-user browsing session;
+            // it must honor the user's pull-to-refresh preference exactly
+            // like a saved-site or browser-tab session does.
+            pullToRefresh = settingsRepository.settings.first().pullToRefreshEnabled,
             externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
         )
         createSession(config)
@@ -108,9 +112,10 @@ class ShellSessionController @Inject constructor(
 }
 
 /** Pure launch mapping, including the legacy stored webpage zoom (independent of app font scale). */
-internal fun configuredSiteShell(app: WebAppEntity): ShellConfig? {
+internal fun configuredSiteShell(app: WebAppEntity, pullToRefresh: Boolean = false): ShellConfig? {
     val uri = runCatching { URI(app.url.trim()) }.getOrNull() ?: return null
-    val renderUrl = if (uri.scheme == LocalWebHost.LOCAL_SCHEME) {
+    val local = uri.scheme.equals(LocalWebHost.LOCAL_SCHEME, ignoreCase = true)
+    val renderUrl = if (local) {
         if (uri.host != app.id || uri.userInfo != null || uri.port != -1 || !safeLocalPath(uri.path)) return null
         LocalWebHost.toHttpsUrl(uri.toASCIIString())
     } else validatedExternalSiteUrl(app.url) ?: return null
@@ -119,9 +124,14 @@ internal fun configuredSiteShell(app: WebAppEntity): ShellConfig? {
         // browser's default WebView profile so a login made in one tab/entry is
         // available everywhere, just like a normal browser.
         sessionId = app.id, profileId = null, startUrl = renderUrl,
+        localAppId = app.id.takeIf { local },
         desktopMode = app.desktopMode, algorithmicDark = app.darkMode,
-        textZoomPercent = app.textZoomPercent, thirdPartyCookies = true, pullToRefresh = true,
-        externalLinkPolicy = if (app.externalLinksToBrowser || app.isFavorite) {
+        textZoomPercent = app.textZoomPercent, thirdPartyCookies = true, pullToRefresh = pullToRefresh,
+        // Only the explicit per-site switch controls where an off-site link
+        // opens. The home-screen star (isFavorite) is presentation only and
+        // must never change navigation/session behavior — this app is a
+        // single-user shell, not a per-site sandbox.
+        externalLinkPolicy = if (app.externalLinksToBrowser) {
             ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER
         } else ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
     )
@@ -144,9 +154,5 @@ private fun safeLocalPath(path: String?): Boolean =
 
 private fun validatedSiteNavigation(raw: String, config: ShellConfig): String? {
     validatedExternalSiteUrl(raw)?.let { return it }
-    val uri = runCatching { URI(raw) }.getOrNull() ?: return null
-    val ownPrefix = "${LocalWebHost.LOCAL_PREFIX}${config.sessionId}/"
-    return if (uri.scheme == "https" &&
-        uri.host.equals(LocalWebHost.HOST, ignoreCase = true) && uri.userInfo == null && uri.path.startsWith(ownPrefix) && safeLocalPath(uri.path)
-    ) uri.toASCIIString() else null
+    return raw.takeIf { LocalWebHost.isAllowedLocalUrl(it, config.localAppId) }
 }

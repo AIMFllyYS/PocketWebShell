@@ -24,13 +24,18 @@ class SiteShellConfigTest {
         assertEquals(125, config.textZoomPercent)
         assertTrue(config.desktopMode)
         assertTrue(config.algorithmicDark)
+        assertFalse(config.pullToRefresh)
         assertEquals(ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME, config.externalLinkPolicy)
+        assertTrue(requireNotNull(configuredSiteShell(site(), pullToRefresh = true)).pullToRefresh)
     }
 
-    @Test fun savedExternalPolicyAndFavoriteBehaviorArePreserved() {
+    @Test fun onlyTheExplicitExternalLinkSwitchChangesPolicy() {
         assertEquals(ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER,
             configuredSiteShell(site().copy(externalLinksToBrowser = true))?.externalLinkPolicy)
-        assertEquals(ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER,
+        // The home-screen star is presentation only; it must not silently
+        // route a favorited site's off-site links (e.g. OAuth) to the system
+        // browser and break the shared, single-user login session.
+        assertEquals(ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
             configuredSiteShell(site().copy(isFavorite = true))?.externalLinkPolicy)
     }
 
@@ -38,6 +43,7 @@ class SiteShellConfigTest {
         val app = site("local://saved-app/index.html").copy(isLocal = true)
         val config = requireNotNull(configuredSiteShell(app))
         assertEquals("https://appassets.androidplatform.net/local/saved-app/index.html", config.startUrl)
+        assertEquals("saved-app", config.localAppId)
         assertEquals(125, config.textZoomPercent)
         assertNull(configuredSiteShell(app.copy(url = "local://other-app/index.html")))
         assertNull(configuredSiteShell(app.copy(url = "local://saved-app/%2e%2e/other/index.html")))

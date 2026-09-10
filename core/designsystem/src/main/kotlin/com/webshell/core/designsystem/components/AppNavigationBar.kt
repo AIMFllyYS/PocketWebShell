@@ -87,12 +87,22 @@ fun AppNavigationBar(
 private fun NavigationBackButton(onBack: () -> Unit, label: String, iconOnly: Boolean) {
     if (iconOnly) {
         IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, label, modifier = Modifier.size(24.dp))
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                label,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
         }
     } else {
         TextButton(onClick = onBack, modifier = Modifier.heightIn(min = 48.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, null, modifier = Modifier.size(24.dp))
-            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

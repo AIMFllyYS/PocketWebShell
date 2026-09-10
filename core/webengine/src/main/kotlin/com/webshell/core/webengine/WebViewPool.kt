@@ -17,7 +17,9 @@ import android.os.Bundle
  */
 object WebViewPool {
 
-    enum class ProtectionReason { ACTIVE, KEEP_ALIVE, PENDING_FILE, PENDING_PERMISSION, PENDING_DOWNLOAD, FULLSCREEN, AUTH }
+    enum class ProtectionReason {
+        ACTIVE, KEEP_ALIVE, PENDING_FILE, PENDING_PERMISSION, PENDING_DOWNLOAD, PENDING_WINDOW, FULLSCREEN, AUTH
+    }
 
     private val pool = LinkedHashMap<String, ShellWebView>(16, 0.75f, true)
 

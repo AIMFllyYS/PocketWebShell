@@ -5,6 +5,7 @@ import androidx.webkit.WebViewAssetLoader
 import java.io.File
 import java.io.FileInputStream
 import android.webkit.WebResourceResponse
+import java.net.URI
 import java.net.URLConnection
 
 /**
@@ -27,43 +28,111 @@ object LocalWebHost {
     /** 本地导入应用的虚拟 scheme（持久化层使用，渲染时映射到 LOCAL_PREFIX） */
     const val LOCAL_SCHEME: String = "local"
 
-    fun createLoader(context: Context): WebViewAssetLoader =
+    /**
+     * Build a loader for one session. A null [allowedLocalAppId] intentionally
+     * means that no imported-local-app directory is readable; this is the safe
+     * default for browser/direct sessions. The packaged `/assets/` tree is still
+     * handled by AndroidX's canonical asset handler.
+     */
+    fun createLoader(context: Context, allowedLocalAppId: String? = null): WebViewAssetLoader =
         WebViewAssetLoader.Builder()
             .addPathHandler(ASSET_PREFIX, WebViewAssetLoader.AssetsPathHandler(context))
             .addPathHandler(
                 LOCAL_PREFIX,
-                LocalAppPathHandler(context),
+                LocalAppPathHandler(context, allowedLocalAppId),
             )
             .build()
 
-    fun isLocalUrl(url: String): Boolean = try {
-        val uri = android.net.Uri.parse(url)
+    fun isLocalUrl(url: String): Boolean = runCatching {
+        val uri = URI(url)
         uri.scheme.equals("https", ignoreCase = true) && uri.host.equals(HOST, ignoreCase = true)
-    } catch (_: Exception) {
-        false
+            && uri.userInfo == null && uri.port == -1
+    }.getOrDefault(false)
+
+    /**
+     * Return the imported app id encoded by an AssetLoader URL, but only when
+     * the URL has a safe app-relative path. This deliberately uses the encoded
+     * path and validates its decoded form so `%2f`, `%5c`, and encoded `..`
+     * cannot bypass the boundary check.
+     */
+    fun localAppIdFromHttpsUrl(url: String): String? = runCatching {
+        val uri = URI(url)
+        if (!uri.scheme.equals("https", ignoreCase = true) ||
+            !uri.host.equals(HOST, ignoreCase = true)
+        ) return@runCatching null
+        val encodedPath = uri.rawPath ?: return@runCatching null
+        if (!encodedPath.startsWith(LOCAL_PREFIX)) return@runCatching null
+        val clean = encodedPath.removePrefix(LOCAL_PREFIX).trimStart('/')
+        val separator = clean.indexOf('/')
+        if (separator <= 0 || separator == clean.lastIndex) return@runCatching null
+        val appId = clean.substring(0, separator)
+        val relative = clean.substring(separator + 1)
+        appId.takeIf { isSafeLocalPath(it, relative) }
+    }.getOrNull()
+
+    /**
+     * Check both the host/path shape and the session's directory capability.
+     * `/assets/…` is a packaged resource and is not tied to an imported app;
+     * `/local/…` requires an exact app-id match.
+     *
+     * Cookie sharing must never widen local-file access. [allowedLocalAppId] is
+     * a *session* capability that can outlive the page that used it: once the
+     * main document navigates to a remote origin, the session must not keep
+     * serving `/local/<appId>/…` to whatever that remote page's iframes or
+     * `<script src>` tags request. [isMainFrame] and [documentUrl] make that
+     * boundary explicit:
+     * - a main-frame request (a real navigation, including into the same
+     *   imported app) only needs the requested/allowed app-id match;
+     * - a subresource request additionally requires the *current top
+     *   document* to still resolve to the very same imported app.
+     */
+    fun isAllowedLocalUrl(
+        url: String,
+        allowedLocalAppId: String?,
+        isMainFrame: Boolean = true,
+        documentUrl: String? = null,
+    ): Boolean {
+        if (!isLocalUrl(url)) return false
+        val path = runCatching { URI(url).rawPath.orEmpty() }.getOrDefault("")
+        if (path.startsWith(ASSET_PREFIX)) return true
+        val requestedAppId = localAppIdFromHttpsUrl(url) ?: return false
+        if (allowedLocalAppId == null || requestedAppId != allowedLocalAppId) return false
+        if (isMainFrame) return true
+        return documentUrl != null && localAppIdFromHttpsUrl(documentUrl) == allowedLocalAppId
     }
 
     /**
      * 持久化层的本地应用 URL：local://<appId>/index.html
      * 渲染层（M4/M5）需先经 [toHttpsUrl] 映射为 AssetLoader 的 https 地址。
      */
-    fun buildLocalAppUrl(appId: String, fileName: String = "index.html"): String =
-        "$LOCAL_SCHEME://$appId/$fileName"
+    fun buildLocalAppUrl(appId: String, fileName: String = "index.html"): String {
+        require(isSafeLocalPath(appId, fileName)) { "Unsafe local app path" }
+        val encodedPath = fileName.trimStart('/').split('/').joinToString("/") { encodePathSegment(it) }
+        return "$LOCAL_SCHEME://${encodePathSegment(appId)}/$encodedPath"
+    }
 
-    fun isLocalAppUrl(url: String): Boolean = url.startsWith("$LOCAL_SCHEME://")
+    fun isLocalAppUrl(url: String): Boolean =
+        url.regionMatches(0, "$LOCAL_SCHEME://", 0, "$LOCAL_SCHEME://".length, ignoreCase = true)
 
     fun localAppId(url: String): String? {
         if (!isLocalAppUrl(url)) return null
-        return url.removePrefix("$LOCAL_SCHEME://").substringBefore('/')
+        return url.substring("$LOCAL_SCHEME://".length).substringBefore('/').takeIf { it.isNotBlank() }
     }
 
     /** local://<appId>/<file> → https://appassets.androidplatform.net/local/<appId>/<file> */
     fun toHttpsUrl(url: String): String {
         if (!isLocalAppUrl(url)) return url
-        val withoutScheme = url.removePrefix("$LOCAL_SCHEME://")
-        val appId = withoutScheme.substringBefore('/')
-        val path = withoutScheme.substringAfter('/', missingDelimiterValue = "")
-        return "https://$HOST$LOCAL_PREFIX$appId/$path"
+        val uri = runCatching { URI(url) }.getOrNull() ?: return url
+        val appId = uri.host ?: return url
+        val rawPath = uri.rawPath ?: return url
+        val relative = rawPath.trimStart('/')
+        if (!isSafeLocalPath(appId, relative) || relative.isBlank()) return url
+        return buildString {
+            append("https://$HOST$LOCAL_PREFIX$appId/")
+            append(relative)
+            uri.rawQuery?.let { append('?').append(it) }
+            uri.rawFragment?.let { append('#').append(it) }
+        }
     }
 
     /** 导入应用在内部存储中的目录 */
@@ -78,9 +147,17 @@ object LocalWebHost {
         return parts.isNotEmpty() && parts.none { !isSafeSegment(it) }
     }
 
-    private fun isSafeSegment(segment: String): Boolean =
-        segment.isNotEmpty() && segment != "." && segment != ".." &&
-            segment.none { it == '/' || it == '\\' || it.isISOControl() }
+    private fun isSafeSegment(segment: String): Boolean {
+        if (segment.isEmpty()) return false
+        val decoded = runCatching {
+            java.net.URLDecoder.decode(segment, Charsets.UTF_8.name())
+        }.getOrDefault(segment)
+        return decoded != "." && decoded != ".." &&
+            decoded.none { it == '/' || it == '\\' || it.isISOControl() }
+    }
+
+    private fun encodePathSegment(segment: String): String =
+        java.net.URLEncoder.encode(segment, Charsets.UTF_8.name()).replace("+", "%20")
 
     /**
      * The stock InternalStoragePathHandler protects against `..` escaping its
@@ -88,13 +165,21 @@ object LocalWebHost {
      * app-B by naming B's first path segment. Resolve the app id first and
      * then enforce the canonical child path stays below that app directory.
      */
-    private class LocalAppPathHandler(context: Context) : WebViewAssetLoader.PathHandler {
+    private class LocalAppPathHandler(
+        context: Context,
+        allowedLocalAppId: String?,
+    ) : WebViewAssetLoader.PathHandler {
         private val root = File(context.filesDir, LOCAL_APPS_DIR).canonicalFile
+        private val allowedAppId = allowedLocalAppId?.takeIf { isSafeSegment(it) }
 
         override fun handle(path: String): WebResourceResponse? {
             val clean = path.trimStart('/')
             val appId = clean.substringBefore('/', missingDelimiterValue = "")
             val relative = clean.substringAfter('/', missingDelimiterValue = "")
+            // The URL path is shared by every WebView in the process. Directory
+            // canonicalisation alone prevents traversal, but would still let
+            // app-A name app-B. Require the capability of this session first.
+            if (allowedAppId == null || appId != allowedAppId) return null
             if (!isSafeLocalPath(appId, relative) || relative.isBlank()) return null
             val appRoot = File(root, appId).canonicalFile
             if (!isWithin(appRoot, root)) return null

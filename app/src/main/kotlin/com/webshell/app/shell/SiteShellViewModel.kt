@@ -2,6 +2,7 @@ package com.webshell.app.shell
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppLookupRepository
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.ShellListener
@@ -10,8 +11,11 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 sealed interface SiteShellState {
@@ -21,6 +25,8 @@ sealed interface SiteShellState {
         val config: ShellConfig,
         val request: Pair<String, String?>,
         val canGoBack: Boolean = false,
+        val loading: Boolean = true,
+        val progress: Int = 0,
     ) : SiteShellState
 }
 
@@ -29,7 +35,20 @@ sealed interface SiteShellState {
 class SiteShellViewModel @Inject constructor(
     private val lookup: WebAppLookupRepository,
     private val sessions: ShellSessionController,
+    settingsRepository: SettingsRepository,
 ) : ViewModel() {
+    /**
+     * null = the persisted setting has not been read yet (DataStore's first
+     * emission is async). A synthetic `false` default here would win a race
+     * against [ShellSessionController.openSession]'s already-correct,
+     * synchronously-baked [ShellConfig.pullToRefresh] the moment
+     * [ShellWebViewHost] reconfigures on its very first frame — silently
+     * turning an enabled pull-to-refresh back off. Callers must only apply
+     * this value once it is non-null.
+     */
+    val pullToRefreshEnabled: StateFlow<Boolean?> = settingsRepository.settings
+        .map { it.pullToRefreshEnabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     private val _state = MutableStateFlow<SiteShellState>(SiteShellState.Loading)
     val state: StateFlow<SiteShellState> = _state.asStateFlow()
     private var openJob: Job? = null
@@ -68,9 +87,24 @@ class SiteShellViewModel @Inject constructor(
     }
 
     fun listenerFor(sessionId: String): ShellListener = object : ShellListener {
-        override fun onCanGoBackChanged(canGoBack: Boolean) {
+        private fun update(sessionId: String, transform: (SiteShellState.Ready) -> SiteShellState.Ready) {
             val ready = _state.value as? SiteShellState.Ready ?: return
-            if (ready.config.sessionId == sessionId) _state.value = ready.copy(canGoBack = canGoBack)
+            if (ready.config.sessionId == sessionId) _state.value = transform(ready)
+        }
+        override fun onCanGoBackChanged(canGoBack: Boolean) {
+            update(sessionId) { it.copy(canGoBack = canGoBack) }
+        }
+        override fun onPageStarted(url: String) {
+            update(sessionId) { it.copy(loading = true, progress = 0) }
+        }
+        override fun onProgress(progress: Int) {
+            update(sessionId) { it.copy(progress = progress, loading = progress < 100) }
+        }
+        override fun onPageFinished(url: String) {
+            update(sessionId) { it.copy(loading = false, progress = 100) }
+        }
+        override fun onPageError(url: String, errorCode: Int, description: String, insecureHttp: Boolean) {
+            update(sessionId) { it.copy(loading = false) }
         }
     }
 

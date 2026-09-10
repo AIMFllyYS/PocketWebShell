@@ -12,9 +12,18 @@ class UrlRouterTest {
 
     @Test fun `external and privileged schemes are classified`() {
         assertEquals(UrlRoute.EXTERNAL_INTENT, UrlRouter.classify("tel:+123").route)
+        assertEquals(UrlRoute.EXTERNAL_INTENT, UrlRouter.classify("sms:+123").route)
+        assertEquals(UrlRoute.EXTERNAL_INTENT, UrlRouter.classify("mailto:user@example.com").route)
+        assertEquals(UrlRoute.EXTERNAL_INTENT, UrlRouter.classify("geo:0,0").route)
+        assertEquals(UrlRoute.EXTERNAL_INTENT, UrlRouter.classify("market://details?id=com.example").route)
         assertEquals(UrlRoute.EXTERNAL_INTENT, UrlRouter.classify("intent://scan/#Intent;scheme=zxing;end").route)
+        assertEquals(UrlRoute.BLOB, UrlRouter.classify("blob:https://example.com/1").route)
+        assertEquals(UrlRoute.DATA, UrlRouter.classify("data:text/plain,hello").route)
         assertEquals(UrlRoute.BLOCKED, UrlRouter.classify("file:///data/data/app").route)
+        assertEquals(UrlRoute.BLOCKED, UrlRouter.classify("content://media/external/file/1").route)
         assertEquals(UrlRoute.JAVASCRIPT, UrlRouter.classify("javascript:alert(1)").route)
+        assertEquals(UrlRoute.UNKNOWN, UrlRouter.classify("ftp://example.com").route)
+        assertEquals(UrlRoute.UNKNOWN, UrlRouter.classify("example-without-scheme").route)
     }
 
     @Test fun `address bar adds https only for host-like input`() {

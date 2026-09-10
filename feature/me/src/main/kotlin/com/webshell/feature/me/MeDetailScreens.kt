@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BatterySaver
-import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -130,15 +131,19 @@ internal fun BackgroundSettingsContent(
         AppListRow(
             title = stringResource(if (batteryWhitelisted) R.string.me_battery_allowed else R.string.me_battery_restricted),
             subtitle = stringResource(if (batteryWhitelisted) R.string.me_battery_allowed_hint else R.string.me_battery_restricted_hint),
-            leadingIcon = Icons.Filled.BatterySaver,
+            leadingIcon = Icons.Rounded.BatterySaver,
+            leadingIconBackground = Color(0xFF34C759),
             onClick = onBatteryClick,
+            trailing = { SettingsChevron() },
         )
         AppListDivider()
         AppListRow(
             title = stringResource(if (notificationsGranted) R.string.me_notifications_allowed else R.string.me_notifications_denied),
             subtitle = stringResource(R.string.me_notifications_hint),
-            leadingIcon = Icons.Filled.Notifications,
+            leadingIcon = Icons.Rounded.Notifications,
+            leadingIconBackground = Color(0xFFFF3B30),
             onClick = onNotificationClick,
+            trailing = { SettingsChevron() },
         )
     }
     Spacer(Modifier.height(16.dp))
@@ -161,22 +166,37 @@ internal fun BackgroundSettingsContent(
 internal fun EngineInfoPage(
     capabilities: WebViewCapabilities.Snapshot,
     autoCollapse: Boolean,
+    pullToRefresh: Boolean,
     onAutoCollapse: (Boolean) -> Unit,
+    onPullToRefresh: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     DetailPage(stringResource(R.string.me_engine), onBack) {
-        EngineInfoContent(capabilities, autoCollapse, onAutoCollapse)
+        EngineInfoContent(capabilities, autoCollapse, pullToRefresh, onAutoCollapse, onPullToRefresh)
     }
 }
 
 @Composable
-internal fun EngineInfoContent(capabilities: WebViewCapabilities.Snapshot, autoCollapse: Boolean, onAutoCollapse: (Boolean) -> Unit) {
+internal fun EngineInfoContent(
+    capabilities: WebViewCapabilities.Snapshot,
+    autoCollapse: Boolean,
+    pullToRefresh: Boolean,
+    onAutoCollapse: (Boolean) -> Unit,
+    onPullToRefresh: (Boolean) -> Unit,
+) {
         AppSettingsSection(stringResource(R.string.me_browsing_experience)) {
             AppToggleRow(
                 title = stringResource(R.string.me_auto_collapse),
                 subtitle = stringResource(R.string.me_auto_collapse_hint),
                 checked = autoCollapse,
                 onCheckedChange = onAutoCollapse,
+            )
+            AppListDivider(hasLeadingIcon = false)
+            AppToggleRow(
+                title = stringResource(R.string.me_pull_to_refresh),
+                subtitle = stringResource(R.string.me_pull_to_refresh_hint),
+                checked = pullToRefresh,
+                onCheckedChange = onPullToRefresh,
             )
         }
         Spacer(Modifier.height(16.dp))

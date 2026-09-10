@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.webshell.app.R
+import com.webshell.core.designsystem.components.BrandMarkPalette
+import com.webshell.core.designsystem.components.drawBrandMark
 import com.webshell.core.designsystem.theme.LocalIsDarkTheme
 import kotlin.math.PI
 import kotlin.math.cos
@@ -67,26 +69,25 @@ private const val FieldRadiusFrac = 0.42f
 private const val GalaxyCenterYFrac = 0.60f
 
 private val SplashColorsLight = listOf(
-    Color(0xFFE8B339),
-    Color(0xFFF5D67B),
-    Color(0xFFD49A1E),
-    Color(0xFFFFE9A8),
+    BrandMarkPalette.core,
+    BrandMarkPalette.orbit,
+    Color(0xFFF5E6C8),
+    BrandMarkPalette.ring,
 )
 
 private val SplashColorsDark = listOf(
-    Color(0xFF7AA2FF),
-    Color(0xFFB48CFF),
-    Color(0xFFFFFFFF),
-    Color(0xFF9EC1FF),
+    BrandMarkPalette.core,
+    BrandMarkPalette.orbit,
+    BrandMarkPalette.ring,
+    Color(0xFFD4C4A0),
 )
 
-private val RingColorLight = Color(0xFFE8B339)
-private val CoreColorLight = Color(0xFFF2C14E)
-private val RingColorDark = Color(0xFF9A8CFF)
-private val CoreColorDark = Color(0xFF8FA8FF)
-// 远景星尘：浅色主题淡金、深色主题冷白，只做氛围不做主体。
-private val StarColorLight = Color(0xFFC9A24B)
-private val StarColorDark = Color(0xFFBFD0FF)
+private val RingColorLight = BrandMarkPalette.orbit
+private val CoreColorLight = BrandMarkPalette.core
+private val RingColorDark = BrandMarkPalette.orbit
+private val CoreColorDark = BrandMarkPalette.core
+private val StarColorLight = BrandMarkPalette.orbit
+private val StarColorDark = BrandMarkPalette.ring
 
 private class SplashParticle(
     val startRadius: Float,
@@ -400,7 +401,7 @@ fun AppSplash(onFinished: () -> Unit) {
                         drawSoftGlow(
                             center = center,
                             radius = ringRadius * 0.35f * (1f - 0.7f * pointT),
-                            color = Color.White,
+                            color = BrandMarkPalette.core,
                             alpha = fadeIn * sin(pointT * PI.toFloat()) * 0.9f,
                         )
                     }
@@ -436,6 +437,16 @@ fun AppSplash(onFinished: () -> Unit) {
                         )
                     }
                 }
+            }
+
+            val markT = ((p - 0.78f) / 0.18f).coerceIn(0f, 1f)
+            if (markT > 0f) {
+                val markEase = FastOutSlowInEasing.transform(markT)
+                drawBrandMark(
+                    center = center,
+                    radius = ringRadius * (0.72f + 0.28f * markEase),
+                    alpha = fadeIn * markEase,
+                )
             }
         }
         // 文案先于星河收束登场：淡入 + 字距收紧 + 轻微上浮，位于上半屏。

@@ -23,9 +23,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -87,7 +87,7 @@ internal fun TabSwitcherContent(
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             TextButton(onClick = onNewTab, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.Add, null)
+                Icon(Icons.Rounded.Add, null)
                 Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.browser_new_tab), textAlign = TextAlign.Center)
             }
@@ -114,19 +114,20 @@ internal fun TabCard(tab: BrowserTab, active: Boolean, onClick: () -> Unit, onCl
                 Image(bitmap = remember(thumb) { thumb.asImageBitmap() }, contentDescription = null,
                     modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
-                Icon(Icons.Filled.Public, null, modifier = Modifier.align(Alignment.Center).size(42.dp),
+                Icon(Icons.Rounded.Public, null, modifier = Modifier.align(Alignment.Center).size(42.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             }
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(48.dp)) {
                 Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), CircleShape),
                     contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Close, stringResource(R.string.browser_close_tab), Modifier.size(17.dp))
+                    Icon(Icons.Rounded.Close, stringResource(R.string.browser_close_tab), Modifier.size(17.dp))
                 }
             }
         }
         Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
             Text(tab.title.ifBlank { stringResource(R.string.browser_new_tab) },
-                style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(tab.url.stripScheme(), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp))

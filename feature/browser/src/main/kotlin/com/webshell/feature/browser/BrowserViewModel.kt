@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.BrowserSavedPagesRepository
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.ShellListener
+import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.UrlRoute
 import com.webshell.core.webengine.UrlRouter
 import com.webshell.core.webengine.WebViewPool
@@ -97,6 +98,21 @@ class BrowserViewModel @Inject constructor(
         sessionListeners.getOrPut(sessionId) {
             val tabId = sessionId.removePrefix("browser-")
             object : ShellListener {
+                override fun onNewWindow(request: NewWindowRequest) {
+                    // onCreateWindow allocates the real pooled target before
+                    // Chromium receives its WebViewTransport. Adopt it from the
+                    // persistent session listener as well as the visible UI
+                    // listener, so a popup opened by a background tab cannot
+                    // become a naked/orphan renderer.
+                    if (request.targetSessionId.startsWith("browser-")) {
+                        createTabForSession(
+                            request.targetSessionId,
+                            request.initialUrl ?: "about:blank",
+                            activate = false,
+                        )
+                    }
+                }
+
                 override fun onPageStarted(url: String) {
                     updateTabMeta(tabId, url = url)
                     updateTabNav(tabId, progress = 0, loading = true)
@@ -161,7 +177,9 @@ class BrowserViewModel @Inject constructor(
             if (decision.route == UrlRoute.WEB || decision.route == UrlRoute.ABOUT_BLANK) decision.normalized
             else "about:blank"
         }
+        val pooled = WebViewPool.get(sessionId)
         if (_tabs.value.any { it.tabId == tabId }) {
+            pooled?.sessionListener = listenerFor(sessionId)
             if (activate) setActive(tabId)
             return tabId
         }
@@ -170,6 +188,10 @@ class BrowserViewModel @Inject constructor(
             title = if (safeStartUrl == "about:blank") "" else safeStartUrl,
             url = safeStartUrl,
         )
+        // The target may already be navigating before its Compose host is
+        // composed. Bind the per-session listener immediately so title/progress
+        // and history callbacks remain attributable during that window.
+        pooled?.sessionListener = listenerFor(sessionId)
         AppLog.log("browser", "新建标签 $tabId（共 ${_tabs.value.size} 个）")
         if (activate) setActive(tabId)
         return tabId

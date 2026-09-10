@@ -53,6 +53,8 @@ data class HomeSettings(
     /** User-selected normalized center; -1 means the safe bottom-right default. */
     val browserOrbX: Float = -1f,
     val browserOrbY: Float = -1f,
+    /** 仅在页面已到顶部时允许下拉刷新；默认关闭，避免和网页内滚动冲突。 */
+    val pullToRefreshEnabled: Boolean = false,
 )
 
 /** 主题模式取值，见 docs/DESIGN.md */
@@ -97,6 +99,7 @@ class SettingsRepository @Inject constructor(
         val BROWSER_AUTO_COLLAPSE = booleanPreferencesKey("browser_auto_collapse")
         val BROWSER_ORB_X = floatPreferencesKey("browser_orb_x")
         val BROWSER_ORB_Y = floatPreferencesKey("browser_orb_y")
+        val PULL_TO_REFRESH = booleanPreferencesKey("pull_to_refresh")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
@@ -123,6 +126,7 @@ class SettingsRepository @Inject constructor(
             browserAutoCollapse = prefs[Keys.BROWSER_AUTO_COLLAPSE] ?: true,
             browserOrbX = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_X]),
             browserOrbY = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_Y]),
+            pullToRefreshEnabled = prefs[Keys.PULL_TO_REFRESH] ?: false,
         )
     }
 
@@ -197,6 +201,10 @@ class SettingsRepository @Inject constructor(
             it[Keys.BROWSER_ORB_X] = normalizedOrbCoordinate(x)
             it[Keys.BROWSER_ORB_Y] = normalizedOrbCoordinate(y)
         }
+    }
+
+    suspend fun setPullToRefreshEnabled(enabled: Boolean) {
+        context.settingsStore.edit { it[Keys.PULL_TO_REFRESH] = enabled }
     }
 
     internal companion object {

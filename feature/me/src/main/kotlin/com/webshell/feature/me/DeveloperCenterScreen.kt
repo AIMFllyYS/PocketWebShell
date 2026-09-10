@@ -6,13 +6,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.DeveloperMode
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.ReceiptLong
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Web
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.DeveloperMode
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Smartphone
+import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material.icons.rounded.Web
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,27 +63,27 @@ internal fun DeveloperHomeContent(
         AppListRow(
             title = stringResource(R.string.me_dev_playbook),
             subtitle = stringResource(R.string.me_dev_playbook_hint),
-            leadingIcon = Icons.Filled.DeveloperMode,
+            leadingIcon = Icons.Rounded.DeveloperMode,
             onClick = onOpenPlaybook,
             trailing = { SettingsChevron() },
         )
     }
     Spacer(Modifier.height(24.dp))
     AppSettingsSection(stringResource(R.string.me_dev_app_info)) {
-        AppListRow(stringResource(R.string.me_dev_version), subtitle = state.version, leadingIcon = Icons.Filled.Info)
+        AppListRow(stringResource(R.string.me_dev_version), subtitle = state.version, leadingIcon = Icons.Rounded.Info)
         AppListDivider()
-        AppListRow(stringResource(R.string.me_engine), subtitle = state.webViewVersion, leadingIcon = Icons.Filled.Web)
+        AppListRow(stringResource(R.string.me_engine), subtitle = state.webViewVersion, leadingIcon = Icons.Rounded.Web)
         AppListDivider()
-        AppListRow(stringResource(R.string.me_dev_api), subtitle = state.apiLevel, leadingIcon = Icons.Filled.Terminal)
+        AppListRow(stringResource(R.string.me_dev_api), subtitle = state.apiLevel, leadingIcon = Icons.Rounded.Terminal)
         AppListDivider()
-        AppListRow(stringResource(R.string.me_dev_device), subtitle = state.device, leadingIcon = Icons.Filled.Smartphone)
+        AppListRow(stringResource(R.string.me_dev_device), subtitle = state.device, leadingIcon = Icons.Rounded.Smartphone)
     }
     Spacer(Modifier.height(24.dp))
     AppSettingsSection(stringResource(R.string.me_dev_debug)) {
         AppListRow(
             title = stringResource(R.string.me_dev_view_logs),
             subtitle = stringResource(R.string.me_dev_logs_hint),
-            leadingIcon = Icons.Filled.ReceiptLong,
+            leadingIcon = Icons.AutoMirrored.Rounded.ReceiptLong,
             onClick = onOpenLogs,
             trailing = { SettingsChevron() },
         )
@@ -96,7 +96,7 @@ internal fun DeveloperHomeContent(
                 CacheClearState.Cleared -> R.string.me_dev_cache_cleared
                 CacheClearState.Failed -> R.string.me_dev_cache_failed
             }),
-            leadingIcon = Icons.Filled.DeleteSweep,
+            leadingIcon = Icons.Rounded.DeleteSweep,
             onClick = onClearCache.takeIf { state.cacheState != CacheClearState.Clearing },
         )
     }

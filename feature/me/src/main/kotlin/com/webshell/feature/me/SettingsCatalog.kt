@@ -38,7 +38,14 @@ fun settingsCatalog(): List<CatalogEntry> = listOf(
     },
     CatalogEntry("settings.engine", CatalogCategory.CONTENT, R.string.me_engine, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
         var autoCollapse by remember { mutableStateOf(true) }
-        EngineInfoContent(WebViewCapabilities.Snapshot("Playbook", false, true, false), autoCollapse, { autoCollapse = it })
+        var pullToRefresh by remember { mutableStateOf(false) }
+        EngineInfoContent(
+            WebViewCapabilities.Snapshot("Playbook", false, true, false),
+            autoCollapse,
+            pullToRefresh,
+            { autoCollapse = it },
+            { pullToRefresh = it },
+        )
     },
     CatalogEntry("settings.appearance", CatalogCategory.CONTENT, R.string.me_appearance, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
         var settings by remember { mutableStateOf(HomeSettings()) }

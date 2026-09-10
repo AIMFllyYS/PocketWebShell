@@ -51,7 +51,7 @@ fun WebSessionEmptyState(
         verticalArrangement = Arrangement.Center) {
         Icon(Icons.Filled.Public, null, modifier = Modifier.size(56.dp),
             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f))
-        Text(title, style = MaterialTheme.typography.titleLarge,
+        Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(top = 20.dp))
         Text(description, style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant,
