@@ -2,7 +2,6 @@ package com.webshell.feature.add
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -13,14 +12,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,17 +25,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppCard
 import com.webshell.core.designsystem.components.AppFormField
 import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.AppSectionHeader
+import com.webshell.core.designsystem.components.BrandMark
+import com.webshell.core.designsystem.theme.LocalOverlayClearance
 
 /** Stateless production input, also used by Playbook with local-only callbacks. */
 @Composable
@@ -53,9 +54,14 @@ internal fun AddInputContent(
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
             .imePadding().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .padding(bottom = LocalOverlayClearance.current),
     ) {
-        Text(stringResource(R.string.add_title), style = MaterialTheme.typography.headlineLarge)
+        Text(
+            stringResource(R.string.add_title),
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
         Text(
             stringResource(R.string.add_subtitle),
             style = MaterialTheme.typography.bodyMedium,
@@ -66,17 +72,16 @@ internal fun AddInputContent(
             modifier = Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(
-                modifier = Modifier.size(68.dp)
-                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Public, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(36.dp))
-            }
+            BrandMark(
+                modifier = Modifier.size(72.dp).clip(MaterialTheme.shapes.large),
+            )
             Text(
                 stringResource(R.string.add_home_title),
                 style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 16.dp),
             )
             Text(
@@ -84,7 +89,9 @@ internal fun AddInputContent(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 6.dp, start = 12.dp, end = 12.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
         AppSectionHeader(stringResource(R.string.add_address_section))
@@ -122,11 +129,11 @@ internal fun AddInputContent(
             AppListRow(
                 title = stringResource(R.string.add_import),
                 subtitle = stringResource(R.string.add_import_hint),
-                leadingIcon = Icons.Filled.Description,
+                leadingIcon = Icons.Rounded.Description,
                 leadingIconBackground = Color(0xFF8E8E93),
                 onClick = onImportLocal,
                 trailing = {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 },
             )
         }
@@ -137,7 +144,8 @@ internal fun AddInputContent(
 @Composable
 internal fun AddLoadingContent(modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp),
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .padding(24.dp).padding(bottom = LocalOverlayClearance.current),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

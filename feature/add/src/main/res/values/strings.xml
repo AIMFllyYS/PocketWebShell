@@ -3,7 +3,7 @@
     <string name="add_title">添加网站</string>
     <string name="add_subtitle">喜欢的网站，像应用一样打开。</string>
     <string name="add_home_title">添加到主屏幕</string>
-    <string name="add_home_hint">保留网站的图标与名称，让常用服务触手可及。</string>
+    <string name="add_home_hint">常用服务，像应用一样打开。</string>
     <string name="add_address_section">网站地址</string>
     <string name="add_address">网址</string>
     <string name="add_address_placeholder">例如 github.com</string>
