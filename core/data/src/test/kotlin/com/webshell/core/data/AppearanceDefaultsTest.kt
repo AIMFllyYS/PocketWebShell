@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,6 +35,7 @@ class AppearanceDefaultsTest {
         assertEquals("misans", settings.appFontFamily)
         assertEquals(100, settings.appFontScalePercent)
         assertTrue(settings.browserAutoCollapse)
+        assertFalse(settings.pullToRefreshEnabled)
         assertEquals(-1f, settings.browserOrbX, 0f)
         assertEquals(4, settings.gridColumns)
         assertEquals(5, settings.gridRows)

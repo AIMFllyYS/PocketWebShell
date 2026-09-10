@@ -36,7 +36,7 @@ fun AppConfirmDialog(
     title: String,
     text: String,
     confirmText: String,
-    dismissText: String,
+    dismissText: String? = null,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     destructive: Boolean = false,
@@ -87,14 +87,16 @@ fun AppConfirmDialog(
                 val separatorColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.13f)
                 HorizontalDivider(thickness = 0.5.dp, color = separatorColor)
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                    TextButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        shape = RectangleShape,
-                    ) {
-                        Text(dismissText, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                    if (dismissText != null) {
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            shape = RectangleShape,
+                        ) {
+                            Text(dismissText, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                        }
+                        Box(Modifier.fillMaxHeight().width(0.5.dp).background(separatorColor))
                     }
-                    Box(Modifier.fillMaxHeight().width(0.5.dp).background(separatorColor))
                     TextButton(
                         onClick = onConfirm,
                         enabled = confirmEnabled,

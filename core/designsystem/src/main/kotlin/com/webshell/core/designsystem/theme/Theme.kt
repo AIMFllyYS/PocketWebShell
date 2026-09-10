@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.webshell.core.model.AppFontFamily
 import com.webshell.core.model.AppFontScale
 import androidx.palette.graphics.Palette
@@ -26,6 +27,9 @@ val LocalPhotoWallpaperPath = compositionLocalOf<String?> { null }
 
 /** Effective appearance, including the user's explicit override of the system theme. */
 val LocalIsDarkTheme = compositionLocalOf { false }
+
+/** Extra bottom inset so scroll content clears a floating dock without reserving a solid bar. */
+val LocalOverlayClearance = compositionLocalOf { 0.dp }
 
 /**
  * Presentation-only theme. The composition root supplies a distinct theme projection from its

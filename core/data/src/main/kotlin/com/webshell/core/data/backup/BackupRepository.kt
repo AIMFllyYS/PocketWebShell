@@ -510,6 +510,7 @@ class BackupRepository @Inject constructor(
             ?.let { settingsRepository.setHomeScrollMode(it) }
         settings["browserAutoCollapse"]?.toBooleanStrictOrNull()?.let { settingsRepository.setBrowserAutoCollapse(it) }
         settings["keepAliveServiceEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setKeepAliveServiceEnabled(it) }
+        settings["pullToRefreshEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setPullToRefreshEnabled(it) }
         if (settings.containsKey("appFontFamily") || settings.containsKey("appFontScalePercent")) {
             val current = settingsRepository.settings.first()
             settingsRepository.setAppTypography(
@@ -535,6 +536,7 @@ class BackupRepository @Inject constructor(
         "appFontScalePercent" to s.appFontScalePercent.toString(),
         "browserAutoCollapse" to s.browserAutoCollapse.toString(),
         "keepAliveServiceEnabled" to s.keepAliveServiceEnabled.toString(),
+        "pullToRefreshEnabled" to s.pullToRefreshEnabled.toString(),
     )
 
     private fun localAppDir(appId: String): File = File(context.filesDir, "localapps/$appId")
