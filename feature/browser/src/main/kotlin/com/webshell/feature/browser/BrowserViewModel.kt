@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.BrowserSavedPagesRepository
+import com.webshell.core.data.metadata.SiteMetadataFetcher
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.ShellListener
@@ -31,6 +32,7 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class BrowserViewModel @Inject constructor(
     private val savedPages: BrowserSavedPagesRepository,
+    private val metadataFetcher: SiteMetadataFetcher,
 ) : ViewModel() {
 
     private val _tabs = MutableStateFlow<List<BrowserTab>>(emptyList())
@@ -48,12 +50,25 @@ class BrowserViewModel @Inject constructor(
 
     /** 收藏列表（收藏夹面板） */
     val bookmarks: StateFlow<List<BrowserSavedPage>> = savedPages.observeBookmarks()
-        .map { entries -> entries.map { BrowserSavedPage(it.id, it.title, it.url) } }
+        .map { entries ->
+            entries.map {
+                BrowserSavedPage(
+                    it.id,
+                    it.title,
+                    it.url,
+                    it.iconUrl ?: metadataFetcher.displayFallbackIconUrl(it.url),
+                )
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** 历史列表（最近 100 条，同 URL 合并为最新一条） */
     val history: StateFlow<List<BrowserSavedPage>> = savedPages.observeHistory()
-        .map { entries -> entries.map { BrowserSavedPage(it.id, it.title, it.url) } }
+        .map { entries ->
+            entries.map {
+                BrowserSavedPage(it.id, it.title, it.url, metadataFetcher.displayFallbackIconUrl(it.url))
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** sessionId → 桌面模式（会话级记忆） */
@@ -430,7 +445,9 @@ class BrowserViewModel @Inject constructor(
     // ---------------------------------------------------------------- bookmarks
 
     fun toggleBookmark(url: String, title: String) {
-        viewModelScope.launch { savedPages.toggleBookmark(url, title) }
+        viewModelScope.launch {
+            savedPages.toggleBookmark(url, title, metadataFetcher.displayFallbackIconUrl(url))
+        }
     }
 
     fun removeBookmark(url: String) {

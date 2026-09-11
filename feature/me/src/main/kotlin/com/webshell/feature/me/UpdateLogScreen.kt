@@ -23,6 +23,15 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.34",
+        date = "2026-09-12",
+        highlights = listOf(
+            "添加网站能再次解析官方图标；解析不到时用常用站点图或标签页图标",
+            "导入的单页 HTML 会带上自己的 favicon",
+            "浏览新标签页底栏恢复成悬浮玻璃，不再像一张贴底卡片",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.33",
         date = "2026-09-12",
         highlights = listOf(

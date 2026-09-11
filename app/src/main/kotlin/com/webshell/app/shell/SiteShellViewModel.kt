@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.BrowserSavedPagesRepository
 import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppLookupRepository
+import com.webshell.core.data.metadata.SiteMetadataFetcher
 import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.ShellListener
@@ -49,6 +50,7 @@ class SiteShellViewModel @Inject constructor(
     private val sessions: ShellSessionController,
     private val settingsRepository: SettingsRepository,
     private val savedPages: BrowserSavedPagesRepository,
+    private val metadataFetcher: SiteMetadataFetcher,
 ) : ViewModel() {
     /**
      * null = the persisted setting has not been read yet (DataStore's first
@@ -178,7 +180,13 @@ class SiteShellViewModel @Inject constructor(
         val ready = _state.value as? SiteShellState.Ready ?: return false
         val url = ready.pageUrl
         if (url.isBlank() || url == "about:blank") return false
-        viewModelScope.launch { savedPages.toggleBookmark(url, ready.pageTitle.ifBlank { url }) }
+        viewModelScope.launch {
+            savedPages.toggleBookmark(
+                url,
+                ready.pageTitle.ifBlank { url },
+                metadataFetcher.displayFallbackIconUrl(url),
+            )
+        }
         return true
     }
     fun openWindow(url: String) {
