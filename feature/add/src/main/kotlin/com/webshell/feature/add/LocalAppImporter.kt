@@ -2,6 +2,7 @@ package com.webshell.feature.add
 
 import android.content.Context
 import android.net.Uri
+import com.webshell.core.data.metadata.LocalHtmlIcon
 import com.webshell.core.webengine.LocalWebHost
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -18,16 +19,21 @@ class LocalAppImporter @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
+    data class ImportedApp(val entryUrl: String, val iconPath: String?)
+
     /**
      * @param uris 文档选择器返回的 content:// URI（按选择顺序；首个 html 为入口）
-     * @return 持久化用入口 URL（local://<appId>/<entryFile>）
+     * @return 入口 URL（local://<appId>/<entryFile>）以及目录里解析到的标签页图标路径
      */
-    suspend fun import(appId: String, uris: List<Uri>): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun import(appId: String, uris: List<Uri>): Result<ImportedApp> = withContext(Dispatchers.IO) {
         runCatching {
             require(uris.isNotEmpty()) { "未选择任何文件" }
             val dir = LocalWebHost.localAppDir(context, appId).apply { mkdirs() }
             val htmlName = tryCopyAll(uris, dir)
-            LocalWebHost.buildLocalAppUrl(appId, htmlName)
+            ImportedApp(
+                entryUrl = LocalWebHost.buildLocalAppUrl(appId, htmlName),
+                iconPath = LocalHtmlIcon.existingPath(dir, htmlName),
+            )
         }
     }
 

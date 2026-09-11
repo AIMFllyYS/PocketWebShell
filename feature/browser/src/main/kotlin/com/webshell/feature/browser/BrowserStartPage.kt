@@ -93,7 +93,11 @@ private fun FavoriteTile(page: BrowserSavedPage, onClick: () -> Unit) {
         modifier = Modifier.width(72.dp).clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        SiteIcon(title = page.title.ifBlank { page.url }, iconUrl = null, size = 56.dp)
+        SiteIcon(
+            title = page.title.ifBlank { page.url },
+            iconUrl = page.iconUrl,
+            size = 56.dp,
+        )
         Text(
             page.title.ifBlank { page.url.stripScheme() },
             style = MaterialTheme.typography.labelSmall,

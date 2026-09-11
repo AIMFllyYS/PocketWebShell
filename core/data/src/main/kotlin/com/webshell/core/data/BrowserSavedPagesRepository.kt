@@ -12,10 +12,17 @@ class BrowserSavedPagesRepository @Inject constructor(
     fun observeHistory() = historyDao.observeRecent()
     fun observeBookmarks() = bookmarkDao.observeAll()
 
-    suspend fun toggleBookmark(url: String, title: String) {
+    suspend fun toggleBookmark(url: String, title: String, iconUrl: String? = null) {
         if (url.isBlank() || url == "about:blank") return
         if (bookmarkDao.getByUrl(url) != null) bookmarkDao.deleteByUrl(url)
-        else bookmarkDao.upsert(BookmarkEntity(url = url, title = title.ifBlank { url }, addedAt = System.currentTimeMillis()))
+        else bookmarkDao.upsert(
+            BookmarkEntity(
+                url = url,
+                title = title.ifBlank { url },
+                iconUrl = iconUrl,
+                addedAt = System.currentTimeMillis(),
+            ),
+        )
     }
 
     suspend fun removeBookmark(url: String) = bookmarkDao.deleteByUrl(url)

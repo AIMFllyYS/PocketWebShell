@@ -32,6 +32,10 @@ release-signing.properties
 # Promo and showcase studio directories
 promo-studio/
 promo-*/
+/promo-video/
 code-video-*/
 /.tmp-video-shotcraft/
+
+# Local sibling clone; not part of this repository
+/xuanlan-AIMFllyYS/
 

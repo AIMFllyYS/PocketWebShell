@@ -53,7 +53,12 @@ class AddViewModel @Inject constructor(
             _state.value = if (metadata == null) {
                 AppLog.warn("add", "Metadata unavailable; manual editor shown")
                 AddUiState.Edit(
-                    draft = AddDraft(appId = newAppId(), url = normalized, title = AddUrl.hostLabel(normalized)),
+                    draft = AddDraft(
+                        appId = newAppId(),
+                        url = normalized,
+                        title = AddUrl.hostLabel(normalized),
+                        iconUrl = fetcher.displayFallbackIconUrl(normalized).orEmpty(),
+                    ),
                     fetchFailed = true,
                 )
             } else {
@@ -78,12 +83,18 @@ class AddViewModel @Inject constructor(
             val appId = newAppId()
             val result = importer.import(appId, uris)
             if (revision != expectedRevision) return@launch
-            result.onSuccess { entryUrl ->
+            result.onSuccess { imported ->
                 val entryName = runCatching {
-                    URLDecoder.decode(entryUrl.substringAfterLast('/'), Charsets.UTF_8)
+                    URLDecoder.decode(imported.entryUrl.substringAfterLast('/'), Charsets.UTF_8)
                 }.getOrDefault("index.html")
                 _state.value = AddUiState.Edit(
-                    AddDraft(appId = appId, url = entryUrl, title = entryName.substringBeforeLast('.'), isLocal = true),
+                    AddDraft(
+                        appId = appId,
+                        url = imported.entryUrl,
+                        title = entryName.substringBeforeLast('.'),
+                        iconUrl = imported.iconPath.orEmpty(),
+                        isLocal = true,
+                    ),
                 )
             }.onFailure {
                 AppLog.warn("add", "Local import failed")
