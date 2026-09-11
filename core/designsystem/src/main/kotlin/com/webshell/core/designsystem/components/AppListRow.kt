@@ -39,6 +39,7 @@ fun AppListRow(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     leadingIcon: ImageVector? = null,
+    leading: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     leadingIconTint: Color? = null,
     leadingIconBackground: Color? = null,
@@ -54,7 +55,12 @@ fun AppListRow(
             .then(onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier)
             .padding(horizontal = AppSpacing.lg, vertical = if (subtitle == null) 4.dp else 8.dp),
     ) {
-        if (leadingIcon != null) {
+        if (leading != null) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(30.dp)) {
+                leading()
+            }
+            Spacer(Modifier.width(AppSpacing.md))
+        } else if (leadingIcon != null) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier

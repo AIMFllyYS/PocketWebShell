@@ -150,6 +150,10 @@ class MeViewModel @Inject constructor(
         settingsRepository.setPullToRefreshEnabled(enabled)
     }
 
+    fun setSiteShellOrbEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setSiteShellOrbEnabled(enabled)
+    }
+
     fun refreshSessions() {
         _uiState.value = _uiState.value.copy(runningSessions = KeepAliveRegistry.entries)
     }

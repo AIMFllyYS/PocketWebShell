@@ -17,7 +17,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,6 +72,8 @@ internal fun AddInputContent(
         ) {
             BrandMark(
                 modifier = Modifier.size(72.dp).clip(MaterialTheme.shapes.large),
+                showSky = false,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
             )
             Text(
                 stringResource(R.string.add_home_title),
@@ -129,8 +129,13 @@ internal fun AddInputContent(
             AppListRow(
                 title = stringResource(R.string.add_import),
                 subtitle = stringResource(R.string.add_import_hint),
-                leadingIcon = Icons.Rounded.Description,
-                leadingIconBackground = Color(0xFF8E8E93),
+                leading = {
+                    BrandMark(
+                        modifier = Modifier.size(30.dp),
+                        showSky = false,
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+                    )
+                },
                 onClick = onImportLocal,
                 trailing = {
                     Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

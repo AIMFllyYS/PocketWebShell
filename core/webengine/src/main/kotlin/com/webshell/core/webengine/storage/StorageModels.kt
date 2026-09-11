@@ -9,7 +9,16 @@ enum class StorageCategory { CLEARABLE_CACHE, SITE_DATA, APP_DATA }
  */
 object StorageClassifier {
 
-    private val CACHE_TOP_LEVEL = setOf("Cache", "Code Cache", "GPUCache")
+    private val CACHE_TOP_LEVEL = setOf(
+        "Cache",
+        "Code Cache",
+        "GPUCache",
+        "GrShaderCache",
+        "ShaderCache",
+        "DawnGraphiteCache",
+        "DawnWebGPUCache",
+        "GraphiteDawnCache",
+    )
 
     fun classifyProfileEntry(relativePath: String): StorageCategory {
         val top = relativePath.substringBefore('/')
@@ -32,20 +41,22 @@ data class SiteStorageStats(
 data class StorageOverview(
     /** Σ 站点可清理 + 共享可清理（默认 Profile 缓存目录 + Coil image_cache）。 */
     val clearableBytes: Long,
-    /** Σ 各站点站点数据。 */
+    /** Σ 各站点站点数据 + 共享 Default Profile 的非缓存部分。 */
     val siteDataBytes: Long,
-    /** databases、filesDir（icons/localapps/wallpaper）、datastore、默认 Profile 非缓存部分、孤儿 Profile、cacheDir 其余部分。 */
+    /** databases、filesDir、孤儿 Profile、cacheDir 其余部分。共享网站存储不在这里。 */
     val appBytes: Long,
     val sites: List<SiteStorageStats>,
+    /** 共享 Default Profile 上的 IndexedDB / Cache Storage / Cookie 等，无法按站拆分。 */
+    val sharedSiteDataBytes: Long = 0,
     val unmeasurableSiteIds: List<String>,
     /** WebView capability only; the product deliberately uses the shared Default profile today. */
     val multiProfile: Boolean,
     val scannedAt: Long,
     /**
-     * 系统口径（StorageStatsManager，与系统设置一致）的应用数据总量（dataBytes）；
-     * 查询失败为 null，此时 UI 回退到遍历汇总值。系统值不按类别拆分，仅供总量展示。
+     * 系统口径（StorageStatsManager）的 dataBytes + cacheBytes；
+     * 查询失败或总量为 0 时为 null，UI 回退到遍历汇总值。系统值不按类别拆分，仅供头条总量。
      */
     val systemTotalBytes: Long? = null,
-    /** 系统口径的 cacheBytes；WebView 缓存常被系统低估，不用于「可清理缓存」展示。 */
+    /** 系统口径的 cacheBytes；遍历成功时不覆盖「可清理缓存」分段。 */
     val systemCacheBytes: Long? = null,
 )

@@ -31,6 +31,13 @@ object WebViewPool {
     @Volatile
     var maxLive: Int = 6
 
+    /**
+     * Process-wide download sink. Installed from Application because
+     * [ShellWebView] is not created by Hilt.
+     */
+    @Volatile
+    var downloadSink: DownloadSink? = null
+
     /** 正在展示的激活会话 ID，淘汰时跳过；null 表示无保护对象 */
     @Volatile
     var activeSessionId: String? = null

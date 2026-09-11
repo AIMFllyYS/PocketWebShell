@@ -3,6 +3,8 @@ package com.webshell.feature.me
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webshell.core.data.LogDao
+import com.webshell.core.data.LogRepository
 import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.model.AppLog
@@ -36,6 +38,7 @@ data class StorageUiState(
     val clearingAll: Boolean = false,
     /** 上次全量清理未完成的站点数；>0 时概览区展示重试提示。 */
     val clearAllFailedSites: Int = 0,
+    val logBytes: Long = 0L,
 )
 
 /** 一次性 Toast；arg 供带占位符的字符串使用（如已释放大小）。 */
@@ -57,6 +60,8 @@ class StorageViewModel @Inject constructor(
     private val storageStats: StorageStatsRepository,
     private val clearer: CacheClearer,
     private val webAppDao: WebAppDao,
+    private val logRepository: LogRepository,
+    private val logDao: LogDao,
 ) : ViewModel() {
 
     val apps: StateFlow<List<WebAppEntity>> = webAppDao.observeAll()
@@ -88,7 +93,12 @@ class StorageViewModel @Inject constructor(
         scanJob = viewModelScope.launch {
             try {
                 val overview = storageStats.scan(ids, forceRefresh)
-                _state.value = _state.value.copy(scanning = false, overview = overview)
+                val logBytes = runCatching { logDao.approxBytes() }.getOrDefault(0L)
+                _state.value = _state.value.copy(
+                    scanning = false,
+                    overview = overview,
+                    logBytes = logBytes,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
@@ -119,7 +129,7 @@ class StorageViewModel @Inject constructor(
         return ClearAllPreview(
             affectedSites = affected.size + if (sharedCache) 1 else 0,
             runningSessions = running.distinct().size,
-            estimatedBytes = overview?.clearableBytes ?: 0L,
+            estimatedBytes = (overview?.clearableBytes ?: 0L) + _state.value.logBytes,
         )
     }
 
@@ -162,13 +172,16 @@ class StorageViewModel @Inject constructor(
         val s = _state.value
         if (s.clearingAll) return
         val affected = s.overview?.sites.orEmpty().filter { it.measurable && it.clearableBytes > 0 }
-        if ((s.overview?.clearableBytes ?: 0L) <= 0L) return
+        if ((s.overview?.clearableBytes ?: 0L) + s.logBytes <= 0L) return
         _state.value = s.copy(clearingAll = true, clearAllFailedSites = 0)
         viewModelScope.launch {
             try {
                 val running = affected.flatMap { clearer.runningSessionsFor(it.appId) } + clearer.runningSharedSessions()
+                clearer.clearLiveWebViewCaches()
                 clearer.closeSessions(running.distinct())
                 val result = clearer.clearAllClearable(affected.map { it.appId })
+                AppLog.clear()
+                runCatching { logRepository.clear() }
                 storageStats.invalidate()
                 scan(forceRefresh = true)
                 val freed = result.freedBytes

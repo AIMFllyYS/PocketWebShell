@@ -7,6 +7,14 @@ data class BrowserTab(
     val tabId: String,
     val title: String,
     val url: String,
+    /** Canonical WebViewPool id. Never reconstruct this from [tabId] with a prefix. */
+    val sessionId: String = "browser-$tabId",
+    /**
+     * User-opened tabs may load [url] when the renderer is still blank.
+     * Window-adopted renderers must not — that would replace the popup with
+     * the opener or a guessed hit-test URL.
+     */
+    val restoreStartUrlIfBlank: Boolean = true,
     val thumbnail: Bitmap? = null,
     val progress: Int = 0,
     val loading: Boolean = false,

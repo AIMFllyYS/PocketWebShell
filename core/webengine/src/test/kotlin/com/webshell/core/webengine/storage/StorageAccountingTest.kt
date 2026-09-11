@@ -77,20 +77,22 @@ class StorageAccountingTest {
     }
 
     @Test
-    fun `default profile cache is clearable and rest is appBytes`() {
+    fun `default profile cache is clearable and rest is shared site data`() {
         val result = overview(
             OverviewBuckets(
                 siteProfiles = emptyMap(),
                 orphanProfiles = emptyList(),
                 defaultCache = entries("Cache/a" to 40L, "GPUCache/b" to 10L),
-                defaultRest = entries("Cookies" to 8L, "Safe Browsing/x" to 2L),
+                defaultRest = entries("Cookies" to 8L, "IndexedDB/x" to 2L),
                 appDirs = emptyList(),
                 imageCache = emptyList(),
                 cacheDirRest = emptyList(),
             ),
         )
         assertEquals(50L, result.clearableBytes)
-        assertEquals(10L, result.appBytes)
+        assertEquals(10L, result.siteDataBytes)
+        assertEquals(10L, result.sharedSiteDataBytes)
+        assertEquals(0L, result.appBytes)
     }
 
     @Test
@@ -127,8 +129,9 @@ class StorageAccountingTest {
         val everything = 10 + 6 + 20 + 30 + 4 + 8 + 12 + 2L
         assertEquals(everything, result.clearableBytes + result.siteDataBytes + result.appBytes)
         assertEquals(52L, result.clearableBytes) // 10 site + 30 default + 12 image cache
-        assertEquals(6L, result.siteDataBytes)
-        assertEquals(34L, result.appBytes) // 20 orphan + 4 default rest + 8 files + 2 logs
+        assertEquals(10L, result.siteDataBytes) // 6 per-site + 4 shared default rest
+        assertEquals(4L, result.sharedSiteDataBytes)
+        assertEquals(30L, result.appBytes) // 20 orphan + 8 files + 2 logs
     }
 
     @Test
@@ -195,6 +198,33 @@ class StorageAccountingTest {
         )
         assertEquals(500L, result.systemTotalBytes)
         assertEquals(120L, result.systemCacheBytes)
+        assertEquals(120L, result.clearableBytes)
+        assertEquals(380L, result.siteDataBytes)
+        assertEquals(380L, result.sharedSiteDataBytes)
+    }
+
+    @Test
+    fun `system total of zero does not replace walked buckets`() {
+        val result = computeOverview(
+            OverviewBuckets(
+                siteProfiles = emptyMap(),
+                orphanProfiles = emptyList(),
+                defaultCache = entries("Cache/a" to 40L),
+                defaultRest = entries("IndexedDB/x" to 12L),
+                appDirs = entries("databases/webshell.db" to 8L),
+                imageCache = entries("WebView/Default/HTTP Cache/index" to 64L),
+                cacheDirRest = emptyList(),
+            ),
+            appIds = emptyList(),
+            multiProfile = false,
+            scannedAt = 123L,
+            systemTotalBytes = 0L,
+            systemCacheBytes = 0L,
+        )
+        assertEquals(104L, result.clearableBytes)
+        assertEquals(12L, result.siteDataBytes)
+        assertEquals(8L, result.appBytes)
+        assertEquals(0L, result.systemTotalBytes)
     }
 
     @Test

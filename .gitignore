@@ -28,3 +28,10 @@ release-signing.properties
 /.trae/
 /.tmp/
 /build-alt/
+
+# Promo and showcase studio directories
+promo-studio/
+promo-*/
+code-video-*/
+/.tmp-video-shotcraft/
+

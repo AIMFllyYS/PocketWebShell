@@ -78,8 +78,14 @@ class ShellSessionController @Inject constructor(
     }
 
     fun canGoBack(sessionId: String): Boolean = WebViewPool.get(sessionId)?.canGoBack() == true
+    fun canGoForward(sessionId: String): Boolean = WebViewPool.get(sessionId)?.canGoForward() == true
     fun goBack(sessionId: String): Boolean = WebViewPool.get(sessionId)?.goBack() == true
+    fun goForward(sessionId: String): Boolean = WebViewPool.get(sessionId)?.goForward() == true
     fun reload(sessionId: String) { WebViewPool.get(sessionId)?.reload() }
+    fun stopLoading(sessionId: String) { WebViewPool.get(sessionId)?.stopLoading() }
+    fun setDesktopMode(sessionId: String, enabled: Boolean) {
+        WebViewPool.get(sessionId)?.setDesktopMode(enabled)
+    }
 
     /** target=_blank is validated before reusing the same site session/link policy. */
     fun openWindow(config: ShellConfig, url: String) {

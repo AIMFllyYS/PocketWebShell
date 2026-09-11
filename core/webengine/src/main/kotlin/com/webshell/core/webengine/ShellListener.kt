@@ -35,7 +35,7 @@ interface ShellListener {
     fun onNewWindow(url: String) {}
     fun onNewWindow(request: NewWindowRequest) = onNewWindow(request.initialUrl.orEmpty())
 
-    /** 非 blob 下载（引擎已默认交给 DownloadManager，此回调仅用于 UI 提示） */
+    /** 下载事件；全局 UI 由 DownloadSink 驱动，此回调仅作可选通知。 */
     fun onDownloadStarted(fileName: String) {}
     fun onDownloadFinished(fileName: String, uri: Uri?) {}
     fun onDownloadFailed(reason: String) {}

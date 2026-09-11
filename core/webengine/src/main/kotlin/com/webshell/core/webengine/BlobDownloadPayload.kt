@@ -20,6 +20,25 @@ internal sealed interface BlobDownloadParseResult {
  * intact. Keeping this parser outside ShellWebView makes the delimiter and
  * JavaScript escaping rules unit-testable without constructing a WebView.
  */
+internal fun parseBlobMeta(raw: String?): Pair<Long, String>? {
+    val result = decodeJavascriptString(raw) ?: return null
+    if (!result.startsWith("META:")) return null
+    val rest = result.removePrefix("META:")
+    val separator = rest.indexOf(':')
+    if (separator < 0) return null
+    val size = rest.substring(0, separator).toLongOrNull() ?: return null
+    if (size < 0L) return null
+    val mime = rest.substring(separator + 1).take(96).ifBlank { "application/octet-stream" }
+    return size to mime
+}
+
+internal fun parseBlobChunk(raw: String?): String? {
+    val result = decodeJavascriptString(raw) ?: return null
+    if (result.startsWith("ERR:")) return null
+    if (!result.startsWith("CHUNK:")) return null
+    return result.removePrefix("CHUNK:")
+}
+
 internal fun parseBlobEvaluation(raw: String?): BlobDownloadParseResult {
     val result = decodeJavascriptString(raw) ?: return BlobDownloadParseResult.Failure("empty")
     if (!result.startsWith("OK:")) {

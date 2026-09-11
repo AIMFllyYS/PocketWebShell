@@ -19,6 +19,8 @@
     <string name="me_sessions_end_text">将同时结束后台保活。不会删除网站或登录状态。</string>
     <string name="me_pull_to_refresh">下拉刷新网页</string>
     <string name="me_pull_to_refresh_hint">仅在页面已经位于最顶部时生效。默认关闭，也可从菜单手动刷新。</string>
+    <string name="me_site_shell_orb">站点壳悬浮球</string>
+    <string name="me_site_shell_orb_hint">从主屏打开的网站显示辅助球：点边缘短胶囊到屏幕中间，滑向左或右再收起。关闭后不再显示。刷新可改用下拉刷新</string>
     <string name="me_display_section">桌面与显示</string>
     <string name="me_browser_section">浏览与后台</string>
     <string name="me_about_section">关于</string>
@@ -162,6 +164,10 @@
     <string name="me_storage_cat_site_data">网站数据</string>
     <string name="me_storage_cat_app">应用与其他数据</string>
     <string name="me_storage_profile_limited">PocketWebShell 当前所有网站入口共享默认 WebView 存储与登录态；单个网站占用无法安全独立清理，本页会把共享存储只统计一次。</string>
+    <string name="me_storage_shared">共享存储</string>
+    <string name="me_storage_shared_site_data">共享网站数据</string>
+    <string name="me_storage_logs_label">应用日志</string>
+    <string name="me_storage_logs_hint">开发者中心日志，清理缓存时一并删除</string>
     <string name="me_storage_clear_all">清理全部可清理缓存</string>
     <string name="me_storage_measuring">正在统计…</string>
     <string name="me_storage_scan_failed">存储统计失败，请从右上角刷新重试</string>

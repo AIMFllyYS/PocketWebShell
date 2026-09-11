@@ -167,12 +167,22 @@ internal fun EngineInfoPage(
     capabilities: WebViewCapabilities.Snapshot,
     autoCollapse: Boolean,
     pullToRefresh: Boolean,
+    siteShellOrb: Boolean,
     onAutoCollapse: (Boolean) -> Unit,
     onPullToRefresh: (Boolean) -> Unit,
+    onSiteShellOrb: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     DetailPage(stringResource(R.string.me_engine), onBack) {
-        EngineInfoContent(capabilities, autoCollapse, pullToRefresh, onAutoCollapse, onPullToRefresh)
+        EngineInfoContent(
+            capabilities,
+            autoCollapse,
+            pullToRefresh,
+            siteShellOrb,
+            onAutoCollapse,
+            onPullToRefresh,
+            onSiteShellOrb,
+        )
     }
 }
 
@@ -181,8 +191,10 @@ internal fun EngineInfoContent(
     capabilities: WebViewCapabilities.Snapshot,
     autoCollapse: Boolean,
     pullToRefresh: Boolean,
+    siteShellOrb: Boolean,
     onAutoCollapse: (Boolean) -> Unit,
     onPullToRefresh: (Boolean) -> Unit,
+    onSiteShellOrb: (Boolean) -> Unit,
 ) {
         AppSettingsSection(stringResource(R.string.me_browsing_experience)) {
             AppToggleRow(
@@ -197,6 +209,13 @@ internal fun EngineInfoContent(
                 subtitle = stringResource(R.string.me_pull_to_refresh_hint),
                 checked = pullToRefresh,
                 onCheckedChange = onPullToRefresh,
+            )
+            AppListDivider(hasLeadingIcon = false)
+            AppToggleRow(
+                title = stringResource(R.string.me_site_shell_orb),
+                subtitle = stringResource(R.string.me_site_shell_orb_hint),
+                checked = siteShellOrb,
+                onCheckedChange = onSiteShellOrb,
             )
         }
         Spacer(Modifier.height(16.dp))

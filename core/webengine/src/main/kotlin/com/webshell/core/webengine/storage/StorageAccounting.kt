@@ -8,26 +8,28 @@ internal data class FileEntry(val relativePath: String, val size: Long)
 /**
  * 递归遍历 [root]，返回其下所有文件的 (相对路径, 大小) 列表。
  * - [root] 不存在 → 空列表（视为 0 字节，而非不可测）；
- * - 遍历中任一目录不可读 → null（整体不可测/失败）。
+ * - [root] 自身不可读 → null（整体不可测）；
+ * - 子目录不可读 → 跳过该子树，其余继续计入。
  */
 internal fun walkFiles(root: File): List<FileEntry>? {
     if (!root.exists()) return emptyList()
+    val children = runCatching { root.listFiles() }.getOrNull() ?: return null
     val out = ArrayList<FileEntry>()
-    return if (collectInto(root, root, out)) out else null
+    collectSkipping(root, children, out)
+    return out
 }
 
-private fun collectInto(root: File, dir: File, out: MutableList<FileEntry>): Boolean {
-    val children = runCatching { dir.listFiles() }.getOrNull() ?: return false
+private fun collectSkipping(root: File, children: Array<File>, out: MutableList<FileEntry>) {
     for (child in children) {
         if (child.isDirectory) {
-            if (!collectInto(root, child, out)) return false
+            val nested = runCatching { child.listFiles() }.getOrNull() ?: continue
+            collectSkipping(root, nested, out)
         } else {
             val rel = runCatching { child.relativeTo(root).invariantSeparatorsPath }
                 .getOrDefault(child.name)
             out += FileEntry(rel, child.length())
         }
     }
-    return true
 }
 
 internal fun List<FileEntry>.totalBytes(): Long = sumOf { it.size }
@@ -65,7 +67,7 @@ internal data class OverviewBuckets(
     val orphanProfiles: List<List<FileEntry>>,
     /** 默认共享 Profile 的缓存子目录 + app_webview 根部的旧版缓存目录。 */
     val defaultCache: List<FileEntry>,
-    /** 默认共享 Profile 的非缓存部分 + app_webview 根部的其他条目。 */
+    /** 默认共享 Profile 的非缓存部分（IndexedDB / Cache Storage / Cookie 等），计入网站数据。 */
     val defaultRest: List<FileEntry>,
     /** databases/ + filesDir/（含 icons、localapps、wallpaper、datastore）。 */
     val appDirs: List<FileEntry>,
@@ -87,18 +89,28 @@ internal fun computeOverview(
         val entries = if (buckets.siteProfiles.containsKey(id)) buckets.siteProfiles[id] else emptyList()
         computeSiteStats(id, entries)
     }
-    val clearable = sites.sumOf { it.clearableBytes } +
+    val walkedClearable = sites.sumOf { it.clearableBytes } +
         buckets.defaultCache.totalBytes() +
         buckets.imageCache.totalBytes()
-    val siteData = sites.sumOf { it.siteDataBytes }
-    val appBytes = buckets.appDirs.totalBytes() +
-        buckets.defaultRest.totalBytes() +
+    val walkedSiteData = sites.sumOf { it.siteDataBytes } + buckets.defaultRest.totalBytes()
+    val walkedApp = buckets.appDirs.totalBytes() +
         buckets.orphanProfiles.sumOf { it.totalBytes() } +
         buckets.cacheDirRest.totalBytes()
+    val walkedTotal = walkedClearable + walkedSiteData + walkedApp
+    val fallback = walkedTotal == 0L && systemTotalBytes != null && systemTotalBytes > 0L
+    val clearable = if (fallback) systemCacheBytes ?: 0L else walkedClearable
+    val sharedSite = if (fallback) {
+        (systemTotalBytes - (systemCacheBytes ?: 0L)).coerceAtLeast(0L)
+    } else {
+        buckets.defaultRest.totalBytes()
+    }
+    val siteData = if (fallback) sharedSite else walkedSiteData
+    val appBytes = if (fallback) 0L else walkedApp
     return StorageOverview(
         clearableBytes = clearable,
         siteDataBytes = siteData,
         appBytes = appBytes,
+        sharedSiteDataBytes = sharedSite,
         sites = sites,
         unmeasurableSiteIds = sites.filter { !it.measurable }.map { it.appId },
         multiProfile = multiProfile,

@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.lerp
 import kotlin.math.min
 
 /** 与启动器图标同源的玄览星核：太极环、鎏金核、倾斜星轨与伴星。 */
@@ -23,6 +24,28 @@ object BrandMarkPalette {
     val skyEnd = Color(0xFF0F131B)
 }
 
+data class BrandMarkColors(
+    val ring: Color,
+    val core: Color,
+    val orbit: Color,
+)
+
+/** Untinted gold is the launcher/splash contract; a tint recolors ring, core and orbit only. */
+fun brandMarkColors(tint: Color? = null): BrandMarkColors =
+    if (tint == null) {
+        BrandMarkColors(BrandMarkPalette.ring, BrandMarkPalette.core, BrandMarkPalette.orbit)
+    } else {
+        BrandMarkColors(
+            ring = lerp(tint, Color.White, 0.42f),
+            core = tint,
+            orbit = lerp(tint, Color.Black, 0.22f),
+        )
+    }
+
+/** Sky uses the compact launcher scale; empty states drop the sky and grow the mark. */
+fun brandMarkRadius(side: Float, showSky: Boolean): Float =
+    side * if (showSky) 0.22f else 0.32f
+
 /**
  * @param radius 太极环半径；其余几何按启动器矢量比例派生。
  */
@@ -31,8 +54,10 @@ fun DrawScope.drawBrandMark(
     radius: Float,
     alpha: Float,
     rotationDegrees: Float = -28f,
+    tint: Color? = null,
 ) {
     if (radius <= 0f || alpha <= 0f) return
+    val colors = brandMarkColors(tint)
     val ringStroke = (radius * 5f / 30f).coerceAtLeast(1f)
     val orbitStroke = (radius * 3f / 30f).coerceAtLeast(1f)
     val coreRadius = radius * 7f / 30f
@@ -40,28 +65,28 @@ fun DrawScope.drawBrandMark(
     val orbitRy = radius * 15f / 30f
     val companionRadius = radius * 4.5f / 30f
     drawCircle(
-        color = BrandMarkPalette.ring,
+        color = colors.ring,
         radius = radius,
         center = center,
         alpha = alpha,
         style = Stroke(width = ringStroke, cap = StrokeCap.Round),
     )
     drawCircle(
-        color = BrandMarkPalette.core,
+        color = colors.core,
         radius = coreRadius,
         center = center,
         alpha = alpha,
     )
     rotate(rotationDegrees, center) {
         drawOval(
-            color = BrandMarkPalette.orbit,
+            color = colors.orbit,
             topLeft = Offset(center.x - orbitRx, center.y - orbitRy),
             size = Size(orbitRx * 2f, orbitRy * 2f),
             alpha = alpha,
             style = Stroke(width = orbitStroke, cap = StrokeCap.Round),
         )
         drawCircle(
-            color = BrandMarkPalette.core,
+            color = colors.core,
             radius = companionRadius,
             center = Offset(center.x + orbitRx, center.y),
             alpha = alpha,
@@ -74,6 +99,7 @@ fun BrandMark(
     modifier: Modifier = Modifier,
     showSky: Boolean = true,
     markAlpha: Float = 1f,
+    tint: Color? = null,
 ) {
     Canvas(modifier.aspectRatio(1f)) {
         val side = min(size.width, size.height)
@@ -91,6 +117,11 @@ fun BrandMark(
                 center = center,
             )
         }
-        drawBrandMark(center = center, radius = side * 0.22f, alpha = markAlpha)
+        drawBrandMark(
+            center = center,
+            radius = brandMarkRadius(side, showSky),
+            alpha = markAlpha,
+            tint = tint,
+        )
     }
 }

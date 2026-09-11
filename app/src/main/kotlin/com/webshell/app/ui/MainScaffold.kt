@@ -30,6 +30,8 @@ import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.app.catalog.PlaybookScreen
+import com.webshell.app.download.DownloadViewModel
+import com.webshell.app.download.GlobalDownloadHost
 import com.webshell.app.shell.ShellScreen
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalIsDarkTheme
@@ -62,30 +64,37 @@ fun MainScaffold(
     // shell can hand a popup/OAuth window off to the browser even if the
     // Browse tab itself has never been opened yet.
     val browserViewModel: BrowserViewModel = hiltViewModel()
+    val downloadViewModel: DownloadViewModel = hiltViewModel()
     // Keep tab drafts/scroll anchors alive while a website temporarily owns the whole screen.
     val stateHolder = rememberSaveableStateHolder()
     val homeVisible = selectedTab == MainTab.HOME && openedUrl == null && !playbookOpen
     SystemBarAppearance(lightIcons = homeVisible || LocalIsDarkTheme.current)
 
+    Box(Modifier.fillMaxSize()) {
+    val siteUrl = openedUrl
     if (playbookOpen) {
         PlaybookScreen(onBack = { playbookOpen = false })
-        return
-    }
-    openedUrl?.let { url ->
+    } else if (siteUrl != null) {
         val leave = { openedUrl = null; openedAppId = null }
         BackHandler { leave() }
         ShellScreen(
-            initialUrl = url,
+            initialUrl = siteUrl,
             appId = openedAppId,
             onLeave = leave,
+            onOpenDownloads = downloadViewModel::showHistory,
             onAdoptWindow = { adoptedSessionId, adoptedUrl ->
                 leave()
                 selectedTab = MainTab.BROWSE
-                browserViewModel.createTabForSession(adoptedSessionId, adoptedUrl ?: "about:blank", activate = true)
+                browserViewModel.createTabForSession(
+                    adoptedSessionId,
+                    adoptedUrl ?: "about:blank",
+                    activate = true,
+                    restoreStartUrlIfBlank = false,
+                )
+                browserChrome.dispatch(BrowserChromeEvent.Reveal)
             },
         )
-        return
-    }
+    } else {
     BackHandler(enabled = selectedTab != MainTab.HOME) { selectedTab = MainTab.HOME }
 
     var hideLauncherDock by rememberSaveable { mutableStateOf(false) }
@@ -151,6 +160,7 @@ fun MainScaffold(
                                         isVisible = selectedTab == MainTab.BROWSE,
                                         autoCollapse = browserPreferences.autoCollapse,
                                         pullToRefresh = browserPreferences.pullToRefresh,
+                                        onOpenDownloads = downloadViewModel::showHistory,
                                     )
                                     MainTab.ME -> MeScreen(
                                         onKeepAliveServiceChanged = viewModel::setKeepAliveServiceEnabled,
@@ -175,6 +185,9 @@ fun MainScaffold(
             hazeState = hazeState,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+    }
+    }
+    GlobalDownloadHost(viewModel = downloadViewModel)
     }
 }
 

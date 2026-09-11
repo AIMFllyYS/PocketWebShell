@@ -14,4 +14,22 @@
     <string name="service_summary">%1$d 个网页应用已启用后台运行，仍受系统与网站限制</string>
     <string name="service_channel">后台会话</string>
     <string name="service_description">展示用户启用的后台网页会话，不保证持续执行</string>
+    <string name="download_capsule">下载进度</string>
+    <string name="download_capsule_hide">隐藏下载进度</string>
+    <string name="download_capsule_show">显示下载进度</string>
+    <string name="download_progress">正在下载 %1$d%%</string>
+    <string name="download_progress_indeterminate">正在下载</string>
+    <string name="download_path_short">Download/PocketWebShell/%1$s</string>
+    <string name="download_complete_title">下载完成</string>
+    <string name="download_complete_message">文件已保存到 Download/PocketWebShell/%1$s</string>
+    <string name="download_complete_open">在文件中查看</string>
+    <string name="download_failed_title">下载失败</string>
+    <string name="download_failed_message">无法保存 %1$s</string>
+    <string name="download_open_failed">无法打开系统文件管理器</string>
+    <string name="download_share_title">分享下载文件</string>
+    <string name="download_history_title">下载记录</string>
+    <string name="download_history_empty">还没有下载记录</string>
+    <string name="download_history_running">正在下载</string>
+    <string name="download_history_failed">下载失败</string>
+    <string name="download_history_delete">删除这条下载记录</string>
 </resources>

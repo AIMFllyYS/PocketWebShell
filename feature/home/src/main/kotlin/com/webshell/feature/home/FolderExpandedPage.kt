@@ -1,5 +1,7 @@
 package com.webshell.feature.home
 
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.ColorDrawable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -38,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -170,8 +173,13 @@ internal fun FolderExpandedPage(
         onDismissRequest = { visibility.targetState = false },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        LaunchedEffect(window) { window?.setDimAmount(0f) }
+        val folderWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
+        folderWindow?.setDimAmount(0f)
+        folderWindow?.setBackgroundDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
+        SideEffect {
+            folderWindow?.setDimAmount(0f)
+            folderWindow?.setBackgroundDrawable(ColorDrawable(AndroidColor.TRANSPARENT))
+        }
         BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { drag.rootOrigin = it.positionInRoot() }) {
             val density = LocalDensity.current
             val labelMeasurer = rememberTextMeasurer()

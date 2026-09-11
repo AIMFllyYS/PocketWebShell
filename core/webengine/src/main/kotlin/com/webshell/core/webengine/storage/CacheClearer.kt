@@ -32,8 +32,8 @@ data class ClearAllResult(
 
 /**
  * 缓存清理器：只删除共享 Default（以及旧版遗留 Profile）的缓存子目录
- * （Cache / Code Cache / GPUCache），绝不触碰 Cookies、Local Storage、IndexedDB、
- * Service Worker 等站点数据。
+ * （Cache / Code Cache / GPUCache / Dawn / Shader）和 `cache/WebView` HTTP 缓存，
+ * 绝不触碰 Cookies、Local Storage、IndexedDB、Service Worker 等站点数据。
  */
 @Singleton
 class CacheClearer @Inject constructor(
@@ -89,6 +89,18 @@ class CacheClearer @Inject constructor(
         return closed
     }
 
+    /** 在仍存活的 WebView 上调用平台 clearCache；必须在主线程、销毁会话之前。 */
+    fun clearLiveWebViewCaches() {
+        val ids = liveSessions()
+        for (id in ids) {
+            runCatching { WebViewPool.get(id)?.webView?.clearCache(true) }
+                .onFailure { AppLog.warn(TAG, "WebView.clearCache 失败: $id") }
+        }
+        if (ids.isNotEmpty()) {
+            AppLog.log(TAG, "已对 ${ids.size} 个活动 WebView 调用 clearCache")
+        }
+    }
+
     /** Clear only re-creatable browser cache. Cookies and LocalStorage remain intact. */
     suspend fun clearBrowserCache(): ClearOutcome = withContext(Dispatchers.IO) {
         if (runningSharedSessions().isNotEmpty()) return@withContext ClearOutcome.Failed("浏览器仍有活动会话")
@@ -99,8 +111,11 @@ class CacheClearer @Inject constructor(
             candidates.any { it.exists() && !runCatching { it.deleteRecursively() }.getOrDefault(false) }
         }
         if (failure.isNotEmpty()) return@withContext ClearOutcome.Failed(failure.joinToString())
+        val httpFreed = clearWebViewHttpCache()
         val after = measureAllCacheBytes(root)
-        ClearOutcome.Done(if (before != null && after != null) (before - after).coerceAtLeast(0) else null)
+        val profileFreed = if (before != null && after != null) (before - after).coerceAtLeast(0) else null
+        val freed = if (profileFreed != null && httpFreed != null) profileFreed + httpFreed else null
+        ClearOutcome.Done(freed)
     }
 
     /**
@@ -155,7 +170,8 @@ class CacheClearer @Inject constructor(
     }
 
     /**
-     * 清理全部站点的可清理缓存 + 共享可清理（默认 Profile 缓存目录 + Coil image_cache）。
+     * 清理全部站点的可清理缓存 + 共享可清理
+     * （默认 Profile 缓存目录 + `cache/WebView` HTTP 缓存 + Coil image_cache）。
      * 仍有会话运行的站点会被跳过并计入失败。
      */
     suspend fun clearAllClearable(siteIds: List<String>): ClearAllResult = withContext(Dispatchers.IO) {
@@ -191,12 +207,13 @@ class CacheClearer @Inject constructor(
             }
         }
 
-        // 默认共享 Profile 的缓存目录（仅当没有浏览器/直接会话在使用时）。
+        // 默认共享 Profile 的缓存目录 + HTTP 缓存（仅当没有浏览器/直接会话在使用时）。
         if (runningSharedSessions().isEmpty()) {
             val webviewRoot = File(context.dataDir, "app_webview")
             val sharedFreed = clearCacheDirsOf(File(webviewRoot, "Default"), "默认 Profile")
             val legacyFreed = clearCacheDirsOf(webviewRoot, "旧版根目录缓存")
-            for (freed in listOf(sharedFreed, legacyFreed)) {
+            val httpFreed = clearWebViewHttpCache()
+            for (freed in listOf(sharedFreed, legacyFreed, httpFreed)) {
                 if (freed == null) reliable = false else freedSum += freed
             }
         } else {
@@ -301,9 +318,29 @@ class CacheClearer @Inject constructor(
         return root + default
     }
 
+    /** 删除 cacheDir 下 Chromium HTTP 缓存整树（`WebView/Default/HTTP Cache` 等）。 */
+    private fun clearWebViewHttpCache(): Long? {
+        var freed = 0L
+        var reliable = true
+        for (name in StorageStatsRepository.WEBVIEW_CACHE_DIR_NAMES) {
+            val result = deleteDirMeasured(File(context.cacheDir, name), "HTTP 缓存 $name")
+            if (result == null) reliable = false else freed += result
+        }
+        return if (reliable) freed else null
+    }
+
     private companion object {
         const val TAG = "storage"
-        val CACHE_DIR_NAMES = listOf("Cache", "Code Cache", "GPUCache")
+        val CACHE_DIR_NAMES = listOf(
+            "Cache",
+            "Code Cache",
+            "GPUCache",
+            "GrShaderCache",
+            "ShaderCache",
+            "DawnGraphiteCache",
+            "DawnWebGPUCache",
+            "GraphiteDawnCache",
+        )
 
         /**
          * 站点数据目录（非缓存）：这些才是"这个网站还记得你"的真正来源
@@ -312,7 +349,8 @@ class CacheClearer @Inject constructor(
          * 不属于"退出登录"的范畴。
          */
         val SITE_DATA_DIR_NAMES = listOf(
-            "IndexedDB", "Local Storage", "Session Storage", "Service Worker",
+            "IndexedDB", "Local Storage", "Session Storage", "Shared Storage",
+            "Service Worker", "Storage", "Network", "Cookies",
             "databases", "blob_storage", "File System", "Platform Notifications",
             "VideoDecodeStats", "Site Characteristics Database", "shared_proto_db",
         )

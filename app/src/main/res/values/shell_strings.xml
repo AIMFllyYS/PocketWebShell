@@ -7,4 +7,8 @@
     <string name="site_shell_retry">重试</string>
     <string name="site_shell_menu">页面选项</string>
     <string name="site_shell_refresh">刷新</string>
+    <string name="site_shell_orb">站点壳辅助球</string>
+    <string name="site_shell_orb_restore">展开辅助球</string>
+    <string name="site_shell_orb_parked">辅助球已贴边</string>
+    <string name="site_shell_leave_home">返回主屏</string>
 </resources>

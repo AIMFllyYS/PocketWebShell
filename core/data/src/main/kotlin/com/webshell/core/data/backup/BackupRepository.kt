@@ -511,6 +511,11 @@ class BackupRepository @Inject constructor(
         settings["browserAutoCollapse"]?.toBooleanStrictOrNull()?.let { settingsRepository.setBrowserAutoCollapse(it) }
         settings["keepAliveServiceEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setKeepAliveServiceEnabled(it) }
         settings["pullToRefreshEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setPullToRefreshEnabled(it) }
+        settings["siteShellOrbEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setSiteShellOrbEnabled(it) }
+        val orbX = settings["siteShellOrbX"]?.toFloatOrNull()
+        val orbY = settings["siteShellOrbY"]?.toFloatOrNull()
+        if (orbX != null && orbY != null) settingsRepository.setSiteShellOrbPosition(orbX, orbY)
+        settings["siteShellOrbParked"]?.toBooleanStrictOrNull()?.let { settingsRepository.setSiteShellOrbParked(it) }
         if (settings.containsKey("appFontFamily") || settings.containsKey("appFontScalePercent")) {
             val current = settingsRepository.settings.first()
             settingsRepository.setAppTypography(
@@ -537,6 +542,10 @@ class BackupRepository @Inject constructor(
         "browserAutoCollapse" to s.browserAutoCollapse.toString(),
         "keepAliveServiceEnabled" to s.keepAliveServiceEnabled.toString(),
         "pullToRefreshEnabled" to s.pullToRefreshEnabled.toString(),
+        "siteShellOrbEnabled" to s.siteShellOrbEnabled.toString(),
+        "siteShellOrbX" to s.siteShellOrbX.toString(),
+        "siteShellOrbY" to s.siteShellOrbY.toString(),
+        "siteShellOrbParked" to s.siteShellOrbParked.toString(),
     )
 
     private fun localAppDir(appId: String): File = File(context.filesDir, "localapps/$appId")

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.BrowserSavedPagesRepository
 import com.webshell.core.model.AppLog
+import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.UrlRoute
@@ -96,7 +97,7 @@ class BrowserViewModel @Inject constructor(
     /** 取（或建）指定会话的持久监听者；由 BrowserScreen 挂到 ShellWebView.sessionListener */
     fun listenerFor(sessionId: String): ShellListener =
         sessionListeners.getOrPut(sessionId) {
-            val tabId = sessionId.removePrefix("browser-")
+            val tabId = tabIdForSession(sessionId)
             object : ShellListener {
                 override fun onNewWindow(request: NewWindowRequest) {
                     // onCreateWindow allocates the real pooled target before
@@ -108,7 +109,9 @@ class BrowserViewModel @Inject constructor(
                         createTabForSession(
                             request.targetSessionId,
                             request.initialUrl ?: "about:blank",
-                            activate = false,
+                            activate = request.isUserGesture &&
+                                request.sourceSessionId == activeSessionId(),
+                            restoreStartUrlIfBlank = false,
                         )
                     }
                 }
@@ -167,31 +170,42 @@ class BrowserViewModel @Inject constructor(
     /** 打开新标签；activate=false 时留在后台（供 target=_blank 备用） */
     fun createTab(startUrl: String, activate: Boolean): String {
         val tabId = UUID.randomUUID().toString().take(8)
-        return createTabForSession("browser-$tabId", startUrl, activate)
+        return createTabForSession("browser-$tabId", startUrl, activate, restoreStartUrlIfBlank = true)
     }
 
     /** Adopt the session created by WebView.onCreateWindow so it is never a naked probe. */
-    fun createTabForSession(sessionId: String, startUrl: String, activate: Boolean): String {
-        val tabId = sessionId.removePrefix("browser-").ifBlank { UUID.randomUUID().toString().take(8) }
-        val safeStartUrl = UrlRouter.classify(startUrl).let { decision ->
+    fun createTabForSession(
+        sessionId: String,
+        startUrl: String,
+        activate: Boolean,
+        restoreStartUrlIfBlank: Boolean = true,
+    ): String {
+        val existing = _tabs.value.firstOrNull { it.sessionId == sessionId }
+        val pooled = WebViewPool.get(sessionId)
+        val liveUrl = pooled?.currentUrl()?.takeUnless { it.isNullOrBlank() || it == "about:blank" }
+        val safeStartUrl = UrlRouter.classify((liveUrl ?: startUrl).orEmpty()).let { decision ->
             if (decision.route == UrlRoute.WEB || decision.route == UrlRoute.ABOUT_BLANK) decision.normalized
             else "about:blank"
         }
-        val pooled = WebViewPool.get(sessionId)
-        if (_tabs.value.any { it.tabId == tabId }) {
+        if (existing != null) {
             pooled?.sessionListener = listenerFor(sessionId)
-            if (activate) setActive(tabId)
-            return tabId
+            applyBrowserTabConfig(sessionId)
+            if (liveUrl != null) updateTabMeta(existing.tabId, url = liveUrl)
+            if (activate) setActive(existing.tabId)
+            return existing.tabId
         }
+        val tabId = uniqueTabId(sessionId)
         _tabs.value = _tabs.value + BrowserTab(
             tabId = tabId,
             title = if (safeStartUrl == "about:blank") "" else safeStartUrl,
             url = safeStartUrl,
+            sessionId = sessionId,
+            restoreStartUrlIfBlank = restoreStartUrlIfBlank,
         )
-        // The target may already be navigating before its Compose host is
-        // composed. Bind the per-session listener immediately so title/progress
-        // and history callbacks remain attributable during that window.
+        // Bind before Chromium's first onPageStarted whenever the owner is
+        // notified ahead of sendToTarget(); otherwise the tab stays blank.
         pooled?.sessionListener = listenerFor(sessionId)
+        applyBrowserTabConfig(sessionId)
         AppLog.log("browser", "新建标签 $tabId（共 ${_tabs.value.size} 个）")
         if (activate) setActive(tabId)
         return tabId
@@ -202,7 +216,7 @@ class BrowserViewModel @Inject constructor(
         thumbnailRevisions[tabId] = revision
         viewModelScope.launch {
             repeat(4) { attempt ->
-                val shell = WebViewPool.get("browser-$tabId")
+                val shell = WebViewPool.get(sessionIdOf(tabId))
                 val bitmap = runCatching { shell?.captureThumbnail() }.getOrNull()
                 if (bitmap != null && thumbnailRevisions[tabId] == revision && shell?.currentUrl() == expectedUrl) {
                     updateTabThumbnail(tabId, bitmap)
@@ -226,15 +240,19 @@ class BrowserViewModel @Inject constructor(
         val previous = _activeTabId.value
         if (previous != tabId) {
             previous?.let {
-                WebViewPool.suspendSession("browser-$it")
-                WebViewPool.unprotect("browser-$it", WebViewPool.ProtectionReason.ACTIVE)
+                val previousSession = sessionIdOf(it)
+                WebViewPool.suspendSession(previousSession)
+                WebViewPool.unprotect(previousSession, WebViewPool.ProtectionReason.ACTIVE)
             }
             _findState.value = FindState()
         }
         _activeTabId.value = tabId
         if (browserVisible) {
-            tabId?.let { WebViewPool.protect("browser-$it", WebViewPool.ProtectionReason.ACTIVE) }
-            WebViewPool.activeSessionId = tabId?.let { "browser-$it" }
+            tabId?.let {
+                val sessionId = sessionIdOf(it)
+                WebViewPool.protect(sessionId, WebViewPool.ProtectionReason.ACTIVE)
+                WebViewPool.activeSessionId = sessionId
+            }
         }
     }
 
@@ -253,23 +271,27 @@ class BrowserViewModel @Inject constructor(
     /** Invoked after the lifecycle host has installed the persistent per-session listener. */
     fun onHostReady(sessionId: String) {
         val shell = WebViewPool.get(sessionId) ?: return
-        val tabId = sessionId.removePrefix("browser-")
-        val tab = _tabs.value.firstOrNull { it.tabId == tabId } ?: return
+        val tab = _tabs.value.firstOrNull { it.sessionId == sessionId } ?: return
         val currentUrl = shell.currentUrl()
-        if ((currentUrl == null || currentUrl == "about:blank") && tab.url.isNotBlank() && tab.url != "about:blank") {
+        if ((currentUrl == null || currentUrl == "about:blank") &&
+            tab.restoreStartUrlIfBlank &&
+            tab.url.isNotBlank() &&
+            tab.url != "about:blank"
+        ) {
             shell.loadWithStateRestore(tab.url)
         } else if (currentUrl != null && currentUrl != "about:blank") {
-            updateTabMeta(tabId, url = currentUrl)
+            updateTabMeta(tab.tabId, url = currentUrl)
         }
-        updateTabNav(tabId, canGoBack = shell.canGoBack(), canGoForward = shell.canGoForward())
+        updateTabNav(tab.tabId, canGoBack = shell.canGoBack(), canGoForward = shell.canGoForward())
     }
 
     fun captureActiveThumbnail() {
         val tabId = _activeTabId.value ?: return
         val expectedUrl = _tabs.value.firstOrNull { it.tabId == tabId }?.url
+        val sessionId = sessionIdOf(tabId)
         thumbnailRevisions[tabId] = (thumbnailRevisions[tabId] ?: 0L) + 1L
-        runCatching { WebViewPool.get("browser-$tabId")?.captureThumbnail() }
-            .getOrNull()?.takeIf { WebViewPool.get("browser-$tabId")?.currentUrl() == expectedUrl }
+        runCatching { WebViewPool.get(sessionId)?.captureThumbnail() }
+            .getOrNull()?.takeIf { WebViewPool.get(sessionId)?.currentUrl() == expectedUrl }
             ?.let { updateTabThumbnail(tabId, it) }
     }
 
@@ -334,7 +356,7 @@ class BrowserViewModel @Inject constructor(
 
     /** 关闭标签：彻底销毁池中会话（不留快照），并清理会话监听者与桌面模式记忆 */
     fun closeTab(tabId: String) {
-        val sessionId = "browser-$tabId"
+        val sessionId = sessionIdOf(tabId)
         WebViewPool.get(sessionId)?.sessionListener = null
         sessionListeners.remove(sessionId)
         WebViewPool.destroyAndForget(sessionId)
@@ -346,10 +368,9 @@ class BrowserViewModel @Inject constructor(
     fun closeAllTabs() {
         val count = _tabs.value.size
         _tabs.value.forEach { tab ->
-            val sessionId = "browser-${tab.tabId}"
-            WebViewPool.get(sessionId)?.sessionListener = null
-            sessionListeners.remove(sessionId)
-            WebViewPool.destroyAndForget(sessionId)
+            WebViewPool.get(tab.sessionId)?.sessionListener = null
+            sessionListeners.remove(tab.sessionId)
+            WebViewPool.destroyAndForget(tab.sessionId)
         }
         _desktopModes.value = emptyMap()
         thumbnailRevisions.clear()
@@ -366,8 +387,8 @@ class BrowserViewModel @Inject constructor(
         if (index < 0) return
         val remaining = current.filterNot { it.tabId == tabId }
         _tabs.value = remaining
-        sessionListeners.remove("browser-$tabId")
-        _desktopModes.value = _desktopModes.value - "browser-$tabId"
+        sessionListeners.remove(current[index].sessionId)
+        _desktopModes.value = _desktopModes.value - current[index].sessionId
         if (_activeTabId.value == tabId) {
             setActive(remaining.getOrNull(index.coerceAtMost(remaining.size - 1))?.tabId)
         }
@@ -436,5 +457,34 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
-    private fun activeSessionId(): String? = _activeTabId.value?.let { "browser-$it" }
+    private fun activeSessionId(): String? = _activeTabId.value?.let(::sessionIdOf)
+
+    private fun sessionIdOf(tabId: String): String =
+        _tabs.value.firstOrNull { it.tabId == tabId }?.sessionId ?: "browser-$tabId"
+
+    private fun tabIdForSession(sessionId: String): String =
+        _tabs.value.firstOrNull { it.sessionId == sessionId }?.tabId
+            ?: sessionId.removePrefix("browser-").ifBlank { sessionId }
+
+    private fun uniqueTabId(sessionId: String): String {
+        val derived = sessionId.removePrefix("browser-")
+        if (derived.isNotBlank() && derived != sessionId && _tabs.value.none { it.tabId == derived }) {
+            return derived
+        }
+        var candidate: String
+        do {
+            candidate = UUID.randomUUID().toString().take(8)
+        } while (_tabs.value.any { it.tabId == candidate })
+        return candidate
+    }
+
+    private fun applyBrowserTabConfig(sessionId: String) {
+        val shell = WebViewPool.get(sessionId) ?: return
+        if (shell.config.desktopMode && _desktopModes.value[sessionId] == null) {
+            _desktopModes.value = _desktopModes.value + (sessionId to true)
+        }
+        shell.reconfigure(
+            shell.config.copy(externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME),
+        )
+    }
 }

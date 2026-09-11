@@ -62,6 +62,7 @@ internal fun SavedPagesContent(
                 items(entries, key = { it.id }) { entry ->
                     AppListRow(
                         title = entry.title.ifBlank { entry.url.stripScheme() }, subtitle = entry.url,
+                        titleMaxLines = 2, subtitleMaxLines = 2,
                         leadingIcon = if (bookmarks) Icons.Filled.Star else Icons.Filled.Public,
                         onClick = { onOpen(entry.url) },
                         trailing = if (bookmarks) ({
