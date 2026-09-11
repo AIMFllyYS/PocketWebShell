@@ -27,7 +27,7 @@
     <string name="browser_close_tab">关闭标签</string>
     <string name="browser_done">完成</string>
     <string name="browser_no_tabs">暂无标签页</string>
-    <string name="browser_start_hint">输入网址，或新建一个标签页开始浏览。</string>
+    <string name="browser_start_hint">输入网址，或新建一个标签页开始浏览</string>
     <string name="browser_create_tab">新建标签页</string>
     <string name="browser_no_history">暂无历史记录</string>
     <string name="browser_clear_history">清空历史</string>

@@ -23,6 +23,14 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.28",
+        date = "2026-09-11",
+        highlights = listOf(
+            "站点壳辅助球加大，贴边后可见体积和点击区域对齐，不再点到一块空白",
+            "添加页与浏览空态统一蓝色黑洞标；导入说明改为「本地可用」，浏览提示去掉句号",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.27",
         date = "2026-09-11",
         highlights = listOf(

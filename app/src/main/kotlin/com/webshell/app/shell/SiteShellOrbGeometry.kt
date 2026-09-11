@@ -21,9 +21,20 @@ internal data class SiteShellOrbAnchor(
 
 internal data class SiteShellOrbPoint(val x: Float, val y: Float)
 
+/**
+ * Doubao-style overlay: a 56dp ball when expanded; when parked, only a slice
+ * peeks from the right edge and the hit box matches that visible slice.
+ */
+internal object SiteShellOrbMetrics {
+    const val ORB_SIZE = 56f
+    const val PARKED_WIDTH = 22f
+    const val PARKED_HEIGHT = 56f
+    const val PARKED_EDGE_INSET = 6f
+}
+
 /** Coordinates are dp in the safe content rectangle and never participate in WebView measurement. */
 internal data class SiteShellOrbBounds(val width: Float, val height: Float) {
-    val orbSize = min(48f, min(width, height)).coerceAtLeast(1f)
+    val orbSize = min(SiteShellOrbMetrics.ORB_SIZE, min(width, height)).coerceAtLeast(1f)
     private val marginX = min(16f, ((width - orbSize) / 2).coerceAtLeast(0f))
     private val marginY = min(16f, ((height - orbSize) / 2).coerceAtLeast(0f))
     val minX = marginX + orbSize / 2

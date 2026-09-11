@@ -1,6 +1,5 @@
 package com.webshell.app.shell
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -97,15 +97,19 @@ internal fun SiteShellOrb(
         if (anchor.parked) {
             val restoreLabel = stringResource(R.string.site_shell_orb_restore)
             val parkedLabel = stringResource(R.string.site_shell_orb_parked)
+            val handleW = SiteShellOrbMetrics.PARKED_WIDTH
+            val handleH = SiteShellOrbMetrics.PARKED_HEIGHT
+            val edgeInset = SiteShellOrbMetrics.PARKED_EDGE_INSET
             Box(
                 Modifier
                     .offset {
                         IntOffset(
-                            with(density) { (maxWidth - 48.dp - 12.dp).roundToPx() },
-                            with(density) { (bounds.centerY(anchor) - 24f).dp.roundToPx() },
+                            with(density) { (maxWidth - handleW.dp - edgeInset.dp).roundToPx() },
+                            with(density) { (bounds.centerY(anchor) - handleH / 2).dp.roundToPx() },
                         )
                     }
-                    .size(48.dp)
+                    .size(handleW.dp, handleH.dp)
+                    .clip(RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp))
                     .zIndex(1f)
                     .clickable(role = Role.Button, onClickLabel = restoreLabel) {
                         latestParked.value(false)
@@ -118,12 +122,19 @@ internal fun SiteShellOrb(
             ) {
                 Box(
                     Modifier
-                        .size(6.dp, 36.dp)
-                        .background(
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f),
-                            RoundedCornerShape(3.dp),
+                        .size(SiteShellOrbMetrics.ORB_SIZE.dp)
+                        .staticGlassSurface(
+                            tint = MaterialTheme.colorScheme.surface,
+                            opacity = 0.72f,
                         ),
-                )
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Icon(
+                        Icons.Rounded.MoreHoriz,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         } else {
             val menuLabel = stringResource(R.string.site_shell_orb)

@@ -34,6 +34,16 @@ class SiteShellOrbGeometryTest {
     }
 
     @Test
+    fun parkedHandleHitBoxMatchesTheVisibleSlice() {
+        assertEquals(56f, SiteShellOrbMetrics.ORB_SIZE, 0f)
+        assertEquals(SiteShellOrbMetrics.PARKED_HEIGHT, SiteShellOrbMetrics.ORB_SIZE, 0f)
+        assertTrue(SiteShellOrbMetrics.PARKED_WIDTH < SiteShellOrbMetrics.ORB_SIZE)
+        assertTrue(SiteShellOrbMetrics.PARKED_WIDTH >= 18f)
+        val bounds = SiteShellOrbBounds(360f, 640f)
+        assertEquals(SiteShellOrbMetrics.ORB_SIZE, bounds.orbSize, 0f)
+    }
+
+    @Test
     fun onlyTheRightEdgeIsAParkHotspot() {
         val bounds = SiteShellOrbBounds(320f, 600f)
         assertTrue(bounds.isRightEdgeDrop(bounds.maxX))

@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.28] - 2026-09-11
+
+站点壳辅助球贴边手感与添加/浏览页图标文案统一。
+
+### Changed
+
+- 站点壳辅助球展开态改为 56dp；贴边后只露出与碰撞箱一致的半圆切片，不再用内侧一块空的大方盒去点一条细线。
+- 添加页主图标与「导入本地 HTML」左侧图标统一为蓝色玄览黑洞标。
+- 「导入本地 HTML」说明改为「选择一个或多个网页文件，本地可用」；浏览空态「或新建一个标签页开始浏览」去掉句号。
+
+### Testing
+
+- 更新辅助球几何单测：展开 56dp、贴边切片窄于整球。
+- `testDebugUnitTest :app:assembleDebug` 通过；贴边手感、添加页图标与浏览空态文案为手测清单。
+
 ## [0.1.27] - 2026-09-11
 
 站点壳辅助球与浏览空态图标：把临时补丁收成可拖动、可贴边、可开关的产品形态，浏览标签页不加这颗球。
