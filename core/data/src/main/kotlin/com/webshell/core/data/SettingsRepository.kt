@@ -222,7 +222,22 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun setSiteShellOrbEnabled(enabled: Boolean) {
-        context.settingsStore.edit { it[Keys.SITE_SHELL_ORB_ENABLED] = enabled }
+        context.settingsStore.edit {
+            it[Keys.SITE_SHELL_ORB_ENABLED] = enabled
+            if (enabled) {
+                it[Keys.SITE_SHELL_ORB_X] = -1f
+                it[Keys.SITE_SHELL_ORB_Y] = -1f
+                it[Keys.SITE_SHELL_ORB_PARKED] = false
+            }
+        }
+    }
+
+    suspend fun setSiteShellOrbPlacement(x: Float, y: Float, parked: Boolean) {
+        context.settingsStore.edit {
+            it[Keys.SITE_SHELL_ORB_X] = normalizedOrbCoordinate(x)
+            it[Keys.SITE_SHELL_ORB_Y] = normalizedOrbCoordinate(y)
+            it[Keys.SITE_SHELL_ORB_PARKED] = parked
+        }
     }
 
     suspend fun setSiteShellOrbPosition(x: Float, y: Float) {

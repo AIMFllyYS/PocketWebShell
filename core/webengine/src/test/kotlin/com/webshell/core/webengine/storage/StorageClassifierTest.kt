@@ -62,6 +62,34 @@ class StorageClassifierTest {
     }
 
     @Test
+    fun `modern shader caches are clearable`() {
+        assertEquals(
+            StorageCategory.CLEARABLE_CACHE,
+            StorageClassifier.classifyProfileEntry("GrShaderCache/data_0"),
+        )
+        assertEquals(
+            StorageCategory.CLEARABLE_CACHE,
+            StorageClassifier.classifyProfileEntry("DawnWebGPUCache/index"),
+        )
+    }
+
+    @Test
+    fun `modern site data dirs stay site data`() {
+        assertEquals(
+            StorageCategory.SITE_DATA,
+            StorageClassifier.classifyProfileEntry("Network/Cookies"),
+        )
+        assertEquals(
+            StorageCategory.SITE_DATA,
+            StorageClassifier.classifyProfileEntry("Shared Storage/leveldb/LOG"),
+        )
+        assertEquals(
+            StorageCategory.SITE_DATA,
+            StorageClassifier.classifyProfileEntry("Storage/ext/x"),
+        )
+    }
+
+    @Test
     fun `Service Worker path is site data`() {
         assertEquals(
             StorageCategory.SITE_DATA,

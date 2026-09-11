@@ -10,11 +10,21 @@ internal data class SiteShellOrbAnchor(
     val y: Float = 0f,
     val parked: Boolean = false,
 ) {
+    val parkedLeft: Boolean get() = parked && x < 0.5f
+
     companion object {
         fun restored(x: Float, y: Float, parked: Boolean): SiteShellOrbAnchor = SiteShellOrbAnchor(
             x = if (x.isFinite() && x >= 0f) x.coerceIn(0f, 1f) else 1f,
             y = if (y.isFinite() && y >= 0f) y.coerceIn(0f, 1f) else 0f,
             parked = parked,
+        )
+
+        fun expandedCenter() = SiteShellOrbAnchor(x = 0.5f, y = 0.5f, parked = false)
+
+        fun parked(left: Boolean, y: Float) = SiteShellOrbAnchor(
+            x = if (left) 0f else 1f,
+            y = y.coerceIn(0f, 1f),
+            parked = true,
         )
     }
 }
@@ -22,14 +32,18 @@ internal data class SiteShellOrbAnchor(
 internal data class SiteShellOrbPoint(val x: Float, val y: Float)
 
 /**
- * Doubao-style overlay: a 56dp ball when expanded; when parked, only a slice
- * peeks from the right edge and the hit box matches that visible slice.
+ * Expanded glass ball vs edge capsule. The parked hit box is the capsule itself.
  */
 internal object SiteShellOrbMetrics {
     const val ORB_SIZE = 56f
-    const val PARKED_WIDTH = 22f
-    const val PARKED_HEIGHT = 56f
-    const val PARKED_EDGE_INSET = 6f
+    /** Visible parked tab is the hit box. Slightly larger than the previous 12×40 sliver. */
+    const val PARKED_WIDTH = 18f
+    const val PARKED_HEIGHT = 48f
+    const val PARKED_EDGE_INSET = 0f
+    const val PARK_DIRECTION_DP = 24f
+    /** Release inside this band of an edge docks even without a strong horizontal flick. */
+    const val PARK_EDGE_BAND_DP = 48f
+    const val SNAP_MS = 220
 }
 
 /** Coordinates are dp in the safe content rectangle and never participate in WebView measurement. */
@@ -56,56 +70,40 @@ internal data class SiteShellOrbBounds(val width: Float, val height: Float) {
         parked = false,
     )
 
-    /** Right-edge only. The left extreme stays a normal rest point. */
-    fun isRightEdgeDrop(x: Float) = x >= maxX - 36f
+    fun nearerLeft(releaseCenterX: Float) = releaseCenterX < width / 2f
+
+    /** Where the expanded ball should land before it becomes the edge capsule. */
+    fun parkSnapCenter(anchor: SiteShellOrbAnchor): SiteShellOrbPoint = clampCenter(
+        x = if (anchor.parkedLeft) orbSize / 2f else (width - orbSize / 2f).coerceAtLeast(orbSize / 2f),
+        y = centerY(anchor),
+    )
 }
 
 internal enum class SiteShellOrbRelease {
     TAP,
-    REPOSITION,
+    PARK_LEFT,
     PARK_RIGHT,
-    REFRESH,
 }
 
 internal object SiteShellOrbGesture {
     const val DRAG_START_THRESHOLD_DP = 16f
-    const val FLICK_MIN_DX_DP = 48f
-    const val FLICK_MAX_DURATION_MS = 280L
-    const val FLICK_MIN_SPEED_DP_PER_MS = 0.45f
-    const val FLICK_HORIZONTAL_RATIO = 1.4f
 
     fun classifyRelease(
         dxDp: Float,
         dyDp: Float,
-        durationMs: Long,
         releaseCenterX: Float,
         bounds: SiteShellOrbBounds,
     ): SiteShellOrbRelease {
         if (hypot(dxDp, dyDp) < DRAG_START_THRESHOLD_DP) return SiteShellOrbRelease.TAP
-        if (isHorizontalFlick(dxDp, dyDp, durationMs, towardNegativeX = true)) {
-            return SiteShellOrbRelease.REFRESH
+        if (releaseCenterX <= SiteShellOrbMetrics.PARK_EDGE_BAND_DP) {
+            return SiteShellOrbRelease.PARK_LEFT
         }
-        if (isHorizontalFlick(dxDp, dyDp, durationMs, towardNegativeX = false) ||
-            bounds.isRightEdgeDrop(releaseCenterX)
-        ) {
+        if (releaseCenterX >= bounds.width - SiteShellOrbMetrics.PARK_EDGE_BAND_DP) {
             return SiteShellOrbRelease.PARK_RIGHT
         }
-        return SiteShellOrbRelease.REPOSITION
-    }
-
-    private fun isHorizontalFlick(
-        dxDp: Float,
-        dyDp: Float,
-        durationMs: Long,
-        towardNegativeX: Boolean,
-    ): Boolean {
-        if (durationMs !in 1..FLICK_MAX_DURATION_MS) return false
-        if (towardNegativeX && dxDp >= 0f) return false
-        if (!towardNegativeX && dxDp <= 0f) return false
-        val adx = abs(dxDp)
-        val ady = abs(dyDp)
-        if (adx < FLICK_MIN_DX_DP) return false
-        if (adx <= ady * FLICK_HORIZONTAL_RATIO) return false
-        return adx / durationMs >= FLICK_MIN_SPEED_DP_PER_MS
+        val directed = abs(dxDp) >= SiteShellOrbMetrics.PARK_DIRECTION_DP &&
+            abs(dxDp) > abs(dyDp) * 0.5f
+        val left = if (directed) dxDp < 0f else bounds.nearerLeft(releaseCenterX)
+        return if (left) SiteShellOrbRelease.PARK_LEFT else SiteShellOrbRelease.PARK_RIGHT
     }
 }

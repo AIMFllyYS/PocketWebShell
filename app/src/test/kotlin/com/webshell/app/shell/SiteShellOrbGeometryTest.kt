@@ -16,6 +16,23 @@ class SiteShellOrbGeometryTest {
         assertEquals(1f, parked.x, 0f)
         assertEquals(0.4f, parked.y, 0f)
         assertTrue(parked.parked)
+        assertFalse(parked.parkedLeft)
+    }
+
+    @Test
+    fun expandCentersAndParkRemembersSide() {
+        val center = SiteShellOrbAnchor.expandedCenter()
+        assertEquals(0.5f, center.x, 0f)
+        assertEquals(0.5f, center.y, 0f)
+        assertFalse(center.parked)
+        val left = SiteShellOrbAnchor.parked(left = true, y = 0.35f)
+        assertTrue(left.parkedLeft)
+        assertEquals(0f, left.x, 0f)
+        val right = SiteShellOrbAnchor.parked(left = false, y = 0.8f)
+        assertTrue(right.parked)
+        assertFalse(right.parkedLeft)
+        assertEquals(1f, right.x, 0f)
+        assertEquals(0.8f, right.y, 0f)
     }
 
     @Test
@@ -34,55 +51,49 @@ class SiteShellOrbGeometryTest {
     }
 
     @Test
-    fun parkedHandleHitBoxMatchesTheVisibleSlice() {
+    fun parkedCapsuleIsAShortEdgeTab() {
         assertEquals(56f, SiteShellOrbMetrics.ORB_SIZE, 0f)
-        assertEquals(SiteShellOrbMetrics.PARKED_HEIGHT, SiteShellOrbMetrics.ORB_SIZE, 0f)
-        assertTrue(SiteShellOrbMetrics.PARKED_WIDTH < SiteShellOrbMetrics.ORB_SIZE)
-        assertTrue(SiteShellOrbMetrics.PARKED_WIDTH >= 18f)
+        assertEquals(18f, SiteShellOrbMetrics.PARKED_WIDTH, 0f)
+        assertEquals(48f, SiteShellOrbMetrics.PARKED_HEIGHT, 0f)
+        assertTrue(SiteShellOrbMetrics.PARKED_HEIGHT < SiteShellOrbMetrics.ORB_SIZE)
+        assertEquals(0f, SiteShellOrbMetrics.PARKED_EDGE_INSET, 0f)
         val bounds = SiteShellOrbBounds(360f, 640f)
         assertEquals(SiteShellOrbMetrics.ORB_SIZE, bounds.orbSize, 0f)
+        val leftSnap = bounds.parkSnapCenter(SiteShellOrbAnchor.parked(left = true, y = 0.4f))
+        assertEquals(bounds.orbSize / 2f, leftSnap.x, 0.01f)
     }
 
     @Test
-    fun onlyTheRightEdgeIsAParkHotspot() {
-        val bounds = SiteShellOrbBounds(320f, 600f)
-        assertTrue(bounds.isRightEdgeDrop(bounds.maxX))
-        assertTrue(bounds.isRightEdgeDrop(bounds.maxX - 35f))
-        assertFalse(bounds.isRightEdgeDrop(bounds.minX))
-        assertFalse(bounds.isRightEdgeDrop((bounds.minX + bounds.maxX) / 2f))
-        val left = bounds.anchorAt(bounds.minX, 120f)
-        assertEquals(0f, left.x, 0.001f)
-        assertFalse(left.parked)
-    }
-
-    @Test
-    fun tapAndSlowDragNeverRefreshOrParkOnTheLeft() {
+    fun tapStaysPutAndASlideDocksToThatEdge() {
         val bounds = SiteShellOrbBounds(360f, 640f)
+        val mid = bounds.width / 2f
         assertEquals(
             SiteShellOrbRelease.TAP,
-            SiteShellOrbGesture.classifyRelease(8f, -4f, 80L, bounds.maxX, bounds),
+            SiteShellOrbGesture.classifyRelease(8f, -4f, mid, bounds),
         )
         assertEquals(
-            SiteShellOrbRelease.REPOSITION,
-            SiteShellOrbGesture.classifyRelease(-120f, 10f, 500L, bounds.minX, bounds),
-        )
-    }
-
-    @Test
-    fun fastHorizontalFlicksRefreshLeftAndParkRight() {
-        val bounds = SiteShellOrbBounds(360f, 640f)
-        val mid = (bounds.minX + bounds.maxX) / 2f
-        assertEquals(
-            SiteShellOrbRelease.REFRESH,
-            SiteShellOrbGesture.classifyRelease(-90f, 8f, 120L, mid, bounds),
+            SiteShellOrbRelease.PARK_LEFT,
+            SiteShellOrbGesture.classifyRelease(-80f, 10f, mid, bounds),
         )
         assertEquals(
             SiteShellOrbRelease.PARK_RIGHT,
-            SiteShellOrbGesture.classifyRelease(90f, -6f, 120L, mid, bounds),
+            SiteShellOrbGesture.classifyRelease(80f, -6f, mid, bounds),
+        )
+        assertEquals(
+            SiteShellOrbRelease.PARK_LEFT,
+            SiteShellOrbGesture.classifyRelease(4f, 30f, bounds.minX, bounds),
         )
         assertEquals(
             SiteShellOrbRelease.PARK_RIGHT,
-            SiteShellOrbGesture.classifyRelease(20f, 4f, 400L, bounds.maxX, bounds),
+            SiteShellOrbGesture.classifyRelease(4f, 30f, bounds.maxX, bounds),
+        )
+        assertEquals(
+            SiteShellOrbRelease.PARK_LEFT,
+            SiteShellOrbGesture.classifyRelease(20f, 8f, 40f, bounds),
+        )
+        assertEquals(
+            SiteShellOrbRelease.PARK_RIGHT,
+            SiteShellOrbGesture.classifyRelease(-20f, 8f, bounds.width - 40f, bounds),
         )
     }
 }

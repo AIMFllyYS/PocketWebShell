@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_notification_description">正在保存到下载目录</string>
+</resources>

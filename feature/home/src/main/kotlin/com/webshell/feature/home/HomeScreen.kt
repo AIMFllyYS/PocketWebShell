@@ -288,10 +288,8 @@ private fun HomeScreenContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // A folder uses the same wallpaper, with a static glass sheet over it. Hide
-                // only grid pixels so sharp icon/label ghosts cannot leak through that sheet;
-                // all cells remain measured and registered for the unchanged launcher model.
-                .graphicsLayer { alpha = if (folderOpenFor == null) 1f else 0f }
+                // Folder opens in a Dialog window. Instantly hiding this grid left one
+                // empty wallpaper frame before the Dialog's enter animation started.
                 .homeDragSession(
                     state = ui,
                     pages = pages,

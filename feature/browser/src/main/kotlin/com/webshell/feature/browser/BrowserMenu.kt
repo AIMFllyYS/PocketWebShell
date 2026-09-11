@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
@@ -42,7 +43,7 @@ import com.webshell.core.designsystem.components.AppSheet
 
 internal enum class BrowserMenuAction {
     Back, Forward, RefreshOrStop, Bookmark, Find, NewTab, Desktop, History, Bookmarks,
-    HideToolbar, Collapse, CloseAll,
+    Downloads, HideToolbar, Collapse, CloseAll,
 }
 
 internal data class BrowserMenuState(
@@ -99,7 +100,7 @@ internal fun BrowserMenuContent(
                 AppListRow(
                     title = stringResource(if (state.bookmarked) R.string.browser_remove_bookmark else R.string.browser_add_bookmark),
                     leadingIcon = if (state.bookmarked) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    onClick = if (state.hasPage) ({ onAction(BrowserMenuAction.Bookmark) }) else null,
+                    onClick = { onAction(BrowserMenuAction.Bookmark) },
                 )
                 AppListDivider()
                 AppListRow(title = stringResource(R.string.browser_find), leadingIcon = Icons.Filled.FindInPage,
@@ -107,7 +108,7 @@ internal fun BrowserMenuContent(
                 AppListDivider()
                 AppListRow(title = stringResource(R.string.browser_desktop), leadingIcon = Icons.Filled.DesktopWindows,
                     trailing = { if (state.desktopMode) Icon(Icons.Filled.Check, stringResource(R.string.browser_enabled)) },
-                    onClick = if (state.hasTabs) ({ onAction(BrowserMenuAction.Desktop) }) else null)
+                    onClick = { onAction(BrowserMenuAction.Desktop) })
             }
             AppSectionHeader(stringResource(R.string.browser_menu_library))
             AppCard(contentPadding = PaddingValues(0.dp)) {
@@ -116,6 +117,9 @@ internal fun BrowserMenuContent(
                 AppListDivider()
                 AppListRow(title = stringResource(R.string.browser_bookmarks), leadingIcon = Icons.Filled.Bookmarks,
                     onClick = { onAction(BrowserMenuAction.Bookmarks) })
+                AppListDivider()
+                AppListRow(title = stringResource(R.string.browser_downloads), leadingIcon = Icons.Filled.Download,
+                    onClick = { onAction(BrowserMenuAction.Downloads) })
             }
             AppSectionHeader(stringResource(R.string.browser_menu_display))
             AppCard(contentPadding = PaddingValues(0.dp)) {

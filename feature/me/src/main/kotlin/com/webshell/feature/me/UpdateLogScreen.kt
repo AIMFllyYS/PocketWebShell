@@ -23,6 +23,52 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.33",
+        date = "2026-09-12",
+        highlights = listOf(
+            "清缓存会真正删掉网页 HTTP 缓存，不再只统计到、清不掉",
+            "存储头条按系统数据加缓存合计，系统报 0 时改用磁盘扫描",
+            "清除全部网站数据会清掉现代 Cookie 分区；进存储页会重新统计",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.32",
+        date = "2026-09-12",
+        highlights = listOf(
+            "站点壳贴边胶囊中间改成竖线，展开是玻璃圆球；菜单和浏览页一样，可收藏、回主屏和看下载记录",
+            "页内下载能识别文件链接和 blob 保存，不再只靠跳转新网址",
+            "浏览和站点壳菜单可打开下载记录并删除",
+            "存储管理会统计共享网站数据，不再全是 0B；清理缓存也会清应用日志",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.31",
+        date = "2026-09-12",
+        highlights = listOf(
+            "网站弹出的新窗口会变成完整浏览标签，可以再开标签、收藏和查找，登录页不会被原网站盖掉",
+            "下载改为系统下载管理器，全应用右侧胶囊显示进度，文件进 Download/PocketWebShell",
+            "下载完成后左下角弹出卡片，点按打开系统文件或下载页",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.30",
+        date = "2026-09-12",
+        highlights = listOf(
+            "打开主页文件夹不再先闪一帧空壁纸，再播展开动画",
+            "站点壳辅助球改成灰色斜杠、加大贴边点击区，吸附有滑动手感；开关重开回到右上角",
+            "收藏本页、收藏结果和切换桌面版都用确认弹窗说明；桌面版可双指捏合缩放",
+            "收藏夹与历史里的网址默认只显示两行",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.29",
+        date = "2026-09-11",
+        highlights = listOf(
+            "站点壳辅助球改为系统悬浮球交互：点边缘短胶囊到屏幕中间变成玻璃球，滑向左或右再吸回胶囊",
+            "点按玻璃球仍打开后退/前进/刷新等动作表",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.28",
         date = "2026-09-11",
         highlights = listOf(

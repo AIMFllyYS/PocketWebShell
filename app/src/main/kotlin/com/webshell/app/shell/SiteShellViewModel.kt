@@ -2,8 +2,10 @@ package com.webshell.app.shell
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webshell.core.data.BrowserSavedPagesRepository
 import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppLookupRepository
+import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.ShellListener
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,6 +30,8 @@ sealed interface SiteShellState {
         val canGoForward: Boolean = false,
         val loading: Boolean = true,
         val progress: Int = 0,
+        val pageUrl: String = "",
+        val pageTitle: String = "",
     ) : SiteShellState
 }
 
@@ -44,6 +48,7 @@ class SiteShellViewModel @Inject constructor(
     private val lookup: WebAppLookupRepository,
     private val sessions: ShellSessionController,
     private val settingsRepository: SettingsRepository,
+    private val savedPages: BrowserSavedPagesRepository,
 ) : ViewModel() {
     /**
      * null = the persisted setting has not been read yet (DataStore's first
@@ -67,10 +72,15 @@ class SiteShellViewModel @Inject constructor(
             )
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SiteShellOrbUi())
+    val bookmarkedUrls: StateFlow<Set<String>> = savedPages.observeBookmarks()
+        .map { rows -> rows.map { it.url }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
     private val _state = MutableStateFlow<SiteShellState>(SiteShellState.Loading)
     val state: StateFlow<SiteShellState> = _state.asStateFlow()
     private var openJob: Job? = null
     private var latestRequest: Pair<String, String?>? = null
+    /** Survives the UI listener being torn down while a popup is handed to Browse. */
+    var adoptWindow: ((sessionId: String, initialUrl: String?) -> Unit)? = null
 
     fun open(initialUrl: String, appId: String?, force: Boolean = false) {
         val request = initialUrl to appId
@@ -86,7 +96,12 @@ class SiteShellViewModel @Inject constructor(
                     return@launch
                 }
                 val config = if (app != null) sessions.openSession(app) else sessions.openDirectSession(initialUrl)
-                _state.value = SiteShellState.Ready(config, request)
+                _state.value = SiteShellState.Ready(
+                    config,
+                    request,
+                    pageUrl = config.startUrl,
+                    pageTitle = app?.title.orEmpty(),
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -119,16 +134,24 @@ class SiteShellViewModel @Inject constructor(
             update(sessionId) { it.copy(canGoForward = canGoForward) }
         }
         override fun onPageStarted(url: String) {
-            update(sessionId) { it.copy(loading = true, progress = 0) }
+            update(sessionId) { it.copy(loading = true, progress = 0, pageUrl = url) }
+        }
+        override fun onTitleReceived(title: String) {
+            update(sessionId) { it.copy(pageTitle = title) }
         }
         override fun onProgress(progress: Int) {
             update(sessionId) { it.copy(progress = progress, loading = progress < 100) }
         }
         override fun onPageFinished(url: String) {
-            update(sessionId) { it.copy(loading = false, progress = 100) }
+            update(sessionId) { it.copy(loading = false, progress = 100, pageUrl = url) }
         }
         override fun onPageError(url: String, errorCode: Int, description: String, insecureHttp: Boolean) {
             update(sessionId) { it.copy(loading = false) }
+        }
+        override fun onNewWindow(request: NewWindowRequest) {
+            if (request.targetSessionId != request.sourceSessionId) {
+                adoptWindow?.invoke(request.targetSessionId, request.initialUrl)
+            }
         }
     }
 
@@ -147,11 +170,16 @@ class SiteShellViewModel @Inject constructor(
         sessions.setDesktopMode(sessionId, enabled)
         _state.value = ready.copy(config = ready.config.copy(desktopMode = enabled))
     }
-    fun setOrbPosition(x: Float, y: Float) = viewModelScope.launch {
-        settingsRepository.setSiteShellOrbPosition(x, y)
+    fun setOrbPlacement(x: Float, y: Float, parked: Boolean) = viewModelScope.launch {
+        settingsRepository.setSiteShellOrbPlacement(x, y, parked)
     }
-    fun setOrbParked(parked: Boolean) = viewModelScope.launch {
-        settingsRepository.setSiteShellOrbParked(parked)
+
+    fun toggleBookmark(): Boolean {
+        val ready = _state.value as? SiteShellState.Ready ?: return false
+        val url = ready.pageUrl
+        if (url.isBlank() || url == "about:blank") return false
+        viewModelScope.launch { savedPages.toggleBookmark(url, ready.pageTitle.ifBlank { url }) }
+        return true
     }
     fun openWindow(url: String) {
         (_state.value as? SiteShellState.Ready)?.config?.let { sessions.openWindow(it, url) }

@@ -14,6 +14,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/** Room / DAO bindings. DownloadRepository is a Hilt @Singleton via constructor inject. */
 @Module
 @InstallIn(SingletonComponent::class)
 object DataModule {

@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.designsystem.components.AppConfirmDialog
 import com.webshell.core.designsystem.theme.LocalOverlayClearance
 import com.webshell.core.webengine.ShellConfig
+import com.webshell.core.webengine.WebViewPool
 import com.webshell.core.webengine.compose.ShellWebViewHost
 
 /**
@@ -48,6 +49,7 @@ fun BrowserScreen(
     isVisible: Boolean = true,
     autoCollapse: Boolean = true,
     pullToRefresh: Boolean = false,
+    onOpenDownloads: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -59,17 +61,24 @@ fun BrowserScreen(
     val recentPages by viewModel.history.collectAsStateWithLifecycle()
     val desktopModes by viewModel.desktopModes.collectAsStateWithLifecycle()
     val activeTab = tabs.firstOrNull { it.tabId == activeTabId }
-    val sessionId = activeTabId?.let { "browser-$it" }
+    val sessionId = activeTab?.sessionId ?: activeTabId?.let { "browser-$it" }
     val currentUrl = activeTab?.url.orEmpty()
     val hasPage = currentUrl.isNotBlank() && currentUrl != "about:blank"
+    val hasRenderer = sessionId != null && WebViewPool.get(sessionId) != null
     val desktopOn = desktopModes[sessionId] == true
     var urlInput by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     var editing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<BrowserNotice?>(null) }
     val requests = rememberWebSessionRequests(sessionId, isVisible,
         onNewWindow = { request ->
             viewModel.captureActiveThumbnail()
-            viewModel.createTabForSession(request.targetSessionId, request.initialUrl ?: "about:blank", activate = true)
+            viewModel.createTabForSession(
+                request.targetSessionId,
+                request.initialUrl ?: "about:blank",
+                activate = true,
+                restoreStartUrlIfBlank = false,
+            )
         },
         onMessage = { message = it })
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -77,7 +86,7 @@ fun BrowserScreen(
     SideEffect {
         viewModel.setVisible(isVisible)
         chrome.dispatch(BrowserChromeEvent.Environment(
-            visible = isVisible, activeSessionId = sessionId.takeIf { hasPage },
+            visible = isVisible, activeSessionId = sessionId.takeIf { hasPage || hasRenderer },
             activeUrl = currentUrl.takeIf { hasPage },
             autoCollapse = autoCollapse,
             interactionBlocked = editing || imeVisible || findState.visible || requests.busy,
@@ -156,16 +165,51 @@ fun BrowserScreen(
             BrowserMenuAction.Back -> viewModel.goBack()
             BrowserMenuAction.Forward -> viewModel.goForward()
             BrowserMenuAction.RefreshOrStop -> viewModel.refreshOrStop(activeTab?.loading == true)
-            BrowserMenuAction.Bookmark -> {
+            BrowserMenuAction.Bookmark -> notice = if (!hasPage) {
+                BrowserNotice(
+                    context.getString(R.string.browser_bookmark_need_page_title),
+                    context.getString(R.string.browser_bookmark_need_page_message),
+                )
+            } else {
+                val removing = currentUrl in bookmarkedUrls
                 viewModel.toggleBookmark(currentUrl, activeTab?.title.orEmpty())
-                message = context.getString(if (currentUrl in bookmarkedUrls)
-                    R.string.browser_bookmark_removed else R.string.browser_bookmark_added)
+                if (removing) {
+                    BrowserNotice(
+                        context.getString(R.string.browser_bookmark_removed),
+                        context.getString(R.string.browser_bookmark_removed_message),
+                    )
+                } else {
+                    BrowserNotice(
+                        context.getString(R.string.browser_bookmark_added),
+                        context.getString(R.string.browser_bookmark_added_message),
+                    )
+                }
             }
             BrowserMenuAction.Find -> viewModel.showFindBar()
             BrowserMenuAction.NewTab -> newTab()
-            BrowserMenuAction.Desktop -> sessionId?.let { viewModel.setDesktopMode(it, !desktopOn) }
+            BrowserMenuAction.Desktop -> notice = if (sessionId == null) {
+                BrowserNotice(
+                    context.getString(R.string.browser_desktop_need_tab_title),
+                    context.getString(R.string.browser_desktop_need_tab_message),
+                )
+            } else {
+                val next = !desktopOn
+                viewModel.setDesktopMode(sessionId, next)
+                if (next) {
+                    BrowserNotice(
+                        context.getString(R.string.browser_desktop_on_title),
+                        context.getString(R.string.browser_desktop_on_message),
+                    )
+                } else {
+                    BrowserNotice(
+                        context.getString(R.string.browser_desktop_off_title),
+                        context.getString(R.string.browser_desktop_off_message),
+                    )
+                }
+            }
             BrowserMenuAction.History -> chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.History))
             BrowserMenuAction.Bookmarks -> chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.Bookmarks))
+            BrowserMenuAction.Downloads -> onOpenDownloads()
             BrowserMenuAction.HideToolbar -> { focusManager.clearFocus(); chrome.dispatch(BrowserChromeEvent.HideToolbar) }
             BrowserMenuAction.Collapse -> chrome.dispatch(BrowserChromeEvent.Collapse)
             BrowserMenuAction.CloseAll -> chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.CloseAll))
@@ -203,14 +247,17 @@ fun BrowserScreen(
         if (findState.visible) FindBar(findState.query, findState.active, findState.total,
             viewModel::updateFindQuery, { viewModel.findNext(false) }, { viewModel.findNext(true) }, viewModel::hideFindBar)
         Box(Modifier.weight(1f)) {
-            if (activeTab != null && sessionId != null && hasPage) {
+            if (activeTab != null && sessionId != null && (hasPage || hasRenderer)) {
                 ShellWebViewHost(
                     sessionId = sessionId,
-                    configFactory = { ShellConfig(
-                        sessionId = sessionId, startUrl = activeTab.url, desktopMode = desktopOn,
-                        pullToRefresh = pullToRefresh,
-                        externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
-                    ) },
+                    configFactory = {
+                        val existing = WebViewPool.get(sessionId)?.config
+                        (existing ?: ShellConfig(sessionId = sessionId, startUrl = activeTab.url)).copy(
+                            pullToRefresh = pullToRefresh,
+                            externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
+                            desktopMode = desktopOn,
+                        )
+                    },
                     listener = requests.listener,
                     isVisible = isVisible,
                     parentHandlesInsets = true,
@@ -265,7 +312,18 @@ fun BrowserScreen(
                 onDismiss = ::dismissOverlay, destructive = true)
             null -> Unit
         }
+        notice?.let { current ->
+            AppConfirmDialog(
+                title = current.title,
+                text = current.text,
+                confirmText = stringResource(R.string.browser_js_ok),
+                onConfirm = { notice = null },
+                onDismiss = { notice = null },
+            )
+        }
         WebSessionDialogs(requests, onRetry = { viewModel.refreshOrStop(false) }, onLeave = ::closeActive)
     }
     if (isVisible && requests.fullScreenView != null) WebSessionFullScreen(requests)
 }
+
+private data class BrowserNotice(val title: String, val text: String)

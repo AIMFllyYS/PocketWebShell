@@ -22,6 +22,7 @@
     <string name="browser_enabled">已开启</string>
     <string name="browser_history">历史</string>
     <string name="browser_bookmarks">收藏夹</string>
+    <string name="browser_downloads">下载记录</string>
     <string name="browser_close_all_tabs">关闭全部标签</string>
     <string name="browser_close_all">关闭全部</string>
     <string name="browser_close_tab">关闭标签</string>
@@ -50,6 +51,16 @@
     <string name="browser_external_failed">无法打开外部应用</string>
     <string name="browser_bookmark_added">已收藏</string>
     <string name="browser_bookmark_removed">已取消收藏</string>
+    <string name="browser_bookmark_added_message">已将当前网页加入收藏夹。</string>
+    <string name="browser_bookmark_removed_message">已从收藏夹移除当前网页。</string>
+    <string name="browser_bookmark_need_page_title">无法收藏</string>
+    <string name="browser_bookmark_need_page_message">当前没有可收藏的网页。打开一个网站后再试。</string>
+    <string name="browser_desktop_on_title">已切换到桌面版</string>
+    <string name="browser_desktop_on_message">页面会按电脑宽度显示。可用双指捏合放大或缩小。</string>
+    <string name="browser_desktop_off_title">已切换到手机版</string>
+    <string name="browser_desktop_off_message">页面会按手机宽度显示。</string>
+    <string name="browser_desktop_need_tab_title">无法切换</string>
+    <string name="browser_desktop_need_tab_message">先打开一个标签页，再切换桌面版。</string>
     <string name="browser_ssl_title">连接不安全</string>
     <string name="browser_ssl_message">网站证书校验失败（%1$s）。已拦截此连接，请勿输入密码或付款信息。重试仍会进行完整的证书检查。</string>
     <string name="browser_ssl_retry">重新检查</string>

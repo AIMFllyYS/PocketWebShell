@@ -33,6 +33,12 @@ class BlobDownloadPayloadTest {
         )
     }
 
+    @Test fun `parses chunked blob control frames`() {
+        assertEquals(12L to "application/zip", parseBlobMeta("\"META:12:application/zip\""))
+        assertEquals("YWJj", parseBlobChunk("\"CHUNK:YWJj\""))
+        assertEquals(null, parseBlobChunk("\"ERR:gone\""))
+    }
+
     @Test fun `empty mime falls back to binary`() {
         val parsed = parseBlobEvaluation("OK::AA==") as BlobDownloadParseResult.Success
         assertEquals("application/octet-stream", parsed.payload.mimeType)

@@ -51,15 +51,20 @@ class StorageStatsRepository @Inject constructor(
         val webviewRoot = File(dataDir, "app_webview")
         val profilesRoot = File(webviewRoot, "profiles")
 
-        // 系统口径（与系统设置一致）的权威总量；查询本应用无需权限，失败仅降级为 null。
+        // 系统口径与设置里的应用大小对齐：data + cache；卷 UUID 跟 dataDir，失败再退回默认卷。
+        val volumeUuid = runCatching {
+            context.getSystemService(StorageManager::class.java).getUuidForPath(context.dataDir)
+        }.getOrDefault(StorageManager.UUID_DEFAULT)
         val systemStats = runCatching {
             context.getSystemService(StorageStatsManager::class.java)
-                .queryStatsForPackage(StorageManager.UUID_DEFAULT, context.packageName, Process.myUserHandle())
+                .queryStatsForPackage(volumeUuid, context.packageName, Process.myUserHandle())
         }.onFailure { e ->
             AppLog.warn(TAG, "StorageStatsManager 查询失败：${e.javaClass.simpleName} ${e.message}")
         }.getOrNull()
-        val systemTotalBytes = systemStats?.dataBytes
         val systemCacheBytes = systemStats?.cacheBytes
+        val systemTotalBytes = systemStats?.let { stats ->
+            (stats.dataBytes + stats.cacheBytes).takeIf { it > 0L }
+        }
 
         val multiProfile = runCatching {
             WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
@@ -98,7 +103,7 @@ class StorageStatsRepository @Inject constructor(
             }
         }
 
-        // 默认共享 Profile：缓存子目录 → 可清理；其余 → 应用数据。
+        // 默认共享 Profile：缓存子目录 → 可清理；其余 → 网站数据。
         val defaultFiles = walkFiles(File(webviewRoot, "Default"))
         if (defaultFiles == null) AppLog.warn(TAG, "默认 Profile 目录不可读，按 0 字节计")
         val defaultCache = mutableListOf<FileEntry>()
@@ -142,13 +147,17 @@ class StorageStatsRepository @Inject constructor(
         if (filesDirFiles == null) AppLog.warn(TAG, "应用目录不可读: ${context.filesDir.name}")
         val appDirs = dbFiles.orEmpty() + filesDirFiles.orEmpty()
 
-        // cacheDir：image_cache → 可清理；其余（logs 等）→ 应用数据。
+        // cacheDir：image_cache 与 WebView HTTP 缓存 → 可清理；其余（logs 等）→ 应用数据。
         val cacheFiles = walkFiles(context.cacheDir)
         if (cacheFiles == null) AppLog.warn(TAG, "cacheDir 不可读，按 0 字节计")
         val imageCache = mutableListOf<FileEntry>()
         val cacheDirRest = mutableListOf<FileEntry>()
         cacheFiles?.forEach { e ->
-            if (e.relativePath.substringBefore('/') == IMAGE_CACHE_DIR) imageCache += e else cacheDirRest += e
+            val top = e.relativePath.substringBefore('/')
+            when {
+                top == IMAGE_CACHE_DIR || top in WEBVIEW_CACHE_DIR_NAMES -> imageCache += e
+                else -> cacheDirRest += e
+            }
         }
 
         val overview = computeOverview(
@@ -181,7 +190,7 @@ class StorageStatsRepository @Inject constructor(
                 "webview根子项=${rootChildren?.size?.toString() ?: "不可读"} " +
                 "databases=${describe(dbFiles)} filesDir=${describe(filesDirFiles)} " +
                 "cacheDir=${describe(cacheFiles)} 系统总量=${systemTotalBytes ?: -1}B " +
-                "系统缓存=${systemCacheBytes ?: -1}B",
+                "系统数据=${systemStats?.dataBytes ?: -1}B 系统缓存=${systemCacheBytes ?: -1}B",
         )
         val walkedTotal = overview.clearableBytes + overview.siteDataBytes + overview.appBytes
         if (systemTotalBytes != null && systemTotalBytes > 0 && walkedTotal == 0L) {
@@ -206,6 +215,21 @@ class StorageStatsRepository @Inject constructor(
         const val TAG = "storage"
         const val CACHE_TTL_MS = 30_000L
         const val IMAGE_CACHE_DIR = "image_cache"
-        val CACHE_DIR_NAMES = listOf("Cache", "Code Cache", "GPUCache")
+        val CACHE_DIR_NAMES = listOf(
+            "Cache",
+            "Code Cache",
+            "GPUCache",
+            "GrShaderCache",
+            "ShaderCache",
+            "DawnGraphiteCache",
+            "DawnWebGPUCache",
+            "GraphiteDawnCache",
+        )
+        val WEBVIEW_CACHE_DIR_NAMES = setOf(
+            "WebView",
+            "webview",
+            "org.chromium.android_webview",
+            "webviewCacheChromium",
+        )
     }
 }

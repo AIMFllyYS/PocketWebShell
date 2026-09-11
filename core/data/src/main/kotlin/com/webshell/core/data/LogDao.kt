@@ -35,4 +35,7 @@ interface LogDao {
 
     @Query("DELETE FROM app_log")
     suspend fun clear()
+
+    @Query("SELECT IFNULL(SUM(LENGTH(message) + LENGTH(tag) + LENGTH(level) + 24), 0) FROM app_log")
+    suspend fun approxBytes(): Long
 }

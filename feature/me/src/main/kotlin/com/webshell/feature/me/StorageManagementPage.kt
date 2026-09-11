@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.designsystem.components.AppConfirmDialog
@@ -72,6 +76,7 @@ internal fun StorageManagementPage(
     viewModel: StorageViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val apps by viewModel.apps.collectAsStateWithLifecycle()
     var detailAppId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -79,10 +84,18 @@ internal fun StorageManagementPage(
     val listScrollState = rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }
 
     LaunchedEffect(viewModel) {
+        viewModel.scan(forceRefresh = true)
         viewModel.toasts.collect { toast ->
             val text = toast.arg?.let { context.getString(toast.resId, it) } ?: context.getString(toast.resId)
             Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
         }
+    }
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.scan(forceRefresh = true)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     BackHandler(enabled = detailAppId != null) { detailAppId = null }
 
@@ -107,6 +120,7 @@ internal fun StorageManagementPage(
                     app = app,
                     stats = statsById[app.id],
                     state = state,
+                    sharedBytes = state.overview?.sharedSiteDataBytes ?: 0L,
                     onBack = { detailAppId = null },
                 )
             }
@@ -212,6 +226,7 @@ private fun StorageListPage(
                     SiteStorageRow(
                         app = app,
                         stats = statsById[app.id],
+                        sharedBytes = state.overview?.sharedSiteDataBytes ?: 0L,
                         scanning = state.scanning,
                         onClick = { onOpenSite(app.id) },
                     )
@@ -287,9 +302,8 @@ private fun StorageOverviewSection(
         } else {
             Column(Modifier.padding(AppSpacing.lg)) {
                 val walkedTotal = overview.clearableBytes + overview.siteDataBytes + overview.appBytes
-                // 头条数字用系统口径（与系统设置一致）；查询失败时回退遍历汇总。
-                // 分段条与图例仍用遍历口径（系统值不按类别拆分）。
-                val total = overview.systemTotalBytes ?: walkedTotal
+                // 头条用系统 data+cache；系统为 0/缺失时回退遍历。分段条仍用遍历口径。
+                val total = overview.systemTotalBytes?.takeIf { it > 0L } ?: walkedTotal
                 Text(formatStorageBytes(total), style = MaterialTheme.typography.headlineLarge)
                 Text(
                     stringResource(R.string.me_storage_total_label),
@@ -325,6 +339,23 @@ private fun StorageOverviewSection(
                         ),
                     )
                 }
+                if (state.logBytes > 0L) {
+                    Spacer(Modifier.height(AppSpacing.md))
+                    Text(
+                        formatStorageBytes(state.logBytes),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        stringResource(R.string.me_storage_logs_label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(R.string.me_storage_logs_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(Modifier.height(AppSpacing.md))
                 Text(
                     stringResource(R.string.me_storage_profile_limited),
@@ -348,7 +379,7 @@ private fun StorageOverviewSection(
                     },
                     onClick = onClearAll,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = overview.clearableBytes > 0 && !state.clearingAll,
+                    enabled = (overview.clearableBytes + state.logBytes) > 0 && !state.clearingAll,
                     loading = state.clearingAll,
                 )
                 Spacer(Modifier.height(AppSpacing.sm))
@@ -392,6 +423,7 @@ private fun StorageDetailPage(
     app: WebAppEntity,
     stats: SiteStorageStats?,
     state: StorageUiState,
+    sharedBytes: Long,
     onBack: () -> Unit,
 ) {
     val measurable = stats?.measurable != false
@@ -427,7 +459,10 @@ private fun StorageDetailPage(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    DetailStatRow(stringResource(R.string.me_storage_total), formatStorageBytes(stats.totalBytes))
+                    DetailStatRow(
+                        stringResource(R.string.me_storage_total),
+                        formatStorageBytes(if (stats.totalBytes > 0L) stats.totalBytes else sharedBytes),
+                    )
                     DetailStatRow(
                         stringResource(R.string.me_storage_clearable_label),
                         formatStorageBytes(stats.clearableBytes),
@@ -436,6 +471,12 @@ private fun StorageDetailPage(
                         stringResource(R.string.me_storage_cat_site_data),
                         formatStorageBytes(stats.siteDataBytes),
                     )
+                    if (stats.totalBytes == 0L && sharedBytes > 0L) {
+                        DetailStatRow(
+                            stringResource(R.string.me_storage_shared_site_data),
+                            formatStorageBytes(sharedBytes),
+                        )
+                    }
                     if (stats.totalBytes > 0) {
                         Spacer(Modifier.height(AppSpacing.lg))
                         StorageUsageBar(
@@ -476,6 +517,7 @@ private fun StorageDetailPage(
 private fun SiteStorageRow(
     app: WebAppEntity,
     stats: SiteStorageStats?,
+    sharedBytes: Long,
     scanning: Boolean,
     onClick: () -> Unit,
 ) {
@@ -522,13 +564,21 @@ private fun SiteStorageRow(
                 )
                 else -> Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        formatStorageBytes(stats.totalBytes),
+                        if (stats.totalBytes == 0L && sharedBytes > 0L) {
+                            stringResource(R.string.me_storage_shared)
+                        } else {
+                            formatStorageBytes(stats.totalBytes)
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                     )
                     Text(
-                        stringResource(R.string.me_storage_clearable_size, formatStorageBytes(stats.clearableBytes)),
+                        if (stats.totalBytes == 0L && sharedBytes > 0L) {
+                            formatStorageBytes(sharedBytes)
+                        } else {
+                            stringResource(R.string.me_storage_clearable_size, formatStorageBytes(stats.clearableBytes))
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

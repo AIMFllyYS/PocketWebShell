@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,11 +45,13 @@ fun ShellScreen(
      * profile) either way — this is only about where the window is shown.
      */
     onAdoptWindow: (sessionId: String, initialUrl: String?) -> Unit = { _, _ -> },
+    onOpenDownloads: () -> Unit = {},
     viewModel: SiteShellViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pullToRefresh by viewModel.pullToRefreshEnabled.collectAsStateWithLifecycle()
     val orb by viewModel.siteShellOrb.collectAsStateWithLifecycle()
+    val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
     val ready = state as? SiteShellState.Ready
     val config = ready?.takeIf { it.request == (initialUrl to appId) }?.config
     val sessionId = config?.sessionId
@@ -57,7 +60,7 @@ fun ShellScreen(
         sessionId = sessionId, visible = true,
         onNewWindow = { request ->
             if (request.targetSessionId != request.sourceSessionId) {
-                onAdoptWindow(request.targetSessionId, request.initialUrl ?: request.sourceUrl)
+                onAdoptWindow(request.targetSessionId, request.initialUrl)
             }
         },
         onMessage = { message = it },
@@ -65,8 +68,15 @@ fun ShellScreen(
     val sessionListener = remember(config?.sessionId) {
         config?.sessionId?.let(viewModel::listenerFor)
     }
+    val latestAdopt = rememberUpdatedState(onAdoptWindow)
+    DisposableEffect(viewModel) {
+        viewModel.adoptWindow = { sid, url -> latestAdopt.value(sid, url) }
+        onDispose {
+            viewModel.adoptWindow = null
+            viewModel.cancelPendingOpen()
+        }
+    }
     LaunchedEffect(initialUrl, appId) { viewModel.open(initialUrl, appId) }
-    DisposableEffect(viewModel) { onDispose { viewModel.cancelPendingOpen() } }
     LaunchedEffect(message) {
         if (message != null) { kotlinx.coroutines.delay(2500); message = null }
     }
@@ -117,13 +127,16 @@ fun ShellScreen(
                     canGoForward = ready?.canGoForward == true,
                     loading = ready?.loading == true,
                     desktopMode = ready?.config?.desktopMode == true,
-                    onPositionChange = viewModel::setOrbPosition,
-                    onParkedChange = viewModel::setOrbParked,
+                    pageUrl = ready?.pageUrl.orEmpty(),
+                    bookmarked = ready?.pageUrl.orEmpty() in bookmarkedUrls,
+                    onPlacement = viewModel::setOrbPlacement,
                     onRefresh = viewModel::reload,
                     onStop = viewModel::stopLoading,
                     onBack = { viewModel.goBack() },
                     onForward = { viewModel.goForward() },
                     onDesktopMode = viewModel::setDesktopMode,
+                    onBookmark = { viewModel.toggleBookmark() },
+                    onOpenDownloads = onOpenDownloads,
                     onLeave = onLeave,
                 )
             }

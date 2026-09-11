@@ -225,38 +225,6 @@ fun rememberWebSessionRequests(
         object : ShellListener {
             override fun onPageStarted(url: String) { requests.cancelPending() }
             override fun onNewWindow(request: NewWindowRequest) { if (requests.available) newWindow.value(request) }
-            override fun onDownloadStarted(fileName: String) {
-                if (requests.available) message.value(context.getString(R.string.browser_download_started, fileName))
-            }
-            override fun onDownloadFinished(fileName: String, uri: Uri?) {
-                if (!requests.available) return
-                message.value(context.getString(R.string.browser_download_finished, fileName))
-                // Blob files are intentionally written to the app cache and
-                // exposed only through FileProvider. Hand the URI to the user
-                // immediately; otherwise a cache-only download would have no
-                // discoverable destination after the toast disappears.
-                uri?.let { shareUri ->
-                    runCatching {
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = "application/octet-stream"
-                            putExtra(Intent.EXTRA_STREAM, shareUri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        val chooser = Intent.createChooser(
-                            send,
-                            context.getString(R.string.browser_download_share_title),
-                        )
-                        chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(chooser)
-                    }.onFailure {
-                        message.value(context.getString(R.string.browser_download_share_failed))
-                    }
-                }
-            }
-            override fun onDownloadFailed(reason: String) {
-                if (requests.available) message.value(context.getString(R.string.browser_download_failed))
-            }
             override fun onFileChooserRequested(
                 params: WebChromeClient.FileChooserParams, callback: ValueCallback<Array<Uri>>,
             ) {

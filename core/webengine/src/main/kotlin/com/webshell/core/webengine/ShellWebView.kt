@@ -1,7 +1,6 @@
 package com.webshell.core.webengine
 
 import android.annotation.SuppressLint
-import android.app.DownloadManager
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -10,7 +9,6 @@ import android.graphics.Canvas
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -92,6 +90,10 @@ class ShellWebView internal constructor(
     private var customView: View? = null
     private var blobRequestToken = 0L
     private var activeBlobToken: Long? = null
+    private var blobOut: FileOutputStream? = null
+    private var blobFile: File? = null
+    private var blobOffset = 0
+    private var blobTotal = 0
 
     init {
         // Profile 必须先于任何 settings 触碰完成切换，失败仅降级回默认共享 Profile。
@@ -113,7 +115,8 @@ class ShellWebView internal constructor(
             cacheMode = WebSettings.LOAD_DEFAULT
             useWideViewPort = true
             loadWithOverviewMode = true
-            builtInZoomControls = false
+            setSupportZoom(true)
+            builtInZoomControls = true
             displayZoomControls = false
             setSupportMultipleWindows(true) // target=_blank 走 onCreateWindow
             javaScriptCanOpenWindowsAutomatically = true
@@ -253,8 +256,15 @@ class ShellWebView internal constructor(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             if (!isCurrent(view)) return
-            cancelActiveBlob("cancelled")
-            blobRequestToken++
+            if (!url.startsWith("blob:", ignoreCase = true) &&
+                !url.startsWith("data:", ignoreCase = true)
+            ) {
+                if (activeBlobToken != null) {
+                    AppLog.log("download", "页内下载因导航取消 host=${logHost(url)}")
+                }
+                cancelActiveBlob("cancelled")
+                blobRequestToken++
+            }
             pendingSsl?.let { runCatching { it.cancel() } }
             pendingSsl = null
             AppLog.log("web", "加载 ${logHost(url)}")
@@ -452,7 +462,7 @@ class ShellWebView internal constructor(
             // and breaks the OAuth opener/redirect-back contract. The target
             // always shares the default profile (product-wide single login).
             val transport = view.WebViewTransport()
-            val targetSessionId = "browser-window-${UUID.randomUUID().toString().take(12)}"
+            val targetSessionId = "browser-${UUID.randomUUID().toString().take(12)}"
             // Protect the source from pool eviction while the target is being
             // allocated: getOrCreate() may itself need to evict an entry, and
             // the source must not be the one chosen while it is mid-callback.
@@ -460,7 +470,15 @@ class ShellWebView internal constructor(
             val target = try {
                 runCatching {
                     WebViewPool.getOrCreate(view.context, targetSessionId) {
-                        config.copy(sessionId = targetSessionId, profileId = null, startUrl = "about:blank", localAppId = null)
+                        config.copy(
+                            sessionId = targetSessionId,
+                            profileId = null,
+                            startUrl = "about:blank",
+                            localAppId = null,
+                            // A popup handed to Browse must use in-app tab rules, not the
+                            // source site's "open foreign hosts in the system browser" switch.
+                            externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
+                        )
                     }
                 }.getOrNull()
             } finally {
@@ -468,14 +486,6 @@ class ShellWebView internal constructor(
             }
             if (target == null) return false
             transport.setWebView(target.webView)
-            val delivered = runCatching {
-                resultMsg.obj = transport
-                resultMsg.sendToTarget()
-            }.isSuccess
-            if (!delivered) {
-                WebViewPool.destroyAndForget(targetSessionId)
-                return false
-            }
             val request = NewWindowRequest(
                 sourceSessionId = sessionId,
                 sourceUrl = view.url,
@@ -484,7 +494,18 @@ class ShellWebView internal constructor(
                 initialUrl = view.hitTestResult.extra,
                 targetSessionId = targetSessionId,
             )
+            // Owner must bind target.sessionListener before Chromium receives
+            // the transport; otherwise the first onPageStarted is lost and the
+            // adopted tab stays about:blank forever.
             notifyListeners { onNewWindow(request) }
+            val delivered = runCatching {
+                resultMsg.obj = transport
+                resultMsg.sendToTarget()
+            }.isSuccess
+            if (!delivered) {
+                WebViewPool.destroyAndForget(targetSessionId)
+                return false
+            }
             return true
         }
 
@@ -658,7 +679,14 @@ class ShellWebView internal constructor(
         val uri = runCatching { url.toUri() }.getOrNull()
         return when (decision.route) {
             UrlRoute.WEB -> {
-                if (config.externalLinkPolicy == ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER &&
+                if (isMainFrame && DownloadPolicy.looksLikeFileDownload(url)) {
+                    AppLog.log(
+                        "download",
+                        "页内文件链接按下载处理 host=${DownloadPolicy.logHost(url)} name=${DownloadPolicy.safeFileName(URLUtil.guessFileName(url, null, null))}",
+                    )
+                    handleDownload(url, webView.settings.userAgentString.orEmpty(), null, null)
+                    true
+                } else if (config.externalLinkPolicy == ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER &&
                     !LocalWebHost.isLocalUrl(url) && isForeignHost(url)
                 ) {
                     launchExternal(url)
@@ -802,120 +830,200 @@ class ShellWebView internal constructor(
             downloadBlob(url)
             return
         }
-        runCatching {
-            val fileName = DownloadPolicy.safeFileName(URLUtil.guessFileName(url, contentDisposition, mimeType))
-            val request = DownloadManager.Request(url.toUri())
-                .setMimeType(mimeType)
-                .setTitle(fileName)
-                .setDescription("玄览 下载")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName)
-                .addRequestHeader("User-Agent", userAgent)
-            DownloadPolicy.requestHeaders(
-                url = url,
-                userAgent = userAgent,
-                referer = webView.url,
-                cookie = CookieManager.getInstance().getCookie(url),
-            ).forEach { (name, value) -> request.addRequestHeader(name, value) }
-            context.getSystemService(DownloadManager::class.java).enqueue(request)
+        val fileName = DownloadPolicy.safeFileName(URLUtil.guessFileName(url, contentDisposition, mimeType))
+        if (!DownloadPolicy.canEnqueue(url)) {
+            AppLog.warn("download", "拒绝下载 host=${DownloadPolicy.logHost(url)} name=$fileName")
+            notifyListeners { onDownloadFailed("unsupported-download") }
+            return
+        }
+        AppLog.log("download", "开始下载 host=${DownloadPolicy.logHost(url)} name=$fileName")
+        val downloadId = WebViewPool.downloadSink?.startHttp(
+            url = url,
+            fileName = fileName,
+            mimeType = mimeType,
+            userAgent = userAgent,
+            referer = webView.url,
+            cookie = CookieManager.getInstance().getCookie(url),
+        )
+        if (downloadId == null) {
+            notifyListeners { onDownloadFailed("download-failed") }
+        } else {
             notifyListeners { onDownloadStarted(fileName) }
-        }.onFailure {
-            notifyListeners { onDownloadFailed(it.message ?: "download-failed") }
         }
     }
 
     /**
-     * Read a blob only from the current document, with a hard encoded and decoded
-     * size limit. No JavaScript bridge is exposed to the origin.
+     * Read a blob from the current document in Binder-safe chunks. No JavaScript
+     * bridge is exposed to the origin — each slice comes back through evaluateJavascript.
      */
     private fun downloadBlob(url: String) {
         val token = ++blobRequestToken
         val generation = callbackGeneration
         beginBlobDownload(token)
+        val quoted = org.json.JSONObject.quote(url)
         val script = """
             (async function(){
               try {
-                const b = await fetch(${org.json.JSONObject.quote(url)}).then(r => r.blob());
-                if (b.size > ${MAX_BLOB_BYTES}) return 'ERR:too-large';
-                const a = new Uint8Array(await b.arrayBuffer());
-                let s=''; for(let i=0;i<a.length;i+=0x8000) s += String.fromCharCode(...a.subarray(i,i+0x8000));
-                return 'OK:' + b.type + ':' + btoa(s);
+                const b = await fetch($quoted).then(r => r.blob());
+                if (b.size > $MAX_BLOB_BYTES) return 'ERR:too-large';
+                window.__wsDl = window.__wsDl || {};
+                window.__wsDl['$token'] = b;
+                return 'META:' + b.size + ':' + (b.type || '');
               } catch(e) { return 'ERR:' + (e && e.message ? e.message : 'blob-failed'); }
             })()
         """.trimIndent()
         runCatching {
             webView.evaluateJavascript(script) { raw ->
-                if (token != blobRequestToken || generation != callbackGeneration) {
-                    // Superseded by a newer request/renderer — that transition
-                    // is expected to have already unprotected this token via
-                    // cancelActiveBlob. Do not blindly call endBlobDownload()
-                    // here: activeBlobToken may by now belong to a *different*,
-                    // still in-flight download, and clearing it would drop that
-                    // one's PENDING_DOWNLOAD guard out from under it. Only
-                    // reconcile if this stale token is, despite the invariant
-                    // above, still the one on record.
-                    if (activeBlobToken == token) endBlobDownload()
+                if (!blobStillActive(token, generation)) return@evaluateJavascript
+                val meta = parseBlobMeta(raw)
+                if (meta == null) {
+                    val parsed = parseBlobEvaluation(raw)
+                    abortBlob(token, (parsed as? BlobDownloadParseResult.Failure)?.reason ?: "blob-failed")
                     return@evaluateJavascript
                 }
-                try {
-                    completeBlobDownload(raw)
-                } finally {
-                    endBlobDownload()
+                val (size, mime) = meta
+                if (size > MAX_BLOB_BYTES) {
+                    abortBlob(token, "blob-too-large")
+                    return@evaluateJavascript
                 }
+                AppLog.log("download", "页内 blob 分块 size=$size")
+                if (!openBlobFile(mime)) {
+                    abortBlob(token, "blob-write-failed")
+                    return@evaluateJavascript
+                }
+                blobTotal = size.toInt()
+                if (size == 0L) {
+                    finishBlob(token)
+                    return@evaluateJavascript
+                }
+                requestBlobChunk(token, generation)
             }
         }.onFailure {
-            if (activeBlobToken == token) endBlobDownload()
-            notifyListeners { onDownloadFailed(it.message ?: "blob-failed") }
+            abortBlob(token, it.message ?: "blob-failed")
         }
     }
 
-    private fun completeBlobDownload(raw: String?) {
-            val parsed = parseBlobEvaluation(raw)
-            val payload = when (parsed) {
-                is BlobDownloadParseResult.Success -> parsed.payload
-                is BlobDownloadParseResult.Failure -> {
-                    notifyListeners { onDownloadFailed(parsed.reason) }
-                    return
-                }
+    private fun requestBlobChunk(token: Long, generation: Long) {
+        if (!blobStillActive(token, generation)) return
+        val script = """
+            (async function(){
+              try {
+                const b = window.__wsDl && window.__wsDl['$token'];
+                if (!b) return 'ERR:gone';
+                const slice = b.slice($blobOffset, ${blobOffset + BLOB_CHUNK_BYTES});
+                const a = new Uint8Array(await slice.arrayBuffer());
+                let s=''; for(let i=0;i<a.length;i+=0x8000) s += String.fromCharCode(...a.subarray(i,i+0x8000));
+                return 'CHUNK:' + btoa(s);
+              } catch(e) { return 'ERR:' + (e && e.message ? e.message : 'blob-failed'); }
+            })()
+        """.trimIndent()
+        webView.evaluateJavascript(script) { raw ->
+            if (!blobStillActive(token, generation)) return@evaluateJavascript
+            val encoded = parseBlobChunk(raw)
+            if (encoded == null) {
+                abortBlob(token, decodeBlobError(raw))
+                return@evaluateJavascript
             }
-            val mime = payload.mimeType
-            val encoded = payload.encoded
             if (encoded.length > MAX_BLOB_BASE64_CHARS) {
-                notifyListeners { onDownloadFailed("blob-too-large") }
-                return
+                abortBlob(token, "blob-too-large")
+                return@evaluateJavascript
             }
             val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()
-            if (bytes == null || bytes.size > MAX_BLOB_BYTES) {
-                notifyListeners { onDownloadFailed("blob-too-large") }
-                return
+            if (bytes == null) {
+                abortBlob(token, "blob-failed")
+                return@evaluateJavascript
             }
-            val extension = when {
-                mime.contains("pdf") -> ".pdf"
-                mime.contains("json") -> ".json"
-                mime.contains("text/") -> ".txt"
-                mime.contains("zip") -> ".zip"
-                mime.contains("png") -> ".png"
-                mime.contains("jpeg") -> ".jpg"
-                else -> ".bin"
+            runCatching { blobOut?.write(bytes) }.onFailure {
+                abortBlob(token, "blob-write-failed")
+                return@evaluateJavascript
             }
-            val fileName = "download-${System.currentTimeMillis()}$extension"
-            val out = File(context.cacheDir, "downloads/$fileName")
-            runCatching {
-                out.parentFile?.mkdirs()
-                FileOutputStream(out).use { it.write(bytes) }
-                // A FileProvider URI is mandatory on API 24+; falling back to
-                // Uri.fromFile would trigger FileUriExposedException and could
-                // leak a private cache path to another application.
-                val shareUri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    out,
-                )
-                notifyListeners { onDownloadFinished(fileName, shareUri) }
-            }.onFailure {
-                runCatching { out.delete() }
-                notifyListeners { onDownloadFailed(it.message ?: "blob-write-failed") }
-            }
+            blobOffset += bytes.size
+            if (blobOffset >= blobTotal) finishBlob(token) else requestBlobChunk(token, generation)
+        }
+    }
+
+    private fun openBlobFile(mime: String): Boolean {
+        val extension = when {
+            mime.contains("pdf") -> ".pdf"
+            mime.contains("json") -> ".json"
+            mime.contains("text/") -> ".txt"
+            mime.contains("zip") -> ".zip"
+            mime.contains("png") -> ".png"
+            mime.contains("jpeg") -> ".jpg"
+            else -> ".bin"
+        }
+        val fileName = "download-${System.currentTimeMillis()}$extension"
+        val out = File(context.cacheDir, "downloads/$fileName")
+        return runCatching {
+            out.parentFile?.mkdirs()
+            blobFile = out
+            blobOut = FileOutputStream(out)
+            blobOffset = 0
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun finishBlob(token: Long) {
+        val out = blobFile
+        runCatching { blobOut?.close() }
+        blobOut = null
+        blobFile = null
+        blobOffset = 0
+        blobTotal = 0
+        cleanupBlobJs(token)
+        endBlobDownload()
+        if (out == null) {
+            notifyListeners { onDownloadFailed("blob-write-failed") }
+            return
+        }
+        runCatching {
+            val shareUri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                out,
+            )
+            WebViewPool.downloadSink?.completeBlob(out.name, shareUri)
+            notifyListeners { onDownloadFinished(out.name, shareUri) }
+        }.onFailure {
+            runCatching { out.delete() }
+            notifyListeners { onDownloadFailed(it.message ?: "blob-write-failed") }
+        }
+    }
+
+    private fun abortBlob(token: Long, reason: String) {
+        if (activeBlobToken != token && activeBlobToken != null) return
+        AppLog.warn("download", "页内下载失败 reason=${reason.take(80)}")
+        runCatching { blobOut?.close() }
+        blobOut = null
+        blobFile?.let { runCatching { it.delete() } }
+        blobFile = null
+        blobOffset = 0
+        blobTotal = 0
+        cleanupBlobJs(token)
+        if (activeBlobToken == token || activeBlobToken == null) {
+            if (activeBlobToken == token) endBlobDownload()
+            notifyListeners { onDownloadFailed(reason) }
+        }
+    }
+
+    private fun cleanupBlobJs(token: Long) {
+        webView.evaluateJavascript(
+            "(function(){try{if(window.__wsDl)delete window.__wsDl['$token'];}catch(e){}})()",
+            null,
+        )
+    }
+
+    private fun blobStillActive(token: Long, generation: Long): Boolean {
+        if (token == blobRequestToken && generation == callbackGeneration && activeBlobToken == token) {
+            return true
+        }
+        if (activeBlobToken == token) endBlobDownload()
+        return false
+    }
+
+    private fun decodeBlobError(raw: String?): String {
+        val parsed = parseBlobEvaluation(raw)
+        return (parsed as? BlobDownloadParseResult.Failure)?.reason ?: "blob-failed"
     }
 
     private fun beginBlobDownload(token: Long) {
@@ -929,9 +1037,8 @@ class ShellWebView internal constructor(
     }
 
     private fun cancelActiveBlob(reason: String) {
-        if (activeBlobToken == null) return
-        endBlobDownload()
-        notifyListeners { onDownloadFailed(reason) }
+        val token = activeBlobToken ?: return
+        abortBlob(token, reason)
     }
 
     // ---------------------------------------------------------------- find in page
@@ -1134,8 +1241,9 @@ class ShellWebView internal constructor(
     private companion object {
         // evaluateJavascript returns through a Binder transaction; keep the
         // payload comfortably below the platform transaction limit.
-        const val MAX_BLOB_BYTES = 512 * 1024
-        const val MAX_BLOB_BASE64_CHARS = MAX_BLOB_BYTES * 4 / 3 + 8
+        const val MAX_BLOB_BYTES = 32 * 1024 * 1024
+        const val BLOB_CHUNK_BYTES = 192 * 1024
+        const val MAX_BLOB_BASE64_CHARS = BLOB_CHUNK_BYTES * 4 / 3 + 8
         const val SSL_DECISION_TIMEOUT_MS = 15_000L
         // Short: this only bridges a tab-switch/host-attach race, not a real
         // user decision window. A background session must not keep a page's
