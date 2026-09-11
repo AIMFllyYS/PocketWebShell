@@ -23,6 +23,15 @@ private data class UpdateEntry(
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.27",
+        date = "2026-09-11",
+        highlights = listOf(
+            "浏览空态换成可着色的玄览黑洞标，不再用蓝色地球",
+            "从主屏打开的网站右上角改为可拖动辅助球：可贴右边隐藏、左甩刷新，点按打开后退/前进/刷新/桌面模式/返回主屏",
+            "「我的 → 浏览体验」可关闭站点壳悬浮球；浏览标签页不加这颗球",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.26",
         date = "2026-09-11",
         highlights = listOf(

@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.27] - 2026-09-11
+
+站点壳辅助球与浏览空态图标：把临时补丁收成可拖动、可贴边、可开关的产品形态，浏览标签页不加这颗球。
+
+### Added
+
+- 浏览空态（暂无标签页、站点壳打开中 / 不可用）改用可着色的玄览黑洞标，颜色贴近原来的主题蓝。
+- 从主屏打开的站点壳右上角改为可拖动辅助球：点按打开动作表，松手停在落下位置，甩向右侧或落在右缘收成短竖线，点按贴边条恢复，明显左甩刷新。
+- 辅助球动作表提供后退、前进、刷新 / 停止、桌面模式和返回主屏。
+- 「我的 → 浏览体验」新增「站点壳悬浮球」开关（默认开），位置写入设置备份。
+
+### Changed
+
+- 站点壳不再钉一颗只能刷新的右上角菜单钮；关闭悬浮球后可用下拉刷新。
+
+### Testing
+
+- 新增 BrandMark tint / 空态半径、站点壳辅助球贴边与左甩判定、AppearanceDefaults 开关默认值单元测试。
+- `testDebugUnitTest :app:assembleDebug` 通过；无设备环境，站点壳拖球 / 贴边 / 左甩刷新、浏览空态图标与设置开关为手测清单，未在本轮验证。
+
 ## [0.1.26] - 2026-09-11
 
 单用户全局登录态收口：本版本系统性修复了浏览器壳"应当像普通浏览器一样只有一份登录态"的一批合同缺口，不引入任何多账号/多 Profile 机制。

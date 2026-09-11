@@ -4,15 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -27,11 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.app.R
-import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.AppNavigationBar
-import com.webshell.core.designsystem.components.AppSheet
 import com.webshell.core.designsystem.components.PageLoadIndicator
-import com.webshell.core.designsystem.components.staticGlassSurface
 import com.webshell.core.webengine.compose.ShellWebViewHost
 import com.webshell.feature.browser.WebSessionDialogs
 import com.webshell.feature.browser.WebSessionEmptyState
@@ -57,11 +48,11 @@ fun ShellScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pullToRefresh by viewModel.pullToRefreshEnabled.collectAsStateWithLifecycle()
+    val orb by viewModel.siteShellOrb.collectAsStateWithLifecycle()
     val ready = state as? SiteShellState.Ready
     val config = ready?.takeIf { it.request == (initialUrl to appId) }?.config
     val sessionId = config?.sessionId
     var message by remember { mutableStateOf<String?>(null) }
-    var showMenu by remember { mutableStateOf(false) }
     val requests = rememberWebSessionRequests(
         sessionId = sessionId, visible = true,
         onNewWindow = { request ->
@@ -114,43 +105,33 @@ fun ShellScreen(
             }
         }
         if (state is SiteShellState.Ready) {
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(Modifier.fillMaxWidth().statusBarsPadding()) {
                 PageLoadIndicator(loading = ready?.loading == true, rawProgress = ready?.progress ?: 0, sessionKey = sessionId)
-                Box(Modifier.fillMaxSize()) {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = 8.dp, top = 4.dp)
-                            .size(48.dp)
-                            .staticGlassSurface(tint = MaterialTheme.colorScheme.surface, opacity = 0.72f),
-                    ) {
-                        Icon(
-                            Icons.Rounded.MoreHoriz,
-                            contentDescription = stringResource(R.string.site_shell_menu),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
+            }
+            if (orb.enabled && !requests.busy) {
+                SiteShellOrb(
+                    posX = orb.x,
+                    posY = orb.y,
+                    parked = orb.parked,
+                    canGoBack = ready?.canGoBack == true,
+                    canGoForward = ready?.canGoForward == true,
+                    loading = ready?.loading == true,
+                    desktopMode = ready?.config?.desktopMode == true,
+                    onPositionChange = viewModel::setOrbPosition,
+                    onParkedChange = viewModel::setOrbParked,
+                    onRefresh = viewModel::reload,
+                    onStop = viewModel::stopLoading,
+                    onBack = { viewModel.goBack() },
+                    onForward = { viewModel.goForward() },
+                    onDesktopMode = viewModel::setDesktopMode,
+                    onLeave = onLeave,
+                )
             }
         }
         message?.let {
             WebSessionStatusMessage(
                 it,
                 Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp),
-            )
-        }
-    }
-    if (showMenu) {
-        AppSheet(onDismissRequest = { showMenu = false }) {
-            AppNavigationBar(title = stringResource(R.string.site_shell_menu))
-            AppListRow(
-                title = stringResource(R.string.site_shell_refresh),
-                leadingIcon = Icons.Rounded.Refresh,
-                onClick = {
-                    showMenu = false
-                    viewModel.reload()
-                },
             )
         }
     }

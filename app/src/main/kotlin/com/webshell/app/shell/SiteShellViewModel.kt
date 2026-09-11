@@ -25,17 +25,25 @@ sealed interface SiteShellState {
         val config: ShellConfig,
         val request: Pair<String, String?>,
         val canGoBack: Boolean = false,
+        val canGoForward: Boolean = false,
         val loading: Boolean = true,
         val progress: Int = 0,
     ) : SiteShellState
 }
+
+data class SiteShellOrbUi(
+    val enabled: Boolean = true,
+    val x: Float = -1f,
+    val y: Float = -1f,
+    val parked: Boolean = false,
+)
 
 /** One launch resolver; the screen never reads a DAO or manipulates a native WebView. */
 @HiltViewModel
 class SiteShellViewModel @Inject constructor(
     private val lookup: WebAppLookupRepository,
     private val sessions: ShellSessionController,
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
     /**
      * null = the persisted setting has not been read yet (DataStore's first
@@ -49,6 +57,16 @@ class SiteShellViewModel @Inject constructor(
     val pullToRefreshEnabled: StateFlow<Boolean?> = settingsRepository.settings
         .map { it.pullToRefreshEnabled }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val siteShellOrb: StateFlow<SiteShellOrbUi> = settingsRepository.settings
+        .map {
+            SiteShellOrbUi(
+                enabled = it.siteShellOrbEnabled,
+                x = it.siteShellOrbX,
+                y = it.siteShellOrbY,
+                parked = it.siteShellOrbParked,
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SiteShellOrbUi())
     private val _state = MutableStateFlow<SiteShellState>(SiteShellState.Loading)
     val state: StateFlow<SiteShellState> = _state.asStateFlow()
     private var openJob: Job? = null
@@ -83,7 +101,10 @@ class SiteShellViewModel @Inject constructor(
     fun onReady(config: ShellConfig) {
         val ready = _state.value as? SiteShellState.Ready ?: return
         if (ready.config.sessionId != config.sessionId) return
-        _state.value = ready.copy(canGoBack = sessions.ensureLoaded(config))
+        _state.value = ready.copy(
+            canGoBack = sessions.ensureLoaded(config),
+            canGoForward = config.sessionId?.let(sessions::canGoForward) == true,
+        )
     }
 
     fun listenerFor(sessionId: String): ShellListener = object : ShellListener {
@@ -93,6 +114,9 @@ class SiteShellViewModel @Inject constructor(
         }
         override fun onCanGoBackChanged(canGoBack: Boolean) {
             update(sessionId) { it.copy(canGoBack = canGoBack) }
+        }
+        override fun onCanGoForwardChanged(canGoForward: Boolean) {
+            update(sessionId) { it.copy(canGoForward = canGoForward) }
         }
         override fun onPageStarted(url: String) {
             update(sessionId) { it.copy(loading = true, progress = 0) }
@@ -112,6 +136,23 @@ class SiteShellViewModel @Inject constructor(
         ?.let(sessions::goBack) == true
 
     fun reload() { (_state.value as? SiteShellState.Ready)?.config?.sessionId?.let(sessions::reload) }
+    fun stopLoading() {
+        (_state.value as? SiteShellState.Ready)?.config?.sessionId?.let(sessions::stopLoading)
+    }
+    fun goForward(): Boolean = (_state.value as? SiteShellState.Ready)?.config?.sessionId
+        ?.let(sessions::goForward) == true
+    fun setDesktopMode(enabled: Boolean) {
+        val ready = _state.value as? SiteShellState.Ready ?: return
+        val sessionId = ready.config.sessionId ?: return
+        sessions.setDesktopMode(sessionId, enabled)
+        _state.value = ready.copy(config = ready.config.copy(desktopMode = enabled))
+    }
+    fun setOrbPosition(x: Float, y: Float) = viewModelScope.launch {
+        settingsRepository.setSiteShellOrbPosition(x, y)
+    }
+    fun setOrbParked(parked: Boolean) = viewModelScope.launch {
+        settingsRepository.setSiteShellOrbParked(parked)
+    }
     fun openWindow(url: String) {
         (_state.value as? SiteShellState.Ready)?.config?.let { sessions.openWindow(it, url) }
     }

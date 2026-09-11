@@ -55,6 +55,12 @@ data class HomeSettings(
     val browserOrbY: Float = -1f,
     /** 仅在页面已到顶部时允许下拉刷新；默认关闭，避免和网页内滚动冲突。 */
     val pullToRefreshEnabled: Boolean = false,
+    /** Site-shell assist orb; default on to match the previous always-visible corner button. */
+    val siteShellOrbEnabled: Boolean = true,
+    /** Normalized center; -1 means the default top-right rest point. */
+    val siteShellOrbX: Float = -1f,
+    val siteShellOrbY: Float = -1f,
+    val siteShellOrbParked: Boolean = false,
 )
 
 /** 主题模式取值，见 docs/DESIGN.md */
@@ -100,6 +106,10 @@ class SettingsRepository @Inject constructor(
         val BROWSER_ORB_X = floatPreferencesKey("browser_orb_x")
         val BROWSER_ORB_Y = floatPreferencesKey("browser_orb_y")
         val PULL_TO_REFRESH = booleanPreferencesKey("pull_to_refresh")
+        val SITE_SHELL_ORB_ENABLED = booleanPreferencesKey("site_shell_orb_enabled")
+        val SITE_SHELL_ORB_X = floatPreferencesKey("site_shell_orb_x")
+        val SITE_SHELL_ORB_Y = floatPreferencesKey("site_shell_orb_y")
+        val SITE_SHELL_ORB_PARKED = booleanPreferencesKey("site_shell_orb_parked")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
@@ -127,6 +137,10 @@ class SettingsRepository @Inject constructor(
             browserOrbX = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_X]),
             browserOrbY = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_Y]),
             pullToRefreshEnabled = prefs[Keys.PULL_TO_REFRESH] ?: false,
+            siteShellOrbEnabled = prefs[Keys.SITE_SHELL_ORB_ENABLED] ?: true,
+            siteShellOrbX = normalizedOrbCoordinate(prefs[Keys.SITE_SHELL_ORB_X]),
+            siteShellOrbY = normalizedOrbCoordinate(prefs[Keys.SITE_SHELL_ORB_Y]),
+            siteShellOrbParked = prefs[Keys.SITE_SHELL_ORB_PARKED] ?: false,
         )
     }
 
@@ -205,6 +219,21 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setPullToRefreshEnabled(enabled: Boolean) {
         context.settingsStore.edit { it[Keys.PULL_TO_REFRESH] = enabled }
+    }
+
+    suspend fun setSiteShellOrbEnabled(enabled: Boolean) {
+        context.settingsStore.edit { it[Keys.SITE_SHELL_ORB_ENABLED] = enabled }
+    }
+
+    suspend fun setSiteShellOrbPosition(x: Float, y: Float) {
+        context.settingsStore.edit {
+            it[Keys.SITE_SHELL_ORB_X] = normalizedOrbCoordinate(x)
+            it[Keys.SITE_SHELL_ORB_Y] = normalizedOrbCoordinate(y)
+        }
+    }
+
+    suspend fun setSiteShellOrbParked(parked: Boolean) {
+        context.settingsStore.edit { it[Keys.SITE_SHELL_ORB_PARKED] = parked }
     }
 
     internal companion object {

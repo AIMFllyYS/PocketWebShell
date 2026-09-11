@@ -108,8 +108,10 @@ fun MeScreen(
                 capabilities = state.capabilities,
                 autoCollapse = settings.browserAutoCollapse,
                 pullToRefresh = settings.pullToRefreshEnabled,
+                siteShellOrb = settings.siteShellOrbEnabled,
                 onAutoCollapse = viewModel::setBrowserAutoCollapse,
                 onPullToRefresh = viewModel::setPullToRefreshEnabled,
+                onSiteShellOrb = viewModel::setSiteShellOrbEnabled,
                 onBack = ::goBack,
             )
             MeSection.STORAGE -> StorageManagementPage(onBack = ::goBack)

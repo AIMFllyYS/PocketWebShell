@@ -8,9 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +21,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppPrimaryButton
+import com.webshell.core.designsystem.components.BrandMark
 
 @Composable
 internal fun SheetEmptyState(message: String, modifier: Modifier = Modifier) {
@@ -49,8 +47,11 @@ fun WebSessionEmptyState(
 ) {
     Column(modifier.padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center) {
-        Icon(Icons.Filled.Public, null, modifier = Modifier.size(56.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f))
+        BrandMark(
+            modifier = Modifier.size(56.dp),
+            showSky = false,
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.65f),
+        )
         Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(top = 20.dp))
         Text(description, style = MaterialTheme.typography.bodyMedium,

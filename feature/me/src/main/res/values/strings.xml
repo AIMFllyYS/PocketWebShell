@@ -19,6 +19,8 @@
     <string name="me_sessions_end_text">将同时结束后台保活。不会删除网站或登录状态。</string>
     <string name="me_pull_to_refresh">下拉刷新网页</string>
     <string name="me_pull_to_refresh_hint">仅在页面已经位于最顶部时生效。默认关闭，也可从菜单手动刷新。</string>
+    <string name="me_site_shell_orb">站点壳悬浮球</string>
+    <string name="me_site_shell_orb_hint">从主屏打开的网站右上角显示可拖动辅助球；关闭后不再显示。刷新可改用下拉刷新。</string>
     <string name="me_display_section">桌面与显示</string>
     <string name="me_browser_section">浏览与后台</string>
     <string name="me_about_section">关于</string>
