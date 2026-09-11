@@ -39,7 +39,7 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
                 .ifBlank { hostLabel(finalUrl) }
             val themeColor = doc.selectFirst("meta[name=theme-color]")?.attr("content")?.trim()
                 ?.takeIf { it.isNotEmpty() }
-            val iconUrl = pickBestIcon(finalUrl, doc)
+            val iconUrl = pickBestIcon(finalUrl, doc) ?: fallbackIconUrl(finalUrl)
             SiteMetadata(
                 title = title,
                 iconUrl = iconUrl,
@@ -82,23 +82,65 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
     private fun hostLabel(url: String): String =
         runCatching { URI(url).host }.getOrNull()?.removePrefix("www.") ?: url
 
-    // ===== 图标挑选（manifest → apple-touch-icon → icon → /favicon.ico）=====
+    // ===== 图标挑选（页面声明 → 常用站点备份 → Google s2 标签页图标）=====
+
+    /**
+     * 从已解析 HTML 按优先级列出图标地址（尚未做公网校验）。
+     * 顺序：apple-touch / 较大的 raster link → manifest → 普通 icon → /favicon.ico。
+     */
+    fun rankDocumentIcons(pageUrl: String, doc: Document): List<String> {
+        val ranked = ArrayList<Pair<Int, String>>()
+        fun add(url: String, score: Int) {
+            if ((url.startsWith("http://", true) || url.startsWith("https://", true)) &&
+                ranked.none { it.second == url }
+            ) {
+                ranked += score to url
+            }
+        }
+        for ((href, sizes) in linkCandidates(doc, "apple-touch-icon", pageUrl) +
+            linkCandidates(doc, "apple-touch-icon-precomposed", pageUrl)
+        ) {
+            add(href, 400 + parseIconSize(sizes) + formatBonus(href))
+        }
+        for ((href, sizes) in linkCandidates(doc, "icon", pageUrl)) {
+            add(href, 200 + parseIconSize(sizes) + formatBonus(href))
+        }
+        add(resolveUrl(pageUrl, DEFAULT_FAVICON_PATH), 50)
+        wellKnownIconUrl(pageUrl)?.let { add(it, 80) }
+        return ranked.sortedByDescending { it.first }.map { it.second }
+    }
 
     private fun pickBestIcon(finalUrl: String, doc: Document): String? {
+        val declared = rankDocumentIcons(finalUrl, doc).toMutableList()
         linkCandidates(doc, "manifest", finalUrl).firstOrNull()?.let { (manifestUrl, _) ->
             manifestIconCandidates(manifestUrl)?.let { icons ->
                 chooseBestManifestIcon(icons)?.let { src ->
-                    return sanitizeIconUrl(resolveUrl(finalUrl, src))
+                    declared.add(0, resolveUrl(finalUrl, src))
                 }
             }
         }
-        linkCandidates(doc, "apple-touch-icon", finalUrl)
-            .maxByOrNull { parseIconSize(it.second) }
-            ?.let { return sanitizeIconUrl(it.first) }
-        linkCandidates(doc, "icon", finalUrl)
-            .maxByOrNull { parseIconSize(it.second) }
-            ?.let { return sanitizeIconUrl(it.first) }
-        return sanitizeIconUrl(resolveUrl(finalUrl, DEFAULT_FAVICON_PATH))
+        declared.forEach { candidate ->
+            sanitizeIconUrl(candidate)?.let { return it }
+        }
+        return fallbackIconUrl(finalUrl)
+    }
+
+    /** HTML 抓不到或地址不可用时，用 Google 公开的标签页图标接口（返回 PNG）。 */
+    fun fallbackIconUrl(pageUrl: String): String? {
+        val host = runCatching { URI(pageUrl.trim()).host }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: return null
+        wellKnownIconUrl(pageUrl)?.let { known ->
+            sanitizeIconUrl(known)?.let { return it }
+        }
+        return sanitizeIconUrl("https://www.google.com/s2/favicons?domain=$host&sz=128")
+    }
+
+    /** 展示层兜底：不访问 DNS，只拼公开图标地址。 */
+    fun displayFallbackIconUrl(pageUrl: String): String? {
+        wellKnownIconUrl(pageUrl)?.let { return it }
+        val host = runCatching { URI(pageUrl.trim()).host }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: return null
+        return "https://www.google.com/s2/favicons?domain=$host&sz=128"
     }
 
     /** 仅接受 http(s) 图标地址；data:/blob: 等伪 URL 一律视为无图标 */
@@ -220,5 +262,31 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
         const val MAX_HTML_BYTES = 2 * 1024 * 1024
         const val MAX_MANIFEST_BYTES = 512 * 1024
         const val MAX_REDIRECTS = 5
+
+        val WELL_KNOWN_ICONS = mapOf(
+            "github.com" to "https://github.com/fluidicon.png",
+            "wikipedia.org" to "https://www.wikipedia.org/static/apple-touch/wikipedia.png",
+            "youtube.com" to "https://www.youtube.com/s/desktop/f82dea74/img/favicon_144x144.png",
+            "google.com" to "https://www.google.com/images/branding/product/2x/googleg_96dp.png",
+            "bilibili.com" to "https://www.bilibili.com/favicon.ico",
+        )
+
+        fun wellKnownIconUrl(pageUrl: String): String? {
+            val host = runCatching { URI(pageUrl.trim()).host }.getOrNull()
+                ?.lowercase()?.removePrefix("www.") ?: return null
+            WELL_KNOWN_ICONS[host]?.let { return it }
+            return WELL_KNOWN_ICONS.entries.firstOrNull { host.endsWith(".${it.key}") }?.value
+        }
+
+        fun formatBonus(url: String): Int {
+            val path = url.substringAfterLast('/').substringBefore('?').lowercase()
+            return when {
+                path.endsWith(".png") || path.endsWith(".webp") ||
+                    path.endsWith(".jpg") || path.endsWith(".jpeg") -> 80
+                path.endsWith(".ico") -> 10
+                path.endsWith(".svg") -> -20
+                else -> 0
+            }
+        }
     }
 }

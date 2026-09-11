@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.34] - 2026-09-12
+
+修复添加网站图标解析和新标签页底栏玻璃样式。
+
+### Fixed
+
+- 添加网站会再读 apple-touch / 页面图标，失败时用常用站点官方图或 Google 标签页图标，不再整段放弃只剩字母块。
+- 导入的单页 HTML 会读取同目录里的 `favicon` / `apple-touch-icon`。
+- 浏览新标签页的底栏改回和其他 Compose 页一样的悬浮玻璃 Dock，不再像贴底卡片；打开真实网页后仍用可收起的浏览 Dock。
+- `promo-video` 与 `xuanlan-AIMFllyYS` 不进入 Git 追踪。
+
+### Testing
+
+- 新增页面图标排序与本地 HTML 图标路径单测。
+- `testDebugUnitTest :app:assembleDebug`；添加 GitHub/单页 HTML、新标签页底栏为手测清单。
+
 ## [0.1.33] - 2026-09-12
 
 补上 0.1.32 存储账本还没砍到的真实 HTTP 缓存与头条口径。

@@ -33,4 +33,4 @@ data class FindState(
 )
 
 /** Feature views and catalog don't consume Room entities or a ViewModel. */
-data class BrowserSavedPage(val id: Long, val title: String, val url: String)
+data class BrowserSavedPage(val id: Long, val title: String, val url: String, val iconUrl: String? = null)

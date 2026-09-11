@@ -175,7 +175,7 @@ fun MainScaffold(
                 }
             }
         }
-        if (selectedTab == MainTab.BROWSE) BrowserDockHost(
+        if (selectedTab == MainTab.BROWSE && browserHasPage) BrowserDockHost(
             chrome = browserChrome, preferences = browserPreferences,
             onSelect = { selectedTab = it; if (it != MainTab.ME) hideLauncherDock = false; if (it == MainTab.BROWSE) browserChrome.dispatch(BrowserChromeEvent.Reveal) },
             onAnchorChanged = viewModel::setBrowserOrbPosition,
