@@ -9,9 +9,15 @@ import androidx.compose.foundation.layout.padding
 import com.webshell.core.designsystem.components.AppCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 private data class UpdateEntry(
@@ -21,7 +27,51 @@ private data class UpdateEntry(
 )
 
 /** 与 CHANGELOG.md 同步的应用内更新日志。 */
+private const val UPDATE_PAGE_SIZE = 20
+
 private val updateEntries = listOf(
+    UpdateEntry(
+        version = "0.1.52",
+        date = "2026-09-14",
+        highlights = listOf(
+            "开屏：字和粒子一起出来，黑洞播的时候字不收，最后字幕、黑洞和遮罩一起淡出再进主页",
+            "空主页不再叠「把喜欢的网站放在主屏幕」，避免开屏结束后还留一句广告",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.51",
+        date = "2026-09-14",
+        highlights = listOf(
+            "开屏整段重写：字先出现，再播黑洞，字先收干净，再收成品牌标，最后才进主页",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.50",
+        date = "2026-09-14",
+        highlights = listOf(
+            "开屏按一条时间轴重写，标题和黑洞不再各走各的时钟",
+            "更新日志默认先看最近 20 条，需要时再加载更早的版本",
+            "浏览历史按今天、昨天、前天、一周内、一个月内、更早分组，可折叠，并加了搜索",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.49",
+        date = "2026-09-13",
+        highlights = listOf(
+            "开屏标题跟着动画一起收掉，不会在结束后再停一下",
+            "单页 HTML 和普通网站都能用页面自己的图标；收藏和历史不再共用一个地球标",
+            "历史先加载 20 条，往下滑再继续；存储占用卡片用弹簧撑开",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.48",
+        date = "2026-09-13",
+        highlights = listOf(
+            "开屏播完再进主页，粒子更少，冷启动不那么卡",
+            "打开 Markdown 改成全屏加悬浮球，去掉顶栏，长按可以选中文字",
+            "文档名用原来的文件名；图标左右稍微加宽一点",
+        ),
+    ),
     UpdateEntry(
         version = "0.1.47",
         date = "2026-09-13",
@@ -535,8 +585,10 @@ private val updateEntries = listOf(
 /** 二级页：项目更新日志。 */
 @Composable
 internal fun UpdateLogPage(onBack: () -> Unit) {
-    DetailPage(title = "项目更新日志", onBack = onBack) {
-        updateEntries.forEachIndexed { index, entry ->
+    var shown by rememberSaveable { mutableIntStateOf(UPDATE_PAGE_SIZE) }
+    val visible = updateEntries.take(shown)
+    DetailPage(title = stringResource(R.string.me_updates), onBack = onBack) {
+        visible.forEachIndexed { index, entry ->
             if (index > 0) Spacer(Modifier.height(12.dp))
             AppCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -565,6 +617,14 @@ internal fun UpdateLogPage(onBack: () -> Unit) {
                         }
                     }
                 }
+            }
+        }
+        if (shown < updateEntries.size) {
+            TextButton(
+                onClick = { shown = (shown + UPDATE_PAGE_SIZE).coerceAtMost(updateEntries.size) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text(stringResource(R.string.me_updates_load_more))
             }
         }
         Spacer(Modifier.height(24.dp))

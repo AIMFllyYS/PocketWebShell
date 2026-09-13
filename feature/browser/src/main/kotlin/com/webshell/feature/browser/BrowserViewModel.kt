@@ -19,6 +19,7 @@ import com.webshell.core.webengine.WebViewPool
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,8 +29,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -101,14 +104,32 @@ class BrowserViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** 历史列表（最近 100 条，同 URL 合并为最新一条） */
-    val history: StateFlow<List<BrowserSavedPage>> = savedPages.observeHistory()
-        .map { entries ->
-            entries.map {
-                BrowserSavedPage(it.id, it.title, it.url, metadataFetcher.displayFallbackIconUrl(it.url))
-            }
+    private val historyLimit = MutableStateFlow(HISTORY_PAGE_SIZE)
+    private val _historyQuery = MutableStateFlow("")
+    val historyQuery: StateFlow<String> = _historyQuery.asStateFlow()
+
+    /** 历史列表（默认 20 条，下滑再加一页；搜索时按标题/网址过滤）。 */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val history: StateFlow<List<BrowserSavedPage>> = combine(historyLimit, _historyQuery) { limit, query ->
+        limit to query
+    }.flatMapLatest { (limit, query) ->
+        val pattern = historySearchPattern(query)
+        if (pattern == null) {
+            savedPages.observeHistory(limit)
+        } else {
+            savedPages.observeHistorySearch(pattern, limit.coerceAtLeast(80))
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    }.map { entries ->
+        entries.map {
+            BrowserSavedPage(
+                it.id,
+                it.title,
+                it.url,
+                it.iconUrl ?: metadataFetcher.displayFallbackIconUrl(it.url),
+                it.visitedAt,
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** sessionId → 桌面模式（会话级记忆） */
     private val _desktopModes = MutableStateFlow<Map<String, Boolean>>(emptyMap())
@@ -219,6 +240,14 @@ class BrowserViewModel @Inject constructor(
                     updateTabMeta(tabId, title = title)
                 }
 
+                override fun onIconUrl(url: String) {
+                    val clean = sanitizeHistoryIconUrl(url) ?: return
+                    val tab = _tabs.value.firstOrNull { it.tabId == tabId } ?: return
+                    if (tab.kind == BrowserTabKind.WEB) {
+                        viewModelScope.launch { savedPages.updateHistoryIcon(tab.url, clean) }
+                    }
+                }
+
                 override fun onPageFinished(url: String) {
                     updateTabNav(tabId, progress = 100, loading = false)
                     captureThumbnail(tabId, url)
@@ -229,7 +258,7 @@ class BrowserViewModel @Inject constructor(
                         offerAddToHome(tabId)
                     }
                     if (tab?.kind == BrowserTabKind.WEB) {
-                        recordHistory(url, tab.title)
+                        recordHistory(url, tab.title, metadataFetcher.displayFallbackIconUrl(url))
                     }
                 }
 
@@ -674,12 +703,26 @@ class BrowserViewModel @Inject constructor(
 
     // ---------------------------------------------------------------- history
 
-    fun recordHistory(url: String, title: String) {
+    fun recordHistory(url: String, title: String, iconUrl: String? = null) {
         if (isIncomingAssetUrl(url)) return
-        viewModelScope.launch { savedPages.recordVisit(url, title) }
+        viewModelScope.launch { savedPages.recordVisit(url, title, iconUrl) }
+    }
+
+    fun loadMoreHistory() {
+        val loaded = history.value.size
+        historyLimit.update { current ->
+            if (loaded < current) current else current + HISTORY_PAGE_SIZE
+        }
+    }
+
+    fun setHistoryQuery(query: String) {
+        _historyQuery.value = query
+        historyLimit.value = HISTORY_PAGE_SIZE
     }
 
     fun clearHistory() {
+        historyLimit.value = HISTORY_PAGE_SIZE
+        _historyQuery.value = ""
         viewModelScope.launch { savedPages.clearHistory() }
     }
 
@@ -773,6 +816,18 @@ class BrowserViewModel @Inject constructor(
         runCatching { openTabs.replaceAll(rows) }
         runCatching { settingsRepository.setBrowserActiveTabId(_activeTabId.value) }
     }
+}
+
+internal const val HISTORY_PAGE_SIZE = 20
+
+internal fun sanitizeHistoryIconUrl(url: String): String? {
+    val value = url.trim()
+    if (value.isEmpty()) return null
+    if (!(value.startsWith("https://", ignoreCase = true) || value.startsWith("http://", ignoreCase = true))) {
+        return null
+    }
+    if (value.any { it.isISOControl() || it.isWhitespace() }) return null
+    return value
 }
 
 internal fun parseBrowserTabKind(raw: String): BrowserTabKind = when (raw) {

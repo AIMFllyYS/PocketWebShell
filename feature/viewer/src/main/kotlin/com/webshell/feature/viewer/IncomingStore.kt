@@ -11,6 +11,8 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.SequenceInputStream
+import java.net.URLDecoder
+import java.net.URLEncoder
 import javax.inject.Inject
 
 class IncomingTooLargeException : IOException("too large")
@@ -54,8 +56,15 @@ class IncomingDocuments @Inject constructor(
     }
 }
 
+data class IncomingSessionMeta(
+    val title: String,
+    val displayPath: String,
+    val sourceKey: String?,
+)
+
 object IncomingStore {
     const val ORPHAN_MIN_AGE_MS: Long = 5L * 60L * 1000L
+    const val META_NAME: String = "session.meta"
 
     fun sessionDir(filesDir: File, sessionId: String): File {
         require(IncomingFilePolicy.isTemporarySessionId(sessionId)) { "invalid session" }
@@ -83,6 +92,33 @@ object IncomingStore {
         if (!IncomingFilePolicy.isTemporarySessionId(sessionId)) return
         runCatching { sessionDir(filesDir, sessionId).deleteRecursively() }
     }
+
+    fun writeMeta(dir: File, meta: IncomingSessionMeta) {
+        val lines = listOf(
+            encodeMeta(meta.title),
+            encodeMeta(meta.displayPath),
+            encodeMeta(meta.sourceKey.orEmpty()),
+        )
+        File(dir, META_NAME).writeText(lines.joinToString("\n"))
+    }
+
+    fun readMeta(dir: File): IncomingSessionMeta? {
+        val file = File(dir, META_NAME)
+        if (!file.isFile) return null
+        val lines = runCatching { file.readText().lines() }.getOrNull() ?: return null
+        if (lines.isEmpty()) return null
+        val title = decodeMeta(lines.getOrNull(0).orEmpty())
+        val displayPath = decodeMeta(lines.getOrNull(1).orEmpty())
+        val sourceKey = decodeMeta(lines.getOrNull(2).orEmpty()).takeIf { it.isNotBlank() }
+        return IncomingSessionMeta(title = title, displayPath = displayPath, sourceKey = sourceKey)
+    }
+
+    private fun encodeMeta(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8.name())
+
+    private fun decodeMeta(value: String): String = runCatching {
+        URLDecoder.decode(value, Charsets.UTF_8.name())
+    }.getOrDefault(value)
 
     fun copyBounded(input: InputStream, dest: File, maxBytes: Long = IncomingFilePolicy.MAX_BYTES): Long {
         val parent = dest.parentFile?.canonicalFile ?: throw IOException("import directory unavailable")

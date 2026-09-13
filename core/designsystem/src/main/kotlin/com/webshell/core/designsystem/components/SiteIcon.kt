@@ -102,7 +102,7 @@ private fun SiteIconFallback(title: String, size: Dp, glyph: SiteIconGlyph) {
                 Icons.Rounded.Code, null, tint = colors.second, modifier = Modifier.size(size * 0.52f),
             )
             SiteIconGlyph.Markdown -> Icon(
-                MarkdownFileIcon, null, tint = colors.second, modifier = Modifier.size(size * 0.62f),
+                MarkdownFileIcon, null, tint = colors.second, modifier = Modifier.size(size * 0.70f),
             )
             SiteIconGlyph.Letter -> Text(
                 key.substring(0, key.offsetByCodePoints(0, 1)).uppercase(),

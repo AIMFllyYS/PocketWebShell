@@ -39,6 +39,7 @@
     <string name="me_background">通知与保活</string>
     <string name="me_engine">WebView 引擎</string>
     <string name="me_updates">项目更新日志</string>
+    <string name="me_updates_load_more">加载更多</string>
     <string name="me_developer">开发者选项</string>
     <string name="me_engine_version">版本</string>
     <string name="me_engine_profiles">多 Profile 能力（当前未启用）</string>

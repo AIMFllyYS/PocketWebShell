@@ -2,7 +2,6 @@ package com.webshell.feature.home
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -375,13 +374,6 @@ private fun HomeScreenContent(
                 onClick = { allAppsOpen = true },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
             )
-        }
-
-        AnimatedVisibility(
-            visible = apps.isEmpty() && draggingKey == null,
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            HomeEmptyState()
         }
 
         // 「全部应用」浮动入口：渲染在 Pager/Grid 之外的 overlay，不参与网格测量；

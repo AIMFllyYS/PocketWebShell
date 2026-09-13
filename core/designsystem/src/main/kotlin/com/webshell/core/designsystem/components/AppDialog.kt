@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,9 +49,12 @@ fun AppConfirmDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 28.dp), contentAlignment = Alignment.Center) {
+            RevealFromPoint(
+                modifier = Modifier.widthIn(max = 304.dp).fillMaxWidth(),
+                origin = TransformOrigin.Center,
+            ) {
             Column(
                 modifier = Modifier
-                    .widthIn(max = 304.dp)
                     .fillMaxWidth()
                     .heightIn(max = 480.dp)
                     .staticGlassSurface(
@@ -114,6 +118,7 @@ fun AppConfirmDialog(
                         )
                     }
                 }
+            }
             }
         }
     }

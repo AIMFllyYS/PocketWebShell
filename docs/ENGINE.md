@@ -119,10 +119,11 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 - **桌面模式对齐 Chrome RDS**：`setDesktopMode` 写入桌面 UA 后按 `viewWidth * 100 / 980` 调用 `WebView.setInitialScale`；浏览标签不再额外 `reload()`，由一次 `reconfigure` / `pendingDesktopReload` 刷新。本地导入不改 layout 宽。
 - **证书对话框不离开页面**：`onPageStarted` 仍会 cancel 未决 handler；用户点取消只关掉对话框，不再 `closeTab` / 退出站点壳。从不默认 `SslErrorHandler.proceed()`。
 - **站点壳新窗口**：`ShellConfig.NewWindowPolicy`。默认 `ADOPT_IN_BROWSER`（`onCreateWindow` 分配 `browser-*`）。`REPLACE_IN_SHELL` 把 transport 指回当前 WebView，并在下一帧 `clearHistory()`。全局 DataStore + 每站可空覆盖。
-- **外部 HTML/MD 复用浏览标签**：`MainScaffold` 不再整页早退 `ViewerScreen`。Markdown 是 Compose tab kind；HTML 创建时就带 `localAppId`。地址栏显示本机路径且只读。
+- **外部 HTML 复用浏览标签；Markdown 走站点壳**：`MainScaffold` 不再整页早退 `ViewerScreen`。Markdown 以 `tmp-*` 或已保存的 `local://` 打开全屏站点壳（悬浮球、无顶栏）；HTML 创建时就带 `localAppId`。地址栏显示本机路径且只读。
 - **开页清单进 Room v5**：`browser_open_tabs` 只存标签条，不存 WebView Bundle/Cookie。系统返回在不能后退时回主屏，不关标签。
 
-## 12. 0.1.47 开屏黑洞与 Markdown 图标
+## 12. 0.1.47–0.1.52 开屏黑洞与 Markdown 站点壳
 
-- **开屏**：浅深共用黑洞绘制（事件视界、光子环、多普勒吸积弧、坠入粒子、闪光内爆到品牌标）。主时长 1140ms + 90ms 淡出。`onReadyForShell` 约在进度 0.35 挂主壳，避免结尾一次性组树。仍禁止开屏中途预热/销毁 WebView。
-- **本地图标**：`siteIconGlyph(isLocal, url)`。Markdown 入口（`.md` / `.markdown`）用 `MarkdownFileIcon`（Markdown Mark）；其它本地入口仍用 `Icons.Rounded.Code`。远程站字母兜底。图标由展示层决定，不把系统文档缩略图写入 `iconUrl`。
+- **开屏（0.1.52）**：字幕与粒子同时开始；黑洞阶段字幕不收；收场时字幕、黑洞、遮罩同一 `overlay` 淡出，然后才露出主页。禁止单独把字先拿掉。粒子 8 个。仍禁止开屏中途预热/销毁 WebView。
+- **本地图标**：`siteIconGlyph(isLocal, url)`。Markdown 入口（`.md` / `.markdown`）用 `MarkdownFileIcon`（Markdown Mark，略加宽）；其它本地入口仍用 `Icons.Rounded.Code`。远程站字母兜底。图标由展示层决定，不把系统文档缩略图写入 `iconUrl`。
+- **Markdown 打开**：全屏站点壳 + 同一套悬浮球（文档模式禁用收藏/桌面版）；`SelectionContainer` 包渲染器，长按走系统选区。标题用原始文件名，微信等内容提供者路径拿不到名字时留空/回退 `document`。

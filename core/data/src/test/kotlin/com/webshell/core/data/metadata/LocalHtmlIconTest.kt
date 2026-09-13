@@ -25,6 +25,58 @@ class LocalHtmlIconTest {
     }
 
     @Test
+    fun `existingPath keeps remote icon when no local file`() {
+        val dir = kotlin.io.path.createTempDirectory("local-html-remote").toFile()
+        try {
+            java.io.File(dir, "index.html").writeText(
+                """<html><head><link rel="icon" href="https://cdn.example/favicon.png"></head></html>""",
+            )
+            assertEquals(
+                "https://cdn.example/favicon.png",
+                LocalHtmlIcon.existingPath(dir, "index.html"),
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `existingPath prefers local file over remote`() {
+        val dir = kotlin.io.path.createTempDirectory("local-html-local-first").toFile()
+        try {
+            java.io.File(dir, "mark.png").writeBytes(byteArrayOf(1, 2, 3))
+            java.io.File(dir, "index.html").writeText(
+                """
+                <link rel="icon" href="mark.png">
+                <link rel="apple-touch-icon" href="https://cdn.example/app.png">
+                """.trimIndent(),
+            )
+            assertEquals(
+                java.io.File(dir, "mark.png").absolutePath,
+                LocalHtmlIcon.existingPath(dir, "index.html"),
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `existingPath writes a small png data uri`() {
+        val dir = kotlin.io.path.createTempDirectory("local-html-data").toFile()
+        try {
+            val png = java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3, 4))
+            java.io.File(dir, "index.html").writeText(
+                """<link rel="icon" href="data:image/png;base64,$png">""",
+            )
+            val path = LocalHtmlIcon.existingPath(dir, "index.html")
+            assertEquals(java.io.File(dir, "extracted-favicon.png").absolutePath, path)
+            assertEquals(4, java.io.File(path!!).length().toInt())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `reads shortcut icon relative path`() {
         val html = """<link rel="shortcut icon" href="./mark.png?v=2">"""
         assertEquals("mark.png", LocalHtmlIcon.relativePath(html))
