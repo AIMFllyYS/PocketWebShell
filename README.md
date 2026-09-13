@@ -27,11 +27,13 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 - **网站添加**：URL 规范化、HTML 元数据解析、多来源图标候选与保存前编辑。
 - **本地 HTML**：自绘选择页，可从下载、文档和常见聊天目录导入离线网页。
 - **外部打开**：微信或文件管理器可用玄览打开 HTML / Markdown；同一路径会回到已有标签或主屏应用。Markdown 全屏站点壳加悬浮球，使用文档图标；本地 HTML 使用代码块图标。
-- **手机桌面**：可配置行列、图标大小、圆角、标题和页码。
+- **制作应用**：浏览菜单或打开文档后的确认框都可以把当前页加到主屏幕。
+- **手机桌面**：可配置行列、图标大小、圆角、标题和页码；支持左右翻页或上下滚动。
 - **稳定分页**：按 `rows × columns` 固定容量分页；满页时“添加”入口自动进入新页。
 - **Launcher 式拖动**：独立浮层、触点 registration point、触觉反馈、重排、文件夹热点和边缘翻页。
 - **多标签浏览**：地址栏、返回、前进、刷新、新建标签和标签切换器；杀进程后标签条仍在。历史按时间分组、可搜索。
-- **站点壳**：从主屏打开的网站带可拖动辅助球；新窗口可跳到浏览页或覆盖当前应用。
+- **站点壳与悬浮球**：从主屏打开的网站带可拖动辅助球；保活中的其它应用可在球菜单里以小分屏切换。新窗口可跳到浏览页或覆盖当前应用。
+- **存储与数据**：按站查看占用、清理缓存；导入导出 `.pws` 备份。
 - **多会话 WebView**：站点配置、WebView 池、Profile 兼容和本地资源加载。
 - **系统状态联动**：通知运行时权限、电池优化白名单状态和前台服务开关。
 
@@ -39,15 +41,15 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 
 | 主屏 | 设置 |
 |---|---|
-| ![主屏](docs/verification/0.1.47/home-light.png) | ![设置页](docs/verification/0.1.47/settings.png) |
+| ![主屏](docs/verification/0.1.52/01-home.png) | ![设置页](docs/verification/0.1.52/35-me-home.png) |
 
-桌面、玻璃 Dock、文件夹、菜单和功能页为 iOS 风格的原生 Compose 呈现。上图为 0.1.47 在 Android 15 模拟器中添加 GitHub、Wikipedia、YouTube 后的真实界面。设计边界见 [docs/DESIGN.md](docs/DESIGN.md)。
-
-下方是拖拽机制的历史验收截图，仅展示交互行为，不代表当前视觉：
-
-| 独立拖动浮层 | 文件夹合并结果 |
+| 独立拖动浮层 | 文件夹 |
 |---|---|
-| ![拖动中网格保持不变](docs/verification/webshell-drag-armed.png) | ![松手后创建文件夹](docs/verification/webshell-drag-fixed-result.png) |
+| ![拖动中源格占位、图标在浮层跟随](docs/verification/0.1.52/05-home-drag.png) | ![打开文件夹](docs/verification/0.1.52/08-folder-open.png) |
+
+桌面、玻璃 Dock、文件夹、菜单和功能页为 iOS 风格的原生 Compose 呈现。上图为 0.1.52 在 Android 15 模拟器中的真实界面：GitHub、Wikipedia、YouTube，以及把两个站点拖成文件夹后的展开页。拖动截图里的底栏是当前编辑条，不再使用早期实心底导航的旧图。
+
+按板块展开的截图（悬浮球、Markdown / HTML 预览、制作应用、存储、数据、更新日志等）见 [docs/verification/0.1.52/VERIFICATION.md](docs/verification/0.1.52/VERIFICATION.md)。设计边界见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## 架构
 
@@ -133,6 +135,7 @@ Debug APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
 ## 项目记录
 
 - [CHANGELOG.md](CHANGELOG.md)：版本变更。
+- [docs/verification/0.1.52/VERIFICATION.md](docs/verification/0.1.52/VERIFICATION.md)：0.1.52 模拟器截图验收，覆盖主屏、添加、浏览、站点壳、文档预览和设置各页。
 - [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md)：四个早期实现的系统比较、布局根因和整合决策。
 - [SECURITY.md](SECURITY.md)：漏洞报告与 WebView 安全边界。
 - [docs/RELEASE.md](docs/RELEASE.md)：签名、验签和 GitHub Release 流程。
