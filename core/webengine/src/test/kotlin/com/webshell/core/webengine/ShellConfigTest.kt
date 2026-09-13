@@ -35,7 +35,7 @@ class ShellConfigTest {
         val base = ShellConfig(
             sessionId = "s", profileId = null, startUrl = "https://a.example",
             desktopMode = true, algorithmicDark = true, textZoomPercent = 125,
-            pullToRefresh = true, autoplayMedia = false, thirdPartyCookies = false,
+            pullToRefresh = true, forceEnableZoom = true, autoplayMedia = false, thirdPartyCookies = false,
         )
         val resubmitted = base.mergedWith(base.copy())
         assertEquals(base, resubmitted)
@@ -46,5 +46,20 @@ class ShellConfigTest {
         val updated = base.mergedWith(base.copy(pullToRefresh = true))
         assertNotEquals(base, updated)
         assertEquals(true, updated.pullToRefresh)
+    }
+
+    @Test fun `newWindowPolicy participates in merge equality`() {
+        val base = ShellConfig(sessionId = "s")
+        val updated = base.mergedWith(base.copy(newWindowPolicy = ShellConfig.NewWindowPolicy.REPLACE_IN_SHELL))
+        assertEquals(ShellConfig.NewWindowPolicy.REPLACE_IN_SHELL, updated.newWindowPolicy)
+        assertEquals(base, base.mergedWith(base.copy()))
+    }
+
+    @Test fun `forceEnableZoom participates in merge equality`() {
+        val base = ShellConfig(sessionId = "s", forceEnableZoom = false)
+        val updated = base.mergedWith(base.copy(forceEnableZoom = true))
+        assertNotEquals(base, updated)
+        assertEquals(true, updated.forceEnableZoom)
+        assertEquals(base, base.mergedWith(base.copy()))
     }
 }

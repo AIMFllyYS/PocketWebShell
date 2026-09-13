@@ -14,6 +14,7 @@ import android.os.Looper
 import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.CookieManager
 import android.webkit.ClientCertRequest
 import android.webkit.HttpAuthHandler
@@ -32,6 +33,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.net.toUri
 import androidx.core.content.FileProvider
+import androidx.webkit.ScriptHandler
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -84,7 +86,15 @@ class ShellWebView internal constructor(
     private var pendingJsDialogFallback: (() -> Unit)? = null
     private var recoveryInProgress = false
     private var rendererRecoveryFailed = false
+    /** True after a crash replacement that has not yet been asked to load again. */
+    private var rendererReplacedSinceCrash = false
     private val rendererRecoveryGate = RendererRecoveryGate()
+    /**
+     * Last main-document URL observed on the UI thread. [shouldInterceptRequest]
+     * runs off-thread and must not read [WebView.getUrl].
+     */
+    @Volatile
+    private var lastCommittedUrl: String? = null
     /** Monotonically invalidates callbacks belonging to a replaced WebView. */
     private var callbackGeneration = 0L
     private var customView: View? = null
@@ -94,6 +104,12 @@ class ShellWebView internal constructor(
     private var blobFile: File? = null
     private var blobOffset = 0
     private var blobTotal = 0
+    private var documentStartScript: ScriptHandler? = null
+    private var injectedBootstrapKey: Triple<Boolean, Boolean, Boolean>? = null
+    /** setDesktopMode already flipped the flag; reconfigure must still reload once. */
+    private var pendingDesktopReload = false
+    /** REPLACE_IN_SHELL just handed Chromium this same WebView; drop the opener history. */
+    private var pendingClearHistory = false
 
     init {
         // Profile 必须先于任何 settings 触碰完成切换，失败仅降级回默认共享 Profile。
@@ -144,7 +160,7 @@ class ShellWebView internal constructor(
         }
 
         if (WebViewFeature.isFeatureSupported(WebViewFeature.BACK_FORWARD_CACHE)) {
-            WebSettingsCompat.setBackForwardCacheEnabled(webView.settings, true)
+            WebSettingsCompat.setBackForwardCacheEnabled(webView.settings, config.localAppId == null)
         }
 
         CookieManager.getInstance().setAcceptCookie(true)
@@ -153,6 +169,7 @@ class ShellWebView internal constructor(
     }
 
     fun setDesktopMode(enabled: Boolean) {
+        val changed = config.desktopMode != enabled
         config = config.copy(desktopMode = enabled)
         webView.settings.userAgentString =
             if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else WebEngineDefaults.MOBILE_USER_AGENT
@@ -170,6 +187,37 @@ class ShellWebView internal constructor(
                 )
             }
         }
+        applyDesktopScale()
+        injectBootstrapOnce()
+        if (changed) pendingDesktopReload = true
+    }
+
+    /**
+     * Match Chrome "Request Desktop Site": CSS layouts at 980px, then overview
+     * shrinks that layout to the current view width so pinch-zoom still works.
+     */
+    private fun applyDesktopScale() {
+        val desktopLayout = config.desktopMode && config.localAppId == null
+        if (!desktopLayout) {
+            webView.setInitialScale(0)
+            return
+        }
+        val width = webView.width
+        if (width > 0) {
+            webView.setInitialScale(WebEngineDefaults.desktopInitialScalePercent(width))
+            return
+        }
+        val observer = webView.viewTreeObserver
+        if (!observer.isAlive) return
+        observer.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                val live = webView.viewTreeObserver
+                if (live.isAlive) live.removeOnGlobalLayoutListener(this)
+                if (config.desktopMode && config.localAppId == null && webView.width > 0) {
+                    webView.setInitialScale(WebEngineDefaults.desktopInitialScalePercent(webView.width))
+                }
+            }
+        })
     }
 
     /**
@@ -184,15 +232,19 @@ class ShellWebView internal constructor(
         if (newConfig.sessionId != null && newConfig.sessionId != sessionId) return
         val old = config
         val merged = old.mergedWith(newConfig)
-        if (merged == old) return
+        if (merged == old && !pendingDesktopReload) return
         config = merged
-        val needsReload = old.desktopMode != config.desktopMode ||
+        val needsReload = pendingDesktopReload ||
+            old.desktopMode != config.desktopMode ||
             old.textZoomPercent != config.textZoomPercent ||
             old.algorithmicDark != config.algorithmicDark ||
             old.thirdPartyCookies != config.thirdPartyCookies ||
-            old.autoplayMedia != config.autoplayMedia
+            old.autoplayMedia != config.autoplayMedia ||
+            old.forceEnableZoom != config.forceEnableZoom
+        pendingDesktopReload = false
         configureBaseSettings()
         applyPullToRefresh()
+        injectBootstrapOnce()
         if (needsReload && !webView.url.isNullOrBlank() && webView.url != "about:blank") reload()
     }
 
@@ -212,18 +264,18 @@ class ShellWebView internal constructor(
 
     private fun injectBootstrapOnce() {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
-        WebViewCompat.addDocumentStartJavaScript(
+        val enableZoom = config.forceEnableZoom
+        val desktop = config.desktopMode
+        val local = config.localAppId != null
+        val key = Triple(enableZoom, desktop, local)
+        if (documentStartScript != null && injectedBootstrapKey == key) return
+        runCatching { documentStartScript?.remove() }
+        documentStartScript = WebViewCompat.addDocumentStartJavaScript(
             webView,
-            "(function(){" +
-                "window.__wsBoot={t:Date.now()};" +
-                "if(!document.getElementById('ws-safe-style')){" +
-                "var s=document.createElement('style');s.id='ws-safe-style';" +
-                "s.textContent=':root{--ws-safe-top:0px;--ws-safe-bottom:0px;" +
-                "--ws-safe-left:0px;--ws-safe-right:0px;--ws-ime-height:0px;}';" +
-                "document.documentElement.appendChild(s);}" +
-                "})();",
+            WebEngineDefaults.documentStartBootstrap(enableZoom, local, desktop),
             setOf("*"),
         )
+        injectedBootstrapKey = key
     }
 
     // ---------------------------------------------------------------- clients
@@ -256,6 +308,7 @@ class ShellWebView internal constructor(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             if (!isCurrent(view)) return
+            lastCommittedUrl = url
             if (!url.startsWith("blob:", ignoreCase = true) &&
                 !url.startsWith("data:", ignoreCase = true)
             ) {
@@ -267,6 +320,10 @@ class ShellWebView internal constructor(
             }
             pendingSsl?.let { runCatching { it.cancel() } }
             pendingSsl = null
+            if (pendingClearHistory) {
+                pendingClearHistory = false
+                view.post { if (isCurrent(view)) view.clearHistory() }
+            }
             AppLog.log("web", "加载 ${logHost(url)}")
             notifyListeners { onPageStarted(url) }
         }
@@ -286,6 +343,7 @@ class ShellWebView internal constructor(
 
         override fun onPageFinished(view: WebView, url: String) {
             if (!isCurrent(view)) return
+            lastCommittedUrl = url
             AppLog.log("web", "加载完成 ${logHost(url)}")
             // A completed navigation proves that the replacement renderer is
             // stable. The next crash may therefore receive one fresh automatic
@@ -378,7 +436,7 @@ class ShellWebView internal constructor(
             // and only while the top document itself is still on that app's
             // pages (a subresource fetched after the main frame left for a
             // remote origin must not keep reading local files).
-            if (!LocalWebHost.isAllowedLocalUrl(url, config.localAppId, request.isForMainFrame, view.url)) {
+            if (!LocalWebHost.isAllowedLocalUrl(url, config.localAppId, request.isForMainFrame, lastCommittedUrl)) {
                 // Do not let a denied appassets URL fall through to a real
                 // network request. Return an empty local 403 response instead.
                 return WebResourceResponse(
@@ -455,13 +513,36 @@ class ShellWebView internal constructor(
             // If no owner is attached there is nobody who can adopt/close it, so
             // reject the request before allocating a renderer.
             if (listener == null && sessionListener == null) return false
-            // Every entry point (browser tab, saved-site shell, direct link)
-            // opens a real second pooled session here, never the source's own
-            // WebView. Reusing the current view would let a popup silently
-            // replace the page the user is still looking at (phishing risk)
-            // and breaks the OAuth opener/redirect-back contract. The target
-            // always shares the default profile (product-wide single login).
             val transport = view.WebViewTransport()
+            if (config.newWindowPolicy == ShellConfig.NewWindowPolicy.REPLACE_IN_SHELL) {
+                // User opted to stay inside this site shell. Same-view navigation
+                // has no back stack after we clear it; OAuth/pay popups should
+                // keep the default adopt policy.
+                transport.setWebView(webView)
+                pendingClearHistory = true
+                notifyListeners {
+                    onNewWindow(
+                        NewWindowRequest(
+                            sourceSessionId = sessionId,
+                            sourceUrl = view.url,
+                            isUserGesture = isUserGesture,
+                            isDialog = isDialog,
+                            initialUrl = view.hitTestResult.extra,
+                            targetSessionId = sessionId,
+                        ),
+                    )
+                }
+                return runCatching {
+                    resultMsg.obj = transport
+                    resultMsg.sendToTarget()
+                    true
+                }.getOrDefault(false)
+            }
+            // Every other entry point opens a real second pooled session here,
+            // never the source's own WebView. Reusing the current view would
+            // let a popup silently replace the page (phishing risk) and breaks
+            // the OAuth opener/redirect-back contract. The target always shares
+            // the default profile (product-wide single login).
             val targetSessionId = "browser-${UUID.randomUUID().toString().take(12)}"
             // Protect the source from pool eviction while the target is being
             // allocated: getOrCreate() may itself need to evict an entry, and
@@ -514,7 +595,7 @@ class ShellWebView internal constructor(
             filePathCallback: ValueCallback<Array<Uri>>,
             fileChooserParams: FileChooserParams,
         ): Boolean {
-            if (generation != callbackGeneration || webView !== this@ShellWebView.webView) {
+            if (generation != callbackGeneration || webView !== this@ShellWebView.webView || listener == null) {
                 filePathCallback.onReceiveValue(null)
                 return true
             }
@@ -523,7 +604,7 @@ class ShellWebView internal constructor(
         }
 
         override fun onPermissionRequest(request: PermissionRequest) {
-            if (generation != callbackGeneration) {
+            if (generation != callbackGeneration || listener == null) {
                 request.deny()
                 return
             }
@@ -665,7 +746,7 @@ class ShellWebView internal constructor(
     /** @return true 表示本引擎已处理（不交给 WebView 加载） */
     private fun routeUrl(url: String, isMainFrame: Boolean = true): Boolean {
         if (LocalWebHost.isLocalUrl(url) &&
-            !LocalWebHost.isAllowedLocalUrl(url, config.localAppId, isMainFrame, webView.url)
+            !LocalWebHost.isAllowedLocalUrl(url, config.localAppId, isMainFrame, lastCommittedUrl)
         ) {
             // A foreign /local/<appId>/ navigation must not fall through to
             // Chromium's network stack. The same check is applied to
@@ -749,7 +830,7 @@ class ShellWebView internal constructor(
         }
     }
 
-    private fun recoverRenderer(url: String?) {
+    private fun recoverRenderer(url: String?, userInitiated: Boolean = false) {
         if (recoveryInProgress) return
         recoveryInProgress = true
         rendererRecoveryFailed = false
@@ -761,43 +842,57 @@ class ShellWebView internal constructor(
         cancelActiveBlob("cancelled")
         blobRequestToken++
         WebViewPool.markLifecycle(sessionId, SessionLifecycleState.RECOVERING)
-        pendingRecoveryUrl = url
+        val restoreUrl = RendererRecoveryPolicy.retryLoadUrl(url, pendingRecoveryUrl, config.startUrl)
+        pendingRecoveryUrl = restoreUrl.takeIf { it.isNotBlank() }
         notifyListeners { onPageError(url.orEmpty(), ERROR_RENDERER_GONE, "网页渲染进程已重启", false) }
         val state = Bundle()
-        val saved = runCatching { webView.saveState(state); state }.getOrNull()
+        val saved = if (userInitiated || RendererRecoveryPolicy.shouldAutoReloadDocument(config.localAppId)) {
+            runCatching { webView.saveState(state); state }.getOrNull()
+        } else null
         runCatching { hideCustomView() }
         val replacement = runCatching { replaceWebView() }.getOrNull()
         if (replacement == null) {
-            failRendererRecovery(url)
+            failRendererRecovery(restoreUrl)
             return
         }
+        lastCommittedUrl = null
+        rendererReplacedSinceCrash = true
         val configured = runCatching {
             applyProfile()
             configureBaseSettings()
             applyChromeClients()
             applyPullToRefresh()
             applyFindListener()
+            documentStartScript = null
+            injectedBootstrapKey = null
             injectBootstrapOnce()
         }.isSuccess
         if (!configured) {
-            failRendererRecovery(url)
+            failRendererRecovery(restoreUrl)
+            return
+        }
+        if (!userInitiated && !RendererRecoveryPolicy.shouldAutoReloadDocument(config.localAppId)) {
+            // Local imports often crash again on the same document. Leave the
+            // replacement on about:blank until the user explicitly retries.
+            failRendererRecovery(restoreUrl)
             return
         }
         val hasSavedState = saved != null && saved.size() > 0
-        val restored = if (hasSavedState) {
+        val restored = if (!userInitiated && hasSavedState) {
             runCatching { webView.restoreState(saved); true }.getOrDefault(false)
         } else false
-        val restoreUrl = url?.takeIf { it.isNotBlank() && it != "about:blank" }
         // A saved back/forward list will navigate itself; only fall back to a
         // direct URL when Chromium could not serialize the old state.
         if (!restored && (webView.url.isNullOrBlank() || webView.url == "about:blank")) {
-            val loaded = restoreUrl?.let { runCatching { webView.loadUrl(it) }.isSuccess } ?: true
+            val loaded = restoreUrl.takeIf { it.isNotBlank() }
+                ?.let { runCatching { webView.loadUrl(it) }.isSuccess } ?: true
             if (!loaded) {
-                failRendererRecovery(url)
+                failRendererRecovery(restoreUrl)
                 return
             }
         }
         pendingRecoveryUrl = null
+        rendererReplacedSinceCrash = false
         recoveryInProgress = false
         WebViewPool.markLifecycle(sessionId, SessionLifecycleState.ACTIVE)
         notifyListeners { onRenderProcessRecovered() }
@@ -806,7 +901,9 @@ class ShellWebView internal constructor(
     private fun failRendererRecovery(url: String?) {
         if (recoveryInProgress) recoveryInProgress = false
         rendererRecoveryFailed = true
-        pendingRecoveryUrl = null
+        if (pendingRecoveryUrl.isNullOrBlank() || pendingRecoveryUrl.equals("about:blank", ignoreCase = true)) {
+            pendingRecoveryUrl = url?.takeIf { it.isNotBlank() && !it.equals("about:blank", ignoreCase = true) }
+        }
         WebViewPool.markLifecycle(sessionId, SessionLifecycleState.BACKGROUND)
         notifyListeners {
             onPageError(
@@ -1135,20 +1232,13 @@ class ShellWebView internal constructor(
 
     fun currentUrl(): String? = webView.url
 
+    fun isAwaitingExplicitRendererRetry(): Boolean = rendererRecoveryFailed
+
     /** 直接加载 URL（供 onNewWindow 等场景复用当前会话） */
     fun load(url: String) {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
         webView.loadUrl(url)
-    }
-
-    /** Already-validated user navigation that must retain a saved site's external-link policy. */
-    fun loadFollowingLinkPolicy(url: String) {
-        if (!routeUrl(url)) {
-            if (retryRendererIfNeeded()) return
-            rendererRecoveryGate.resetForExplicitNavigation()
-            webView.loadUrl(url)
-        }
     }
 
     fun goBack(): Boolean = if (webView.canGoBack()) {
@@ -1178,7 +1268,16 @@ class ShellWebView internal constructor(
         if (!rendererRecoveryFailed) return false
         rendererRecoveryGate.resetForExplicitNavigation()
         rendererRecoveryFailed = false
-        recoverRenderer(webView.url)
+        val retryUrl = RendererRecoveryPolicy.retryLoadUrl(pendingRecoveryUrl, webView.url, config.startUrl)
+        if (rendererReplacedSinceCrash) {
+            rendererReplacedSinceCrash = false
+            pendingRecoveryUrl = null
+            val loaded = retryUrl.takeIf { it.isNotBlank() }
+                ?.let { runCatching { webView.loadUrl(it) }.isSuccess } ?: true
+            if (!loaded) failRendererRecovery(retryUrl)
+            return true
+        }
+        recoverRenderer(retryUrl, userInitiated = true)
         return true
     }
 
@@ -1205,6 +1304,8 @@ class ShellWebView internal constructor(
         sessionListener = null
         callbackGeneration++
         rendererRecoveryFailed = false
+        rendererReplacedSinceCrash = false
+        lastCommittedUrl = null
         // A JsResult must always get a definitive answer, even if the host is
         // torn down mid-grace-window; resolve it before wiping the handler.
         pendingJsDialogFallback?.let { runCatching { it() } }

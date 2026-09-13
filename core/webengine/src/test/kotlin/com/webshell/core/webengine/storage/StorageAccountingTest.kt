@@ -11,40 +11,25 @@ class StorageAccountingTest {
     private fun entries(vararg pairs: Pair<String, Long>) =
         pairs.map { (path, size) -> FileEntry(path, size) }
 
-    private fun overview(buckets: OverviewBuckets, appIds: List<String> = listOf("app-a")) =
-        computeOverview(buckets, appIds, multiProfile = true, scannedAt = 123L)
+    private fun emptySites() = emptyList<SiteStorageStats>()
+
+    private fun overview(
+        buckets: OverviewBuckets,
+        sites: List<SiteStorageStats> = emptySites(),
+        capabilities: SiteProbeCapabilities = SiteProbeCapabilities(deleteForSite = false),
+    ) = computeOverview(
+        buckets = buckets,
+        sites = sites,
+        multiProfile = true,
+        scannedAt = 123L,
+        probeCapabilities = capabilities,
+    )
 
     @Test
-    fun `unmeasurable site has zero bytes and is listed`() {
-        val stats = computeSiteStats("app-a", null)
-        assertFalse(stats.measurable)
-        assertEquals(0L, stats.totalBytes)
-    }
-
-    @Test
-    fun `site stats split cache from site data`() {
-        val stats = computeSiteStats(
-            "app-a",
-            entries(
-                "Cache/index.txt" to 10L,
-                "Code Cache/js/x" to 20L,
-                "GPUCache/g" to 5L,
-                "Cookies" to 7L,
-                "Local Storage/leveldb/x" to 3L,
-            ),
-        )
-        assertTrue(stats.measurable)
-        assertEquals(35L, stats.clearableBytes)
-        assertEquals(10L, stats.siteDataBytes)
-        assertEquals(45L, stats.totalBytes)
-    }
-
-    @Test
-    fun `absent profile dir is measurable with zero bytes`() {
+    fun `empty buckets yield zero exclusive totals`() {
         val result = overview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = emptyList(),
                 defaultRest = emptyList(),
                 appDirs = emptyList(),
@@ -52,18 +37,18 @@ class StorageAccountingTest {
                 cacheDirRest = emptyList(),
             ),
         )
-        val stats = result.sites.single()
-        assertTrue(stats.measurable)
-        assertEquals(0L, stats.totalBytes)
+        assertEquals(0L, result.clearableBytes)
+        assertEquals(0L, result.siteDataBytes)
+        assertEquals(0L, result.appBytes)
+        assertEquals(0L, result.unattributableSharedBytes)
         assertTrue(result.unmeasurableSiteIds.isEmpty())
     }
 
     @Test
-    fun `orphan profile bytes land in appBytes`() {
+    fun `legacy Profile 1 bytes land in appBytes`() {
         val result = overview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = listOf(entries("Cache/x" to 100L, "Cookies" to 50L)),
+                legacyProfiles = listOf(entries("Cache/x" to 100L, "Cookies" to 50L)),
                 defaultCache = emptyList(),
                 defaultRest = emptyList(),
                 appDirs = emptyList(),
@@ -80,8 +65,7 @@ class StorageAccountingTest {
     fun `default profile cache is clearable and rest is shared site data`() {
         val result = overview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = entries("Cache/a" to 40L, "GPUCache/b" to 10L),
                 defaultRest = entries("Cookies" to 8L, "IndexedDB/x" to 2L),
                 appDirs = emptyList(),
@@ -92,6 +76,7 @@ class StorageAccountingTest {
         assertEquals(50L, result.clearableBytes)
         assertEquals(10L, result.siteDataBytes)
         assertEquals(10L, result.sharedSiteDataBytes)
+        assertEquals(10L, result.unattributableSharedBytes)
         assertEquals(0L, result.appBytes)
     }
 
@@ -99,8 +84,7 @@ class StorageAccountingTest {
     fun `image cache is clearable and cacheDir rest is appBytes`() {
         val result = overview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = emptyList(),
                 defaultRest = emptyList(),
                 appDirs = entries("databases/webshell.db" to 64L),
@@ -113,66 +97,83 @@ class StorageAccountingTest {
     }
 
     @Test
-    fun `buckets are mutually exclusive with no double counting`() {
+    fun `buckets are mutually exclusive and unattributable is conserved`() {
+        val sites = attributeSites(
+            inputs = listOf(SiteScanInput("app-a", "https://example.com/", "example.com", false)),
+            indexedDbByHost = mapOf("example.com" to 6L),
+            cookiesBySiteKey = mapOf("example.com" to Metric.Absent),
+            quotaByHost = emptyMap(),
+            localImportByAppId = mapOf("app-a" to 0L),
+        )
         val buckets = OverviewBuckets(
-            siteProfiles = mapOf(
-                "app-a" to entries("Cache/x" to 10L, "Cookies" to 6L),
-            ),
-            orphanProfiles = listOf(entries("Cache/y" to 20L)),
+            legacyProfiles = listOf(entries("Cache/y" to 20L)),
             defaultCache = entries("Cache/z" to 30L),
-            defaultRest = entries("Cookies" to 4L),
+            defaultRest = entries("Cookies" to 4L, "IndexedDB/https_example.com_0.indexeddb.leveldb/x" to 6L),
             appDirs = entries("files/icons/i.png" to 8L),
             imageCache = entries("image_cache/c" to 12L),
             cacheDirRest = entries("logs/l" to 2L),
         )
-        val result = overview(buckets)
-        val everything = 10 + 6 + 20 + 30 + 4 + 8 + 12 + 2L
+        val result = overview(buckets, sites)
+        val everything = 20 + 30 + 4 + 6 + 8 + 12 + 2L
         assertEquals(everything, result.clearableBytes + result.siteDataBytes + result.appBytes)
-        assertEquals(52L, result.clearableBytes) // 10 site + 30 default + 12 image cache
-        assertEquals(10L, result.siteDataBytes) // 6 per-site + 4 shared default rest
-        assertEquals(4L, result.sharedSiteDataBytes)
-        assertEquals(30L, result.appBytes) // 20 orphan + 8 files + 2 logs
+        assertEquals(42L, result.clearableBytes)
+        assertEquals(10L, result.siteDataBytes)
+        assertEquals(4L, result.unattributableSharedBytes)
+        assertEquals(10L, result.sharedSiteDataBytes)
+        assertEquals(30L, result.appBytes)
+        assertEquals(result.siteDataBytes, result.unattributableSharedBytes + attributedIndexedDbBytes(sites))
     }
 
     @Test
-    fun `unmeasurable site is excluded from sums and propagated`() {
+    fun `unavailable quota site is not listed as unmeasurable if other metrics exist`() {
+        val sites = attributeSites(
+            inputs = listOf(
+                SiteScanInput("app-a", "https://a.example/", "a.example", false),
+                SiteScanInput("app-b", "https://b.example/", "b.example", false),
+            ),
+            indexedDbByHost = mapOf("a.example" to 10L),
+            cookiesBySiteKey = mapOf(
+                "a.example" to Metric.Absent,
+                "b.example" to Metric.Unavailable,
+            ),
+            quotaByHost = null,
+            localImportByAppId = mapOf("app-a" to 0L, "app-b" to 0L),
+        )
         val result = computeOverview(
             OverviewBuckets(
-                siteProfiles = mapOf(
-                    "app-a" to entries("Cache/x" to 10L),
-                    "app-b" to null,
-                ),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = emptyList(),
                 defaultRest = emptyList(),
                 appDirs = emptyList(),
                 imageCache = emptyList(),
                 cacheDirRest = emptyList(),
             ),
-            appIds = listOf("app-a", "app-b"),
+            sites = sites,
             multiProfile = true,
             scannedAt = 123L,
+            probeCapabilities = SiteProbeCapabilities(deleteForSite = true),
         )
-        assertEquals(listOf("app-b"), result.unmeasurableSiteIds)
-        assertEquals(10L, result.clearableBytes)
-        assertEquals(0L, result.siteDataBytes)
+        assertEquals(emptyList<String>(), result.unmeasurableSiteIds)
+        assertEquals(SiteProbeCapabilities(deleteForSite = true), result.probeCapabilities)
+        assertEquals(Metric.Unavailable, sites[1].quotaUsageBytes)
+        assertEquals(Metric.Unavailable, sites[1].cookie)
     }
 
     @Test
     fun `multiProfile flag and timestamp propagate to overview`() {
         val result = computeOverview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = emptyList(),
                 defaultRest = emptyList(),
                 appDirs = emptyList(),
                 imageCache = emptyList(),
                 cacheDirRest = emptyList(),
             ),
-            appIds = emptyList(),
+            sites = emptyList(),
             multiProfile = false,
             scannedAt = 999L,
+            probeCapabilities = SiteProbeCapabilities(deleteForSite = false),
         )
         assertFalse(result.multiProfile)
         assertEquals(999L, result.scannedAt)
@@ -182,17 +183,17 @@ class StorageAccountingTest {
     fun `system stats pass through to overview`() {
         val result = computeOverview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = emptyList(),
                 defaultRest = emptyList(),
                 appDirs = emptyList(),
                 imageCache = emptyList(),
                 cacheDirRest = emptyList(),
             ),
-            appIds = emptyList(),
+            sites = emptyList(),
             multiProfile = true,
             scannedAt = 123L,
+            probeCapabilities = SiteProbeCapabilities(deleteForSite = false),
             systemTotalBytes = 500L,
             systemCacheBytes = 120L,
         )
@@ -201,23 +202,24 @@ class StorageAccountingTest {
         assertEquals(120L, result.clearableBytes)
         assertEquals(380L, result.siteDataBytes)
         assertEquals(380L, result.sharedSiteDataBytes)
+        assertEquals(380L, result.unattributableSharedBytes)
     }
 
     @Test
     fun `system total of zero does not replace walked buckets`() {
         val result = computeOverview(
             OverviewBuckets(
-                siteProfiles = emptyMap(),
-                orphanProfiles = emptyList(),
+                legacyProfiles = emptyList(),
                 defaultCache = entries("Cache/a" to 40L),
                 defaultRest = entries("IndexedDB/x" to 12L),
                 appDirs = entries("databases/webshell.db" to 8L),
                 imageCache = entries("WebView/Default/HTTP Cache/index" to 64L),
                 cacheDirRest = emptyList(),
             ),
-            appIds = emptyList(),
+            sites = emptyList(),
             multiProfile = false,
             scannedAt = 123L,
+            probeCapabilities = SiteProbeCapabilities(deleteForSite = false),
             systemTotalBytes = 0L,
             systemCacheBytes = 0L,
         )
@@ -230,19 +232,32 @@ class StorageAccountingTest {
     @Test
     fun `absent system stats behave as before`() {
         val buckets = OverviewBuckets(
-            siteProfiles = mapOf("app-a" to entries("Cache/x" to 10L, "Cookies" to 6L)),
-            orphanProfiles = emptyList(),
+            legacyProfiles = emptyList(),
             defaultCache = entries("Cache/z" to 30L),
-            defaultRest = emptyList(),
+            defaultRest = entries("IndexedDB/https_example.com_0.indexeddb.leveldb/x" to 6L),
             appDirs = entries("databases/webshell.db" to 8L),
             imageCache = emptyList(),
             cacheDirRest = emptyList(),
         )
-        val result = computeOverview(buckets, listOf("app-a"), multiProfile = true, scannedAt = 123L)
+        val sites = attributeSites(
+            inputs = listOf(SiteScanInput("app-a", "https://example.com/", "example.com", false)),
+            indexedDbByHost = mapOf("example.com" to 6L),
+            cookiesBySiteKey = mapOf("example.com" to Metric.Absent),
+            quotaByHost = emptyMap(),
+            localImportByAppId = mapOf("app-a" to 0L),
+        )
+        val result = computeOverview(
+            buckets,
+            sites,
+            multiProfile = true,
+            scannedAt = 123L,
+            probeCapabilities = SiteProbeCapabilities(deleteForSite = false),
+        )
         assertNull(result.systemTotalBytes)
         assertNull(result.systemCacheBytes)
-        assertEquals(40L, result.clearableBytes)
+        assertEquals(30L, result.clearableBytes)
         assertEquals(6L, result.siteDataBytes)
         assertEquals(8L, result.appBytes)
+        assertEquals(0L, result.unattributableSharedBytes)
     }
 }

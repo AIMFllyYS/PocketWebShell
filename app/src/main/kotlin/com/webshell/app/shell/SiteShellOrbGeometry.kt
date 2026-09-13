@@ -19,8 +19,6 @@ internal data class SiteShellOrbAnchor(
             parked = parked,
         )
 
-        fun expandedCenter() = SiteShellOrbAnchor(x = 0.5f, y = 0.5f, parked = false)
-
         fun parked(left: Boolean, y: Float) = SiteShellOrbAnchor(
             x = if (left) 0f else 1f,
             y = y.coerceIn(0f, 1f),
@@ -35,7 +33,9 @@ internal data class SiteShellOrbPoint(val x: Float, val y: Float)
  * Expanded glass ball vs edge capsule. The parked hit box is the capsule itself.
  */
 internal object SiteShellOrbMetrics {
-    const val ORB_SIZE = 56f
+    const val ORB_SIZE = 48f
+    /** Center mark diameter is 3/4 of the glass disc. */
+    const val MARK_DOT_DIAMETER = 36f
     /** Visible parked tab is the hit box. Slightly larger than the previous 12×40 sliver. */
     const val PARKED_WIDTH = 18f
     const val PARKED_HEIGHT = 48f
@@ -43,6 +43,8 @@ internal object SiteShellOrbMetrics {
     const val PARK_DIRECTION_DP = 24f
     /** Release inside this band of an edge docks even without a strong horizontal flick. */
     const val PARK_EDGE_BAND_DP = 48f
+    /** Inset past the park band so unpark never lands back in the dock zone. */
+    const val UNPARK_SLACK_DP = 16f
     const val SNAP_MS = 220
 }
 
@@ -81,8 +83,43 @@ internal data class SiteShellOrbBounds(val width: Float, val height: Float) {
 
 internal enum class SiteShellOrbRelease {
     TAP,
+    STAY,
     PARK_LEFT,
     PARK_RIGHT,
+}
+
+/**
+ * Restore the expanded ball from a parked tab. Never flies to the overlay center.
+ * A remembered free placement is reused only when it is unparked, outside the
+ * 48dp edge bands, and on the same side as the current dock.
+ */
+internal fun expandFromParked(
+    parked: SiteShellOrbAnchor,
+    lastFree: SiteShellOrbAnchor?,
+    bounds: SiteShellOrbBounds,
+): SiteShellOrbAnchor {
+    if (lastFree != null &&
+        !lastFree.parked &&
+        lastFree.x.isFinite() &&
+        lastFree.y.isFinite()
+    ) {
+        val cx = bounds.centerX(lastFree)
+        val inEdgeBand = cx <= SiteShellOrbMetrics.PARK_EDGE_BAND_DP ||
+            cx >= bounds.width - SiteShellOrbMetrics.PARK_EDGE_BAND_DP
+        val sameSide = if (parked.parkedLeft) {
+            cx < bounds.width / 2f
+        } else {
+            cx > bounds.width / 2f
+        }
+        if (!inEdgeBand && sameSide) return lastFree.copy(parked = false)
+    }
+    val innerX = if (parked.parkedLeft) {
+        SiteShellOrbMetrics.PARK_EDGE_BAND_DP + SiteShellOrbMetrics.UNPARK_SLACK_DP
+    } else {
+        bounds.width - SiteShellOrbMetrics.PARK_EDGE_BAND_DP - SiteShellOrbMetrics.UNPARK_SLACK_DP
+    }
+    val clamped = bounds.clampCenter(innerX, bounds.centerY(parked))
+    return bounds.anchorAt(clamped.x, clamped.y)
 }
 
 internal object SiteShellOrbGesture {
@@ -103,7 +140,7 @@ internal object SiteShellOrbGesture {
         }
         val directed = abs(dxDp) >= SiteShellOrbMetrics.PARK_DIRECTION_DP &&
             abs(dxDp) > abs(dyDp) * 0.5f
-        val left = if (directed) dxDp < 0f else bounds.nearerLeft(releaseCenterX)
-        return if (left) SiteShellOrbRelease.PARK_LEFT else SiteShellOrbRelease.PARK_RIGHT
+        if (!directed) return SiteShellOrbRelease.STAY
+        return if (dxDp < 0f) SiteShellOrbRelease.PARK_LEFT else SiteShellOrbRelease.PARK_RIGHT
     }
 }

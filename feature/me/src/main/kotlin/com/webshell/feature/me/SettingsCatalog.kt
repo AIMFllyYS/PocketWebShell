@@ -33,22 +33,33 @@ fun settingsCatalog(): List<CatalogEntry> = listOf(
     },
     CatalogEntry("settings.background", CatalogCategory.CONTENT, R.string.me_background, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
         var keepAlive by remember { mutableStateOf(true) }
-        BackgroundSettingsContent(false, false, keepAlive, stringResource(R.string.me_keep_alive_service_hint),
-            { keepAlive = it }, {}, {})
+        BackgroundSettingsContent(false, false, false, keepAlive, stringResource(R.string.me_keep_alive_service_hint),
+            { keepAlive = it }, {}, {}, {})
     },
-    CatalogEntry("settings.engine", CatalogCategory.CONTENT, R.string.me_engine, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
+    CatalogEntry("settings.features", CatalogCategory.CONTENT, R.string.me_features, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
         var autoCollapse by remember { mutableStateOf(true) }
         var pullToRefresh by remember { mutableStateOf(false) }
+        var forceEnableZoom by remember { mutableStateOf(false) }
         var siteShellOrb by remember { mutableStateOf(true) }
-        EngineInfoContent(
-            WebViewCapabilities.Snapshot("Playbook", false, true, false),
+        var downloadCapsule by remember { mutableStateOf(true) }
+        var newWindowAdopt by remember { mutableStateOf(true) }
+        FeatureSettingsContent(
             autoCollapse,
             pullToRefresh,
+            forceEnableZoom,
             siteShellOrb,
+            downloadCapsule,
+            newWindowAdopt,
             { autoCollapse = it },
             { pullToRefresh = it },
+            { forceEnableZoom = it },
             { siteShellOrb = it },
+            { downloadCapsule = it },
+            { newWindowAdopt = it },
         )
+    },
+    CatalogEntry("settings.engine", CatalogCategory.CONTENT, R.string.me_engine, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
+        EngineInfoContent(WebViewCapabilities.Snapshot("Playbook", false, true, false))
     },
     CatalogEntry("settings.appearance", CatalogCategory.CONTENT, R.string.me_appearance, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {
         var settings by remember { mutableStateOf(HomeSettings()) }

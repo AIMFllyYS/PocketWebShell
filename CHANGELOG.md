@@ -2,6 +2,303 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.47] - 2026-09-13
+
+开屏统一成黑洞并缩短一半；外部打开的 Markdown 用专用文档图标，不再和本地 HTML 共用代码块标。
+
+### Fixed
+
+- 外部打开或加到主屏的 Markdown 使用 Markdown 文档图标（圆角文档里的 M 与下箭头），本地 HTML 仍用代码块图标。
+- 开屏去掉浅色白洞分支，浅深都走黑洞坍缩；时长约一半，主页更早叠上，结尾少卡一下。
+
+### Changed
+
+- 开屏粒子从 48 收到 32，星尘从 16 收到 8，仍是单 Canvas、无实时模糊。
+
+### Testing
+
+- `:core:model:testDebugUnitTest :core:designsystem:testDebugUnitTest :core:data:testDebugUnitTest :app:assembleDebug`
+- 手测：冷启动开屏、外部打开 MD 的标签与主屏图标、本地 HTML 图标未改。
+
+## [0.1.46] - 2026-09-13
+
+开屏首秒不再和主页抢主线程；外部 HTML/MD 按真实本机路径去重；浏览菜单补上「制作应用」并可滚动；悬浮球中间改成 3/4 实心点。
+
+### Added
+
+- 外部再次打开同一路径的 HTML/MD 时，复用已打开的浏览标签，或直接打开已加到主屏的本地应用。Room v6 为本地应用与标签条记住规范化源路径。
+- 浏览菜单「当前网页」分组增加「制作应用」，点过「仅查看」之后也能再加到主屏幕。
+
+### Fixed
+
+- 冷启动开屏前 1.6 秒不再组主页网格/壁纸/标签恢复，粒子从 110 收到 48，去掉径向渐变辉光。
+- 外部文件地址栏不再显示 `raw%3A…` 或 `tmp-` 随机段，能解析时显示 `/storage/emulated/0/…`（与电脑上的完整路径对应）。
+- 浏览菜单在接近全屏的 MD 页上改为固定顶栏 + 内部滚动，底部项可以滚到。
+
+### Changed
+
+- 浏览顶栏左右各收 16dp，MD 正文按设计间距留白。
+- 站点壳悬浮球外圈仍是 48dp 玻璃盘，中间实心点直径 36dp（3/4）；贴边胶囊和手势阈值未改。
+
+### Testing
+
+- `:core:data:testDebugUnitTest :feature:add:testDebugUnitTest :feature:browser:testDebugUnitTest :feature:viewer:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`
+- 手测：冷启动开屏前一秒、同一 MD 打开两次、制作应用、菜单滚动、悬浮球中间点。
+
+## [0.1.45] - 2026-09-13
+
+主屏应用可选择新窗口是否跳到浏览页；外部 HTML/MD 复用浏览标签；杀进程后标签条保留；悬浮球更小并带保活分屏；电脑端按 980 全屏缩小，证书取消不再离开页面。
+
+### Added
+
+- 「我的 → 悬浮球与手势」增加「新窗口打开浏览页」；添加页可按站覆盖或跟随全局。关闭后，`target=_blank` 覆盖当前站点壳并清掉返回栈。
+- 外部打开的 HTML / Markdown 成为普通浏览标签：顶栏显示本机路径，底栏与标签切换器复用现有组件，可再开新标签后切回去。
+- Room v5：`browser_open_tabs` 保存打开中的标签与当前选中；杀进程后清单还在。
+- 站点壳悬浮球菜单顶部增加已保活应用的小分屏条，点一下切换到后台页。
+
+### Fixed
+
+- 浏览里切电脑端不再连 reload 两次，并补上 `setInitialScale(viewWidth * 100 / 980)`，与站点壳、系统浏览器的桌面站一致。
+- 站点壳里切电脑端会写回该应用的 Room 设置。
+- 证书失败点取消只关掉对话框，不再关标签或退出站点壳。从不默认放行坏证书。
+- 系统返回在浏览页不能后退时回到主屏，标签继续挂着。
+
+### Changed
+
+- 站点壳悬浮球外圈 56dp → 48dp，内高光更大；贴边胶囊与手势阈值未改。
+- 外部打开不再整页替换成独立 Viewer。
+
+### Testing
+
+- `:core:data:testDebugUnitTest :core:webengine:testDebugUnitTest :feature:add:testDebugUnitTest :feature:browser:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`
+- 手测：主屏 APP 跳转设置、微信打开 MD 后再建标签切回、杀进程后标签还在、悬浮球切保活页、浏览里电脑端全屏缩小、切电脑端后的证书对话框。
+
+## [0.1.44] - 2026-09-13
+
+重审 0.1.41–0.1.43：撤回假预热和过早收条，并修本机检索、外部打开加主屏的几处实锤问题。
+
+### Fixed
+
+- 开屏不再在动画中途新建并立刻销毁 WebView；淡出等星河/闪光/品牌标播完再走。
+- 开屏期间底栏改静态玻璃，不再继续做 live Haze；外部打开文档会立刻拆开屏。
+- 冷启动清临时目录只删超过 5 分钟的孤儿，避免和正在写入的 `tmp-*` 抢删。
+- 换站不再因为池里有另一个会话而露出上一站的壳；`onPageCommitVisible` 不再当成加载完成。
+- 无 appId 的 URL 启动按规范化匹配（去尾斜杠、host 大小写、www），重复 URL 取最早创建的那条。
+- 不存在的「文档」等目录显示为空，不再报没权限。
+- 文件夹内搜索会带上相对路径；系统选择器导入与文件导入一样只收 HTML 并限 20MB。
+- 外部打开 Markdown 等内容出来后再问是否加主屏；HTML 等到页面结束且不是空白页再问。
+- 已渲染的本地保活页再进时会补登记前台服务。
+
+### Changed
+
+- 开屏整段略缩短（2280ms + 180ms 淡出），深浅色窗口底对齐，减轻系统启动窗闪白。
+- 外来预览 HTML 改走默认 Profile，与主屏打开同一份登录态。
+
+### Removed
+
+- 未使用的 `loadFollowingLinkPolicy` 与选择页 `isImporting` 死字段。
+
+### Testing
+
+- `:core:data:testDebugUnitTest :feature:add:testDebugUnitTest :feature:viewer:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`
+- 冷启动开屏、连点两个主屏图标、授权后点空「文档」、进微信目录搜文件夹名、系统选择器导入、微信打开 HTML/MD 加主屏时机，为手测清单。
+
+## [0.1.43] - 2026-09-13
+
+交互更顺：开屏少等一会儿，点主屏图标打开网页更快，本地页不再每次重进都清池。
+
+### Changed
+
+- 开屏淡出与品牌收尾重叠，并在播放中预热一次 WebView；启动时清临时文档改到后台线程。开屏期间关掉底下实时模糊。
+- 点主屏图标直接用格子里的 id/url 打开，不再先查一遍数据库才切壳。
+- 池里已有该站会话时不再闪「正在打开」；首帧可见（`onPageCommitVisible`）就收起加载条。
+- 本地 HTML 只在第一次真正导航前清未保护会话；外来打开的加主屏对话框等首帧后再问。
+- 顶栏进度收束略加快；按 URL 查找改为 DAO 单条查询。
+
+### Removed
+
+- 未使用的站点壳 `openWindow` 旁路。
+
+### Testing
+
+- `:feature:add:testDebugUnitTest :feature:viewer:testDebugUnitTest :app:assembleDebug`（及壳相关模块编译）。
+- 冷启动开屏、点本地/远程快捷方式、再进同一本地页、外来 VIEW HTML 加主屏时机，为手测清单。
+
+## [0.1.42] - 2026-09-13
+
+外部打开文档更像浏览页，并能加到主屏幕；本机 HTML 选择页不再把「没权限」误报成「没有文件」。
+
+### Fixed
+
+- Android 11+ 没有「所有文件访问」时，下载/QQ 等目录不再假装空文件夹；会提示缺权限，并提供系统选择器。
+- API 30+ 公共列举改为必须有 All-files；搜索会合并当前目录结果，不再只搜已发现列表。
+- 大目录里排在后面的 HTML 不会被文件夹条数裁掉。
+
+### Added
+
+- 外部打开 HTML/MD 顶栏改为浏览样式地址栏，尽量显示真实本地路径。
+- 打开成功后弹出确认框，可把该文档添加为主屏幕快捷方式（Markdown 也会持久化并可从主屏打开）。
+
+### Testing
+
+- 更新权限门闩与目录列举单测。
+- `:feature:add:testDebugUnitTest :feature:viewer:testDebugUnitTest :app:assembleDebug`。
+- 授权 All-files 后 Download/QQ 应列出 HTML；未授权应看到权限说明与系统选择器；微信打开后可添加主屏，为手测清单。
+
+## [0.1.41] - 2026-09-12
+
+选择 HTML 的自动查找按常见聊天目录补全，搜索不再误中整卷路径。
+
+### Fixed
+
+- 微信/QQ 共享目录同时探测小写 `tencent/…`；大目录里排在后面的 HTML 不再被目录截断漏掉。
+- 搜索只匹配文件名和相对位置，输入 `storage` / `emulated` 不会命中全部结果。
+- MediaStore 查询带条数上限；没有公共列举权时只扫应用私有目录。权限没变的 `ON_RESUME` 不再重扫。
+- 从选择页返回时保留最后一帧，避免转场空白闪一下。
+
+### Changed
+
+- 未搜索时「找到的 HTML」默认只展示最近 30 个；文件夹里输入关键词改看全局发现结果。
+
+### Testing
+
+- 补种子路径、大目录后置 HTML、相对路径搜索单测。
+- `:feature:add:testDebugUnitTest :app:assembleDebug`。
+- 授权后落地页约 2 秒内出现下载/微信保存的 HTML，搜 `weixin` 只滤内存，为手测清单。
+
+## [0.1.40] - 2026-09-12
+
+选择 HTML 页跟设置里的转场走，并会自动找出本机网页文件。
+
+### Fixed
+
+- 进入选择 HTML（以及添加页其它子页）不再写死滑入。设置里选淡入、缩放或无动画时，这里用同一套 `AppMotion.detailEnterFor`。
+
+### Added
+
+- 落地页增加搜索框，按文件名和所在目录即时过滤，不每敲一次就扫盘。
+- 打开选择页后在下载、文档、微信/QQ/Telegram 等常见目录做有上限的检索，并先问 MediaStore 索引。「找到的 HTML」按最近修改排列。
+
+### Testing
+
+- 新增检索边界、跳过 `Android/data`、搜索分词单测。
+- `:feature:add:testDebugUnitTest :app:assembleDebug`。
+- 改转场设置后进出选择页、本机有 HTML 时落地页能列出，为手测清单。
+
+## [0.1.39] - 2026-09-12
+
+系统「用其他应用打开」可把 HTML / Markdown 临时挂到玄览里看，不写进主屏幕。
+
+### Added
+
+- 微信、文件管理器等通过 `VIEW` / `SEND` 把 HTML 或 Markdown 交给本应用时，会出现「用玄览打开」。
+- 新增独立模块 `:feature:viewer`：HTML 拷到 `localapps/tmp-*` 后走现有本地 AssetLoader；Markdown 用 Compose 渲染器在内存里显示。
+- 离开查看层即销毁 WebView 并删除临时目录；启动时清掉孤儿 `tmp-*`。不会写入 Room，也不会占主屏格子。
+
+### Changed
+
+- 运行时仍只放行 html/htm/md（含微信常见的 `octet-stream` 再嗅探 HTML），超过 20 MB、安装包和可执行文件直接拒绝。
+
+### Testing
+
+- 新增扩展名 / MIME / 嗅探、Intent 解析、拷贝上限、孤儿清理、Markdown 去远程图单测。
+- `:feature:viewer:testDebugUnitTest :core:webengine:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`。
+- 微信/文件管理器列表能否看到「玄览」、看完回主屏没有新图标，为手测清单。
+
+## [0.1.38] - 2026-09-12
+
+电脑端按桌面宽度整页缩小后再捏合；主屏编辑收成一条 iOS 底栏；开屏前摇再加快。
+
+### Fixed
+
+- 开启电脑端后把 viewport 改成 Chrome 同款 980px 布局宽，并去掉挡住整页缩小的 `initial-scale`。页面先变成很小的桌面布局，才能双指捏合放大；切回手机不再留下 980。本地导入仍不改宽度。
+- 主屏编辑不再把「完成」放在右上、四动作叠在网格底、底下再露四图标 Dock。所有操作收进一条替换 Dock 的玻璃菜单栏。
+- 图标标题单行省略并限制在槽宽内，勾选角标不再画出邻格。
+
+### Changed
+
+- 编辑底栏可切换左右翻页 / 上下滚动，写入既有桌面滑动设置。
+- 开屏文案前摇再缩短一半。
+
+### Testing
+
+- 新增桌面 viewport 改写、编辑底栏预留与「完成」在下半屏的仪器断言。
+- `:core:webengine:testDebugUnitTest :feature:home:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`。
+- 电脑端整页变小再捏合、编辑态 Dock 消失、标题不溢出为手测清单。
+
+## [0.1.37] - 2026-09-12
+
+本地 HTML 改为自绘选择页；超大单页崩了不再把应用一起带走；站点球跟手、只有靠边才吸附。
+
+### Added
+
+- 添加页用自绘「选择 HTML」代替系统文档选择器。API 29–32 申请读取存储；30+ 需要时走「所有文件访问」设置链。拒绝权限仍留在选择页，不回退系统选择器。
+- 「我的 → 后台与通知」增加「文件访问」入口，回到前台会刷新授权状态。
+
+### Fixed
+
+- 本地导入页渲染进程崩溃后，站点壳换新 WebView 并停在可重试错误态，不再自动重载同一文档把进程打崩。
+- 打开本地页前会让出其它未保护会话，并关掉该会话的后退缓存；保活服务等到首页加载完成且未崩溃再启动。
+- 站点球中间松手停在原处，只有靠近边缘或横甩才贴边；从贴边展开回到松手前的位置，不再飞到屏幕正中。
+
+### Changed
+
+- 站点球视觉更接近 iOS 辅助触控：展开是玻璃圆，贴边是短线胶囊。
+- 本地资源响应带上 `Content-Length`；拦截线程不再读 `WebView.url`；导入图标只读 HTML 文件头。
+
+### Testing
+
+- 新增 HTML 选择权限/列目录/`importFiles`、渲染恢复闸门、站点壳 `-99` 失败态、站点球 `STAY` 几何单测。
+- `:feature:add:testDebugUnitTest :core:webengine:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`。
+- 选择页授权与列目录、小 HTML 能开、超大解剖页崩后进程仍在、站点球中间松手不吸边为手测清单。
+
+## [0.1.36] - 2026-09-12
+
+新标签页底栏不再像贴底白板；主屏编辑、多指手势和网页缩放一并修好。
+
+### Fixed
+
+- 新标签页把底栏预留改到滚动内层，白色最近访问卡不再被裁在玻璃胶囊上沿，看起来像一张贴底卡片。
+- 起始页收藏与最近访问对齐同一左边距；最近访问显示站点图标和主机名，并按显示键去掉重复行。
+- 编辑模式「完成」对齐网格 header，选中计数移到左上；底栏改为删除、移出文件夹、移入文件夹和全选。
+- 主屏双指捏合或平行滑动可进入编辑模式；外扩退出。原先第一指落下就结束检测，第二指永远进不去。
+- 选中多个图标后长按其中一个会汇聚成组，可拖到另一页或已有文件夹；多选拖到普通图标只重排，不新建文件夹。
+- 网页开启下拉刷新时，双指不再被当成下拉。桌面模式默认允许捏合；移动站可在「设置 → 悬浮球与手势」打开强制缩放。
+- 开屏文案前摇更快，后面收成图标黑洞的一段略慢。
+
+### Changed
+
+- 浏览壳只在需要玻璃底栏时挂实时模糊源，加载进度不再带动整个底栏重组。
+
+### Testing
+
+- 新增起始页 `displayKey` / `host`、多指检测器、批量落子与组拖拽、viewport 改写脚本单测。
+- `:feature:home:testDebugUnitTest :feature:browser:testDebugUnitTest :core:webengine:testDebugUnitTest :app:assembleDebug`。
+- 新标签页底栏、双指进编辑、多选拖页、移动站捏合为手测清单。
+
+## [0.1.35] - 2026-09-12
+
+按站存储改为可核实证据和定向清除；辅助球、下载打开和设置分组一并收口。
+
+### Fixed
+
+- 存储管理不再把同一份共享数字塞进每一行。站点行只显示 Cookie / IndexedDB / 配额等可核实项，未测显示「—」；无法按站拆分的共享数据单独统计。
+- 支持 `DELETE_BROWSING_DATA` 时，「清除该站点数据」按 eTLD+1 删除该站 Cookie、网络缓存和脚本可读存储，不再假装 `profiles/<appId>` 沙箱。
+- 站点壳展开球改为半透明双环，贴边胶囊仍保留竖线；菜单可隐藏辅助球。
+- 下载球可向右收起，点按菜单贴在球旁；纵向拖动不再被误收起。
+- 「打开文件夹」在 Documents URI 被系统拒绝后会落到系统下载页或文件/分享，API 29–32 会申请读取公共下载目录。
+- 网站申请摄像头/麦克风先确认再要运行时权限；`<input capture>` 可拍照或录像。
+- 有真实 WebView 时底栏不再对网页做实时模糊；托管页 `text/plain` 仍解析图标，manifest 相对路径按 manifest URL 解析。
+
+### Changed
+
+- 「我的」分成后台保护、桌面与显示、功能设置（站点球、下载球、自动收起、下拉刷新）和 WebView 引擎信息。
+
+### Testing
+
+- 新增 IndexedDB 目录解析、按站归属、按站清除合约，以及下载收纳几何、存储权限、网页相机权限单测。
+- `testDebugUnitTest :app:assembleDebug`；登录后清该站、打开文件夹、网页拍照、展开球与下载收纳为手测清单。
+
 ## [0.1.34] - 2026-09-12
 
 修复添加网站图标解析和新标签页底栏玻璃样式。

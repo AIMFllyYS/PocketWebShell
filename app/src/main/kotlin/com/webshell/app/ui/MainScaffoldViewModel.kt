@@ -2,9 +2,11 @@ package com.webshell.app.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webshell.app.incoming.IncomingBrowserOpener
+import com.webshell.app.incoming.IncomingMountResult
 import com.webshell.app.shell.ShellSessionController
-import com.webshell.core.data.WebAppLookupRepository
 import com.webshell.core.data.SettingsRepository
+import com.webshell.feature.viewer.IncomingOpenCandidate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,8 +19,8 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class MainScaffoldViewModel @Inject constructor(
     private val sessionController: ShellSessionController,
-    private val webApps: WebAppLookupRepository,
     private val settingsRepository: SettingsRepository,
+    private val incomingOpener: IncomingBrowserOpener,
 ) : ViewModel() {
     val browserPreferences = settingsRepository.settings
         .map { BrowserHostPreferences(it.browserAutoCollapse, it.browserOrbX, it.browserOrbY, it.pullToRefreshEnabled) }
@@ -27,14 +29,6 @@ class MainScaffoldViewModel @Inject constructor(
 
     fun setBrowserOrbPosition(x: Float, y: Float) {
         viewModelScope.launch { settingsRepository.setBrowserOrbPosition(x, y) }
-    }
-
-    /** Keep the saved identity: the site shell must display this app's configured session. */
-    fun launchApp(appId: String, onReady: (String, String) -> Unit) {
-        viewModelScope.launch {
-            val app = webApps.getById(appId) ?: return@launch
-            onReady(app.url, app.id)
-        }
     }
 
     fun setKeepAliveServiceEnabled(enabled: Boolean) {
@@ -50,6 +44,11 @@ class MainScaffoldViewModel @Inject constructor(
     fun closeSessions(sessionIds: List<String>) {
         sessionIds.forEach(sessionController::closeSession)
     }
+
+    suspend fun mountIncoming(
+        candidate: IncomingOpenCandidate,
+        existingReuseTokens: Set<String> = emptySet(),
+    ): IncomingMountResult = incomingOpener.mount(candidate, existingReuseTokens)
 }
 
 data class BrowserHostPreferences(

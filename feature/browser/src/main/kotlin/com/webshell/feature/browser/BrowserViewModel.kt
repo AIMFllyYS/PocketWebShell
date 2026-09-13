@@ -3,7 +3,11 @@ package com.webshell.feature.browser
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.webshell.core.data.BrowserOpenTabEntity
+import com.webshell.core.data.BrowserOpenTabsRepository
 import com.webshell.core.data.BrowserSavedPagesRepository
+import com.webshell.core.data.IncomingSourceKey
+import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.metadata.SiteMetadataFetcher
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.ShellConfig
@@ -15,12 +19,17 @@ import com.webshell.core.webengine.WebViewPool
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -33,6 +42,9 @@ import kotlinx.coroutines.launch
 class BrowserViewModel @Inject constructor(
     private val savedPages: BrowserSavedPagesRepository,
     private val metadataFetcher: SiteMetadataFetcher,
+    private val settingsRepository: SettingsRepository,
+    private val openTabs: BrowserOpenTabsRepository,
+    private val incomingDocuments: IncomingDocumentAccess,
 ) : ViewModel() {
 
     private val _tabs = MutableStateFlow<List<BrowserTab>>(emptyList())
@@ -40,6 +52,33 @@ class BrowserViewModel @Inject constructor(
 
     private val _activeTabId = MutableStateFlow<String?>(null)
     val activeTabId: StateFlow<String?> = _activeTabId.asStateFlow()
+
+    /** Sessions whose renderer has been created or attached; conservative (prefer true). */
+    private val _mountedRendererSessions = MutableStateFlow<Set<String>>(emptySet())
+
+    /**
+     * True when the active tab has a real page or a mounted renderer.
+     * Dock selection and start-page routing share this value; it does not
+     * emit when only progress/title on [_tabs] changes.
+     */
+    val showsWebView: StateFlow<Boolean> = combine(
+        _tabs,
+        _activeTabId,
+        _mountedRendererSessions,
+    ) { tabs, activeTabId, mounted ->
+        val active = tabs.firstOrNull { it.tabId == activeTabId }
+        when (active?.kind) {
+            BrowserTabKind.INCOMING_MARKDOWN -> false
+            BrowserTabKind.INCOMING_HTML -> true
+            else -> {
+                val url = active?.url.orEmpty()
+                val hasPage = url.isNotBlank() && url != "about:blank"
+                val sessionId = active?.sessionId ?: activeTabId?.let { "browser-$it" }
+                hasPage || (sessionId != null && sessionId in mounted)
+            }
+        }
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _findState = MutableStateFlow(FindState())
     val findState: StateFlow<FindState> = _findState.asStateFlow()
@@ -74,6 +113,13 @@ class BrowserViewModel @Inject constructor(
     /** sessionId → 桌面模式（会话级记忆） */
     private val _desktopModes = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val desktopModes: StateFlow<Map<String, Boolean>> = _desktopModes.asStateFlow()
+    /**
+     * null until DataStore emits. BrowserScreen must keep a session-baked
+     * [ShellConfig.forceEnableZoom] until this is non-null.
+     */
+    val forceEnableZoomEnabled: StateFlow<Boolean?> = settingsRepository.settings
+        .map { it.forceEnableZoomEnabled }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /**
      * sessionId → 持久会话监听者（随会话存活，不随 Compose 组合摘除）。
@@ -83,6 +129,14 @@ class BrowserViewModel @Inject constructor(
     private val sessionListeners = mutableMapOf<String, ShellListener>()
     private val thumbnailRevisions = mutableMapOf<String, Long>()
     private var browserVisible = false
+    private var persistReady = false
+    private val _tabsHydrated = MutableStateFlow(false)
+    val tabsHydrated: StateFlow<Boolean> = _tabsHydrated.asStateFlow()
+    private var persistJob: Job? = null
+    private val _askAddToHomeTabId = MutableStateFlow<String?>(null)
+    val askAddToHomeTabId: StateFlow<String?> = _askAddToHomeTabId.asStateFlow()
+    private val _incomingHomeNotice = MutableStateFlow<Int?>(null)
+    val incomingHomeNotice: StateFlow<Int?> = _incomingHomeNotice.asStateFlow()
     private val evictionListener: (String) -> Unit = { sessionId ->
         // Eviction removes only the renderer instance. UI tab state and the
         // pool's recovery bundle remain so selecting the tab recreates it.
@@ -97,6 +151,7 @@ class BrowserViewModel @Inject constructor(
         }
         // 池满淘汰时仅移除 renderer，实例快照和对应 tab UI 状态继续保留。
         WebViewPool.onSessionEvicted = evictionListener
+        viewModelScope.launch { hydrateOpenTabs() }
     }
 
     override fun onCleared() {
@@ -167,9 +222,15 @@ class BrowserViewModel @Inject constructor(
                 override fun onPageFinished(url: String) {
                     updateTabNav(tabId, progress = 100, loading = false)
                     captureThumbnail(tabId, url)
-                    // 入历史（同 URL 合并为最新一条），标题取该 tab 自己的最新值
-                    val title = _tabs.value.firstOrNull { it.tabId == tabId }?.title.orEmpty()
-                    recordHistory(url, title)
+                    val tab = _tabs.value.firstOrNull { it.tabId == tabId }
+                    if (tab?.kind == BrowserTabKind.INCOMING_HTML &&
+                        !url.equals("about:blank", ignoreCase = true)
+                    ) {
+                        offerAddToHome(tabId)
+                    }
+                    if (tab?.kind == BrowserTabKind.WEB) {
+                        recordHistory(url, tab.title)
+                    }
                 }
 
                 override fun onCanGoBackChanged(canGoBack: Boolean) {
@@ -197,6 +258,7 @@ class BrowserViewModel @Inject constructor(
     ): String {
         val existing = _tabs.value.firstOrNull { it.sessionId == sessionId }
         val pooled = WebViewPool.get(sessionId)
+        if (pooled != null) markRendererMounted(sessionId)
         val liveUrl = pooled?.currentUrl()?.takeUnless { it.isNullOrBlank() || it == "about:blank" }
         val safeStartUrl = UrlRouter.classify((liveUrl ?: startUrl).orEmpty()).let { decision ->
             if (decision.route == UrlRoute.WEB || decision.route == UrlRoute.ABOUT_BLANK) decision.normalized
@@ -223,7 +285,131 @@ class BrowserViewModel @Inject constructor(
         applyBrowserTabConfig(sessionId)
         AppLog.log("browser", "新建标签 $tabId（共 ${_tabs.value.size} 个）")
         if (activate) setActive(tabId)
+        schedulePersist()
         return tabId
+    }
+
+    fun incomingReuseTokens(): Set<String> = _tabs.value.mapNotNull { tab ->
+        val key = tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath) ?: return@mapNotNull null
+        when (tab.kind) {
+            BrowserTabKind.INCOMING_HTML -> IncomingSourceKey.reuseToken(html = true, key)
+            BrowserTabKind.INCOMING_MARKDOWN -> IncomingSourceKey.reuseToken(html = false, key)
+            BrowserTabKind.WEB -> null
+        }
+    }.toSet()
+
+    fun activateIncomingBySourceKey(sourceKey: String, html: Boolean): Boolean {
+        val kind = if (html) BrowserTabKind.INCOMING_HTML else BrowserTabKind.INCOMING_MARKDOWN
+        val existing = _tabs.value.firstOrNull { tab ->
+            tab.kind == kind && (tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath)) == sourceKey
+        } ?: return false
+        setActive(existing.tabId)
+        schedulePersist()
+        return true
+    }
+
+    fun openIncomingHtml(
+        startUrl: String,
+        title: String,
+        displayPath: String,
+        localAppId: String,
+        sourceKey: String? = null,
+    ): String {
+        val existing = _tabs.value.firstOrNull { tab ->
+            tab.kind == BrowserTabKind.INCOMING_HTML && (
+                tab.localAppId == localAppId ||
+                    (sourceKey != null && (tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath)) == sourceKey)
+                )
+        }
+        if (existing != null) {
+            setActive(existing.tabId)
+            schedulePersist()
+            return existing.tabId
+        }
+        val tabId = UUID.randomUUID().toString().take(8)
+        val sessionId = "browser-$tabId"
+        _tabs.value = _tabs.value + BrowserTab(
+            tabId = tabId,
+            title = title,
+            url = startUrl,
+            sessionId = sessionId,
+            restoreStartUrlIfBlank = true,
+            kind = BrowserTabKind.INCOMING_HTML,
+            displayPath = displayPath,
+            localAppId = localAppId,
+            sourceKey = sourceKey,
+        )
+        WebViewPool.get(sessionId)?.sessionListener = listenerFor(sessionId)
+        applyBrowserTabConfig(sessionId)
+        setActive(tabId)
+        schedulePersist()
+        return tabId
+    }
+
+    fun openIncomingMarkdown(
+        title: String,
+        displayPath: String,
+        content: String,
+        localAppId: String,
+        sourceKey: String? = null,
+    ): String {
+        val existing = _tabs.value.firstOrNull { tab ->
+            tab.kind == BrowserTabKind.INCOMING_MARKDOWN && (
+                tab.localAppId == localAppId ||
+                    (sourceKey != null && (tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath)) == sourceKey)
+                )
+        }
+        if (existing != null) {
+            setActive(existing.tabId)
+            schedulePersist()
+            return existing.tabId
+        }
+        val tabId = UUID.randomUUID().toString().take(8)
+        _tabs.value = _tabs.value + BrowserTab(
+            tabId = tabId,
+            title = title,
+            url = "about:blank",
+            sessionId = "browser-$tabId",
+            restoreStartUrlIfBlank = false,
+            kind = BrowserTabKind.INCOMING_MARKDOWN,
+            displayPath = displayPath,
+            markdownContent = content,
+            localAppId = localAppId,
+            sourceKey = sourceKey,
+        )
+        setActive(tabId)
+        offerAddToHome(tabId)
+        schedulePersist()
+        return tabId
+    }
+
+    fun offerAddToHome(tabId: String) {
+        val tab = _tabs.value.firstOrNull { it.tabId == tabId } ?: return
+        if (tab.kind == BrowserTabKind.WEB) return
+        if (_askAddToHomeTabId.value == null) _askAddToHomeTabId.value = tabId
+    }
+
+    fun dismissAddToHome() {
+        _askAddToHomeTabId.value = null
+    }
+
+    fun addIncomingToHome(tabId: String? = _askAddToHomeTabId.value ?: _activeTabId.value) {
+        val resolvedId = tabId ?: return
+        val tab = _tabs.value.firstOrNull { it.tabId == resolvedId } ?: return
+        if (tab.kind == BrowserTabKind.WEB) return
+        viewModelScope.launch {
+            val ok = incomingDocuments.persistShortcut(tab)
+            if (_askAddToHomeTabId.value == resolvedId) _askAddToHomeTabId.value = null
+            _incomingHomeNotice.value = if (ok) {
+                R.string.browser_added_home
+            } else {
+                R.string.browser_add_home_failed
+            }
+        }
+    }
+
+    fun consumeIncomingHomeNotice() {
+        _incomingHomeNotice.value = null
     }
 
     private fun captureThumbnail(tabId: String, expectedUrl: String) {
@@ -269,6 +455,7 @@ class BrowserViewModel @Inject constructor(
                 WebViewPool.activeSessionId = sessionId
             }
         }
+        schedulePersist()
     }
 
     fun setVisible(visible: Boolean) {
@@ -283,8 +470,16 @@ class BrowserViewModel @Inject constructor(
         }
     }
 
+    fun markRendererMounted(sessionId: String) {
+        if (sessionId.isBlank()) return
+        val current = _mountedRendererSessions.value
+        if (sessionId in current) return
+        _mountedRendererSessions.value = current + sessionId
+    }
+
     /** Invoked after the lifecycle host has installed the persistent per-session listener. */
     fun onHostReady(sessionId: String) {
+        markRendererMounted(sessionId)
         val shell = WebViewPool.get(sessionId) ?: return
         val tab = _tabs.value.firstOrNull { it.sessionId == sessionId } ?: return
         val currentUrl = shell.currentUrl()
@@ -298,6 +493,14 @@ class BrowserViewModel @Inject constructor(
             updateTabMeta(tab.tabId, url = currentUrl)
         }
         updateTabNav(tab.tabId, canGoBack = shell.canGoBack(), canGoForward = shell.canGoForward())
+    }
+
+    fun onHostDisposed(sessionId: String) {
+        // Prefer keeping the mark while the pool still holds a renderer so
+        // returning to Browse does not flash live glass over a live WebView.
+        if (WebViewPool.get(sessionId) == null) {
+            _mountedRendererSessions.value = _mountedRendererSessions.value - sessionId
+        }
     }
 
     fun captureActiveThumbnail() {
@@ -331,16 +534,22 @@ class BrowserViewModel @Inject constructor(
     }
 
     fun updateTabMeta(tabId: String, title: String? = null, url: String? = null) {
+        var changed = false
         _tabs.value = _tabs.value.map { tab ->
             if (tab.tabId == tabId) {
-                tab.copy(
-                    title = title?.takeIf { it.isNotBlank() } ?: tab.title,
-                    url = url ?: tab.url,
-                )
+                val nextTitle = title?.takeIf { it.isNotBlank() } ?: tab.title
+                val nextUrl = url ?: tab.url
+                if (nextTitle != tab.title || nextUrl != tab.url) {
+                    changed = true
+                    tab.copy(title = nextTitle, url = nextUrl)
+                } else {
+                    tab
+                }
             } else {
                 tab
             }
         }
+        if (changed) schedulePersist()
     }
 
     /** 更新指定 tab 的导航状态（进度/加载中/返回前进），参数为 null 表示不变 */
@@ -371,13 +580,18 @@ class BrowserViewModel @Inject constructor(
 
     /** 关闭标签：彻底销毁池中会话（不留快照），并清理会话监听者与桌面模式记忆 */
     fun closeTab(tabId: String) {
+        val tab = _tabs.value.firstOrNull { it.tabId == tabId }
         val sessionId = sessionIdOf(tabId)
         WebViewPool.get(sessionId)?.sessionListener = null
         sessionListeners.remove(sessionId)
         WebViewPool.destroyAndForget(sessionId)
+        _mountedRendererSessions.value = _mountedRendererSessions.value - sessionId
+        tab?.localAppId?.let(incomingDocuments::deleteTemporary)
+        if (_askAddToHomeTabId.value == tabId) _askAddToHomeTabId.value = null
         removeTabState(tabId)
         thumbnailRevisions.remove(tabId)
         AppLog.log("browser", "关闭标签 $tabId（剩 ${_tabs.value.size} 个）")
+        schedulePersist()
     }
 
     fun closeAllTabs() {
@@ -386,13 +600,17 @@ class BrowserViewModel @Inject constructor(
             WebViewPool.get(tab.sessionId)?.sessionListener = null
             sessionListeners.remove(tab.sessionId)
             WebViewPool.destroyAndForget(tab.sessionId)
+            tab.localAppId?.let(incomingDocuments::deleteTemporary)
         }
+        _mountedRendererSessions.value = emptySet()
         _desktopModes.value = emptyMap()
         thumbnailRevisions.clear()
         _tabs.value = emptyList()
+        _askAddToHomeTabId.value = null
         setActive(null)
         _findState.value = FindState()
         AppLog.log("browser", "关闭全部标签（$count 个）")
+        schedulePersist()
     }
 
     /** Remove a tab's UI state after an explicit user close. */
@@ -457,6 +675,7 @@ class BrowserViewModel @Inject constructor(
     // ---------------------------------------------------------------- history
 
     fun recordHistory(url: String, title: String) {
+        if (isIncomingAssetUrl(url)) return
         viewModelScope.launch { savedPages.recordVisit(url, title) }
     }
 
@@ -468,10 +687,8 @@ class BrowserViewModel @Inject constructor(
 
     fun setDesktopMode(sessionId: String, enabled: Boolean) {
         _desktopModes.value = _desktopModes.value + (sessionId to enabled)
-        WebViewPool.get(sessionId)?.let { shell ->
-            shell.setDesktopMode(enabled)
-            shell.reload()
-        }
+        WebViewPool.get(sessionId)?.setDesktopMode(enabled)
+        schedulePersist()
     }
 
     private fun activeSessionId(): String? = _activeTabId.value?.let(::sessionIdOf)
@@ -500,8 +717,107 @@ class BrowserViewModel @Inject constructor(
         if (shell.config.desktopMode && _desktopModes.value[sessionId] == null) {
             _desktopModes.value = _desktopModes.value + (sessionId to true)
         }
+        val tab = _tabs.value.firstOrNull { it.sessionId == sessionId }
         shell.reconfigure(
-            shell.config.copy(externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME),
+            shell.config.copy(
+                externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
+                localAppId = tab?.localAppId.takeIf { tab?.kind == BrowserTabKind.INCOMING_HTML }
+                    ?: shell.config.localAppId,
+            ),
         )
     }
+
+    private suspend fun hydrateOpenTabs() {
+        val saved = runCatching { openTabs.load() }.getOrDefault(emptyList())
+        val activeId = settingsRepository.settings.first().browserActiveTabId
+        if (saved.isNotEmpty()) {
+            val restored = saved.map { row ->
+                val kind = parseBrowserTabKind(row.kind)
+                val markdown = row.localAppId
+                    ?.takeIf { kind == BrowserTabKind.INCOMING_MARKDOWN }
+                    ?.let(incomingDocuments::readMarkdownForDisplay)
+                row.toBrowserTab(kind, markdown)
+            }
+            _tabs.value = restored
+            restored.forEach { tab ->
+                if (saved.firstOrNull { it.tabId == tab.tabId }?.desktopMode == true) {
+                    _desktopModes.value = _desktopModes.value + (tab.sessionId to true)
+                }
+            }
+            val active = restored.firstOrNull { it.tabId == activeId }?.tabId
+                ?: restored.first().tabId
+            setActive(active)
+        }
+        persistReady = true
+        _tabsHydrated.value = true
+    }
+
+    private fun schedulePersist() {
+        if (!persistReady) return
+        persistJob?.cancel()
+        persistJob = viewModelScope.launch {
+            delay(250)
+            persistNow()
+        }
+    }
+
+    private suspend fun persistNow() {
+        val now = System.currentTimeMillis()
+        val rows = _tabs.value.mapIndexed { index, tab ->
+            tab.toOpenTabEntity(
+                position = index,
+                desktopMode = _desktopModes.value[tab.sessionId] == true,
+                updatedAt = now,
+            )
+        }
+        runCatching { openTabs.replaceAll(rows) }
+        runCatching { settingsRepository.setBrowserActiveTabId(_activeTabId.value) }
+    }
 }
+
+internal fun parseBrowserTabKind(raw: String): BrowserTabKind = when (raw) {
+    "incoming_html" -> BrowserTabKind.INCOMING_HTML
+    "incoming_markdown" -> BrowserTabKind.INCOMING_MARKDOWN
+    else -> BrowserTabKind.WEB
+}
+
+internal fun BrowserTabKind.storageName(): String = when (this) {
+    BrowserTabKind.WEB -> "web"
+    BrowserTabKind.INCOMING_HTML -> "incoming_html"
+    BrowserTabKind.INCOMING_MARKDOWN -> "incoming_markdown"
+}
+
+internal fun BrowserOpenTabEntity.toBrowserTab(
+    kind: BrowserTabKind,
+    markdown: String?,
+): BrowserTab = BrowserTab(
+    tabId = tabId,
+    title = title,
+    url = url,
+    sessionId = sessionId,
+    restoreStartUrlIfBlank = restoreStartUrlIfBlank,
+    kind = kind,
+    displayPath = displayPath,
+    markdownContent = markdown,
+    localAppId = localAppId,
+    sourceKey = sourceKey,
+)
+
+internal fun BrowserTab.toOpenTabEntity(
+    position: Int,
+    desktopMode: Boolean,
+    updatedAt: Long,
+): BrowserOpenTabEntity = BrowserOpenTabEntity(
+    tabId = tabId,
+    sessionId = sessionId,
+    url = url,
+    title = title,
+    position = position,
+    desktopMode = desktopMode,
+    restoreStartUrlIfBlank = restoreStartUrlIfBlank,
+    kind = kind.storageName(),
+    displayPath = displayPath,
+    localAppId = localAppId,
+    sourceKey = sourceKey,
+    updatedAt = updatedAt,
+)

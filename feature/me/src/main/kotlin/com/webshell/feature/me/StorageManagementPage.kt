@@ -64,10 +64,15 @@ import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.AppSearchField
 import com.webshell.core.designsystem.components.AppSettingsSection
 import com.webshell.core.designsystem.components.SiteIcon
+import com.webshell.core.designsystem.components.siteIconGlyph
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.AppSpacing
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
+import com.webshell.core.webengine.storage.CookieFacts
+import com.webshell.core.webengine.storage.Metric
 import com.webshell.core.webengine.storage.SiteStorageStats
+import com.webshell.core.webengine.storage.hostOfUrl
+import com.webshell.core.webengine.storage.siteKeyOf
 
 /** 存储管理：概览（已统计占用/可清理/分段条）+ 站点列表（搜索/排序）+ 站点详情子页。 */
 @Composable
@@ -80,7 +85,6 @@ internal fun StorageManagementPage(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val apps by viewModel.apps.collectAsStateWithLifecycle()
     var detailAppId by rememberSaveable { mutableStateOf<String?>(null) }
-    // 列表滚动位置提升到这里：详情子页返回时列表已被销毁重组，不能丢滚动位置。
     val listScrollState = rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }
 
     LaunchedEffect(viewModel) {
@@ -101,13 +105,10 @@ internal fun StorageManagementPage(
 
     val statsById = state.overview?.sites?.associateBy { it.appId }.orEmpty()
     val detailApp = apps.firstOrNull { it.id == detailAppId }
-    // 详情页打开期间站点被删除（或进程重建后 Room 尚未发射）→ 回到列表。
     LaunchedEffect(apps, detailAppId) {
         if (detailAppId != null && detailApp == null && apps.isNotEmpty()) detailAppId = null
     }
 
-    // 以 detailAppId 是否为空为过渡键：点击后立即触发页面动画；
-    // detailApp 短暂为 null（Room 尚未发射）时详情分支先空白，由上方 LaunchedEffect 兜底回弹。
     val transitionStyle = LocalTransitionStyle.current
     AnimatedContent(
         targetState = detailAppId != null,
@@ -118,9 +119,10 @@ internal fun StorageManagementPage(
             detailApp?.let { app ->
                 StorageDetailPage(
                     app = app,
+                    apps = apps,
                     stats = statsById[app.id],
                     state = state,
-                    sharedBytes = state.overview?.sharedSiteDataBytes ?: 0L,
+                    viewModel = viewModel,
                     onBack = { detailAppId = null },
                 )
             }
@@ -159,13 +161,14 @@ private fun StorageListPage(
             q.isEmpty() || app.title.lowercase().contains(q) || hostOf(app.url).lowercase().contains(q)
         }
         val comparator = when (state.sortMode) {
-            StorageSortMode.SIZE -> compareByDescending<WebAppEntity> { statsById[it.id]?.totalBytes ?: 0L }
-                .thenBy { it.title.lowercase() }
+            StorageSortMode.SIZE -> compareByDescending<WebAppEntity> {
+                statsById[it.id]?.attributableBytes ?: 0L
+            }.thenBy { it.title.lowercase() }
             StorageSortMode.NAME -> compareBy { it.title.lowercase() }
         }
-        // 不可测站点恒排在可测之后，组内按名称稳定排列。
-        filtered.filter { statsById[it.id]?.measurable != false }.sortedWith(comparator) +
-            filtered.filter { statsById[it.id]?.measurable == false }.sortedBy { it.title.lowercase() }
+        val known = filtered.filter { statsById[it.id]?.allMetricsUnavailable() != true }
+        val unknown = filtered.filter { statsById[it.id]?.allMetricsUnavailable() == true }
+        known.sortedWith(comparator) + unknown.sortedBy { it.title.lowercase() }
     }
 
     DetailPage(
@@ -226,7 +229,6 @@ private fun StorageListPage(
                     SiteStorageRow(
                         app = app,
                         stats = statsById[app.id],
-                        sharedBytes = state.overview?.sharedSiteDataBytes ?: 0L,
                         scanning = state.scanning,
                         onClick = { onOpenSite(app.id) },
                     )
@@ -302,7 +304,6 @@ private fun StorageOverviewSection(
         } else {
             Column(Modifier.padding(AppSpacing.lg)) {
                 val walkedTotal = overview.clearableBytes + overview.siteDataBytes + overview.appBytes
-                // 头条用系统 data+cache；系统为 0/缺失时回退遍历。分段条仍用遍历口径。
                 val total = overview.systemTotalBytes?.takeIf { it > 0L } ?: walkedTotal
                 Text(formatStorageBytes(total), style = MaterialTheme.typography.headlineLarge)
                 Text(
@@ -339,6 +340,31 @@ private fun StorageOverviewSection(
                         ),
                     )
                 }
+                if (overview.systemTotalBytes?.let { it > 0L } == true && walkedTotal > 0L) {
+                    Spacer(Modifier.height(AppSpacing.sm))
+                    Text(
+                        stringResource(R.string.me_storage_overview_footnote),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (overview.unattributableSharedBytes > 0L) {
+                    Spacer(Modifier.height(AppSpacing.md))
+                    Text(
+                        formatStorageBytes(overview.unattributableSharedBytes),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        stringResource(R.string.me_storage_unattributable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(R.string.me_storage_unattributable_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (state.logBytes > 0L) {
                     Spacer(Modifier.height(AppSpacing.md))
                     Text(
@@ -358,7 +384,13 @@ private fun StorageOverviewSection(
                 }
                 Spacer(Modifier.height(AppSpacing.md))
                 Text(
-                    stringResource(R.string.me_storage_profile_limited),
+                    stringResource(
+                        if (state.effectiveCapabilities().deleteForSite) {
+                            R.string.me_storage_profile_limited_can_erase
+                        } else {
+                            R.string.me_storage_profile_limited
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -379,13 +411,14 @@ private fun StorageOverviewSection(
                     },
                     onClick = onClearAll,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = (overview.clearableBytes + state.logBytes) > 0 && !state.clearingAll,
+                    enabled = (overview.clearableBytes + state.logBytes) > 0 &&
+                        !state.clearingAll && !state.erasingSite,
                     loading = state.clearingAll,
                 )
                 Spacer(Modifier.height(AppSpacing.sm))
                 TextButton(
                     onClick = onClearWebsiteData,
-                    enabled = !state.clearingAll,
+                    enabled = !state.clearingAll && !state.erasingSite,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Text(
@@ -411,29 +444,36 @@ private fun StorageOverviewSection(
     }
 }
 
-/**
- * 站点详情子页：头部（图标/名称/域名）+ 分项统计 + 本站点分段条。
- *
- * 这里刻意没有"清理该站点缓存/数据"按钮：本产品所有入口共享同一份 Default
- * Profile（同一份 Cookie、同一份登录态），不存在可安全单独清理的站点边界——
- * 唯一真实的操作是页面顶部的「清理全部缓存」与「清除全部网站数据」。
- */
 @Composable
 private fun StorageDetailPage(
     app: WebAppEntity,
+    apps: List<WebAppEntity>,
     stats: SiteStorageStats?,
     state: StorageUiState,
-    sharedBytes: Long,
+    viewModel: StorageViewModel,
     onBack: () -> Unit,
 ) {
-    val measurable = stats?.measurable != false
+    var erasePreview by remember { mutableStateOf<EraseSitePreview?>(null) }
+    val canErase = viewModel.canEraseSite() && !app.isLocal
+    val siblings = remember(app.id, apps) {
+        val host = hostOfUrl(app.url).orEmpty()
+        val key = siteKeyOf(app.id, host, app.isLocal)
+        apps.filter { other ->
+            other.id != app.id && siteKeyOf(other.id, hostOfUrl(other.url).orEmpty(), other.isLocal) == key
+        }
+    }
 
     DetailPage(title = app.title, onBack = onBack) {
         Column(
             Modifier.fillMaxWidth().padding(vertical = AppSpacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SiteIcon(title = app.title, iconUrl = app.iconUrl, size = 64.dp)
+            SiteIcon(
+                title = app.title,
+                iconUrl = app.iconUrl,
+                size = 64.dp,
+                glyph = siteIconGlyph(app.isLocal, app.url),
+            )
             Spacer(Modifier.height(AppSpacing.md))
             Text(app.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
@@ -443,81 +483,137 @@ private fun StorageDetailPage(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (stats?.signedIn == true) {
+                Spacer(Modifier.height(AppSpacing.sm))
+                Text(
+                    stringResource(R.string.me_storage_signed_in),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
         AppSettingsSection(stringResource(R.string.me_storage_usage_section), Modifier.padding(bottom = 24.dp)) {
             Column(Modifier.padding(AppSpacing.lg)) {
-                if (!measurable || stats == null) {
+                if (stats == null) {
                     Text(
                         stringResource(
-                            if (stats == null && state.scanning) {
-                                R.string.me_storage_measuring
-                            } else {
-                                R.string.me_storage_unmeasurable
-                            },
+                            if (state.scanning) R.string.me_storage_measuring else R.string.me_storage_unmeasurable,
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     DetailStatRow(
-                        stringResource(R.string.me_storage_total),
-                        formatStorageBytes(if (stats.totalBytes > 0L) stats.totalBytes else sharedBytes),
+                        stringResource(R.string.me_storage_attributable),
+                        if (stats.allMetricsUnavailable()) {
+                            stringResource(R.string.me_storage_metric_unavailable)
+                        } else {
+                            formatStorageBytes(stats.attributableBytes)
+                        },
+                    )
+                    Text(
+                        stringResource(R.string.me_storage_attributable_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(AppSpacing.sm))
+                    DetailStatRow(stringResource(R.string.me_storage_cookie), cookieMetricLabel(stats.cookie))
+                    DetailStatRow(
+                        stringResource(R.string.me_storage_indexeddb),
+                        longMetricLabel(stats.indexedDbBytes),
                     )
                     DetailStatRow(
-                        stringResource(R.string.me_storage_clearable_label),
-                        formatStorageBytes(stats.clearableBytes),
+                        stringResource(R.string.me_storage_quota),
+                        longMetricLabel(stats.quotaUsageBytes),
                     )
-                    DetailStatRow(
-                        stringResource(R.string.me_storage_cat_site_data),
-                        formatStorageBytes(stats.siteDataBytes),
+                    Text(
+                        stringResource(R.string.me_storage_quota_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (stats.totalBytes == 0L && sharedBytes > 0L) {
+                    if (app.isLocal || stats.localImportBytes is Metric.Measured) {
                         DetailStatRow(
-                            stringResource(R.string.me_storage_shared_site_data),
-                            formatStorageBytes(sharedBytes),
+                            stringResource(R.string.me_storage_local_import),
+                            longMetricLabel(stats.localImportBytes),
                         )
                     }
-                    if (stats.totalBytes > 0) {
-                        Spacer(Modifier.height(AppSpacing.lg))
-                        StorageUsageBar(
-                            segments = listOf(
-                                MaterialTheme.colorScheme.primary to stats.clearableBytes,
-                                SiteDataColor to stats.siteDataBytes,
+                    if (siblings.isNotEmpty()) {
+                        Spacer(Modifier.height(AppSpacing.md))
+                        Text(
+                            stringResource(
+                                R.string.me_storage_shared_entries,
+                                siblings.joinToString("、") { it.title },
                             ),
-                            legend = listOf(
-                                MaterialTheme.colorScheme.primary to
-                                    (stringResource(R.string.me_storage_clearable_label) to stats.clearableBytes),
-                                SiteDataColor to
-                                    (stringResource(R.string.me_storage_cat_site_data) to stats.siteDataBytes),
-                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
-                Spacer(Modifier.height(AppSpacing.md))
+            }
+        }
+        Text(
+            stringResource(
+                if (canErase) {
+                    R.string.me_storage_site_shared_hint_can_erase
+                } else {
+                    R.string.me_storage_site_shared_hint
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (canErase) {
+            Spacer(Modifier.height(AppSpacing.lg))
+            TextButton(
+                onClick = { erasePreview = viewModel.eraseSitePreview(app.id) },
+                enabled = !state.clearingAll && !state.erasingSite,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
                 Text(
-                    stringResource(R.string.me_storage_site_data_keep),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    stringResource(
+                        if (state.erasingSite) R.string.me_storage_erasing else R.string.me_storage_erase_site,
+                    ),
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
         }
-        if (measurable) {
-            Text(
-                stringResource(R.string.me_storage_site_shared_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         Spacer(Modifier.height(24.dp))
+    }
+
+    erasePreview?.let { preview ->
+        val others = preview.affectedTitles.filter { it != app.title }
+        val text = buildString {
+            append(stringResource(R.string.me_storage_erase_site_text, preview.siteDomain))
+            if (others.isNotEmpty()) {
+                append('\n')
+                append(stringResource(R.string.me_storage_erase_site_others, others.joinToString("、")))
+            }
+            if (preview.willSignOut) {
+                append('\n')
+                append(stringResource(R.string.me_storage_erase_site_sign_out))
+            }
+            append('\n')
+            append(stringResource(R.string.me_storage_erase_scope_warning))
+        }
+        AppConfirmDialog(
+            title = stringResource(R.string.me_storage_erase_site_title),
+            text = text,
+            confirmText = stringResource(R.string.me_storage_confirm_erase_site),
+            dismissText = stringResource(R.string.me_cancel),
+            destructive = true,
+            onConfirm = {
+                erasePreview = null
+                viewModel.eraseSite(app.id)
+            },
+            onDismiss = { erasePreview = null },
+        )
     }
 }
 
-/** 列表行：AppListRow 的 leadingIcon 只接受 ImageVector，这里按其内边距自定义以承载 SiteIcon。 */
 @Composable
 private fun SiteStorageRow(
     app: WebAppEntity,
     stats: SiteStorageStats?,
-    sharedBytes: Long,
     scanning: Boolean,
     onClick: () -> Unit,
 ) {
@@ -529,7 +625,12 @@ private fun SiteStorageRow(
             .clickable(onClick = onClick)
             .padding(horizontal = AppSpacing.lg, vertical = 8.dp),
     ) {
-        SiteIcon(title = app.title, iconUrl = app.iconUrl, size = 40.dp)
+        SiteIcon(
+            title = app.title,
+            iconUrl = app.iconUrl,
+            size = 40.dp,
+            glyph = siteIconGlyph(app.isLocal, app.url),
+        )
         Spacer(Modifier.width(AppSpacing.md))
         Column(Modifier.weight(1f)) {
             Text(
@@ -556,28 +657,24 @@ private fun SiteStorageRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
-                !stats.measurable -> Text(
-                    stringResource(R.string.me_storage_unmeasurable),
+                stats.allMetricsUnavailable() -> Text(
+                    stringResource(R.string.me_storage_metric_unavailable),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
                 else -> Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        if (stats.totalBytes == 0L && sharedBytes > 0L) {
-                            stringResource(R.string.me_storage_shared)
-                        } else {
-                            formatStorageBytes(stats.totalBytes)
-                        },
+                        formatStorageBytes(stats.attributableBytes),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                     )
                     Text(
-                        if (stats.totalBytes == 0L && sharedBytes > 0L) {
-                            formatStorageBytes(sharedBytes)
+                        if (stats.signedIn) {
+                            stringResource(R.string.me_storage_signed_in)
                         } else {
-                            stringResource(R.string.me_storage_clearable_size, formatStorageBytes(stats.clearableBytes))
+                            cookieMetricLabel(stats.cookie)
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -604,6 +701,24 @@ private fun DetailStatRow(label: String, value: String) {
         Spacer(Modifier.weight(1f))
         Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     }
+}
+
+@Composable
+private fun longMetricLabel(metric: Metric<Long>): String = when (metric) {
+    is Metric.Measured -> formatStorageBytes(metric.value)
+    Metric.Absent -> formatStorageBytes(0)
+    Metric.Unavailable -> stringResource(R.string.me_storage_metric_unavailable)
+}
+
+@Composable
+private fun cookieMetricLabel(metric: Metric<CookieFacts>): String = when (metric) {
+    is Metric.Measured -> stringResource(
+        R.string.me_storage_cookie_value,
+        metric.value.count,
+        formatStorageBytes(metric.value.serializedBytes),
+    )
+    Metric.Absent -> stringResource(R.string.me_storage_cookie_absent)
+    Metric.Unavailable -> stringResource(R.string.me_storage_metric_unavailable)
 }
 
 private val SiteDataColor = Color(0xFFFF9500)
@@ -643,5 +758,4 @@ private fun StorageUsageBar(
 }
 
 /** 域名展示：URI 解析失败或本地页面回退原始 url。 */
-private fun hostOf(url: String): String =
-    runCatching { java.net.URI(url).host }.getOrNull()?.takeIf { it.isNotBlank() } ?: url
+private fun hostOf(url: String): String = hostOfUrl(url) ?: url

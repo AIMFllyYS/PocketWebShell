@@ -35,6 +35,7 @@ import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.AppSectionHeader
 import com.webshell.core.designsystem.components.AppToggleRow
 import com.webshell.core.designsystem.components.SiteIcon
+import com.webshell.core.designsystem.components.siteIconGlyph
 import com.webshell.core.designsystem.theme.LocalOverlayClearance
 
 /** Grouped editor is presentation-only: the route owns pickers and ViewModel owns imports/save. */
@@ -72,7 +73,7 @@ internal fun AddEditorContent(
                     title = draft.title,
                     iconUrl = draft.iconUrl,
                     size = 76.dp,
-                    localFallback = draft.isLocal,
+                    glyph = siteIconGlyph(draft.isLocal, draft.url),
                 )
                 Text(
                     draft.title.ifBlank { stringResource(R.string.add_new_site) },
@@ -169,6 +170,30 @@ internal fun AddEditorContent(
                     title = stringResource(R.string.add_external), subtitle = stringResource(R.string.add_external_hint),
                     checked = draft.externalLinksToBrowser, enabled = enabled,
                     onCheckedChange = { value -> onUpdate { it.copy(externalLinksToBrowser = value) } },
+                )
+                AppListDivider(hasLeadingIcon = false)
+                AppListRow(
+                    title = stringResource(R.string.add_new_window),
+                    subtitle = stringResource(
+                        when (draft.siteShellNewWindowPolicy) {
+                            com.webshell.core.data.SITE_SHELL_NEW_WINDOW_ADOPT -> R.string.add_new_window_adopt
+                            com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE -> R.string.add_new_window_replace
+                            else -> R.string.add_new_window_follow
+                        },
+                    ) + " · " + stringResource(R.string.add_new_window_hint),
+                    onClick = if (enabled) {
+                        {
+                            onUpdate {
+                                it.copy(
+                                    siteShellNewWindowPolicy = com.webshell.core.data.nextSiteShellNewWindowOverride(
+                                        it.siteShellNewWindowPolicy,
+                                    ),
+                                )
+                            }
+                        }
+                    } else {
+                        null
+                    },
                 )
             }
             AppPrimaryButton(

@@ -20,6 +20,7 @@
     <string name="catalog_icons_hint">固定图标边界、统一首字母与本地网页回退；此处不加载远程图片。</string>
     <string name="catalog_sample_name">玄览</string>
     <string name="catalog_sample_local">本地网页</string>
+    <string name="catalog_sample_markdown">本地笔记</string>
     <string name="catalog_dialog">确认与输入弹窗</string>
     <string name="catalog_dialog_hint">生产确认框共用内容槽与禁用确认状态；不执行实际删除。</string>
     <string name="catalog_menu">情境菜单</string>

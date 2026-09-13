@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.webshell.app.R
 import com.webshell.core.designsystem.components.glassSurface
+import com.webshell.core.designsystem.components.staticGlassSurface
 import com.webshell.core.designsystem.theme.AppMotion
 import dev.chrisbanes.haze.HazeState
 
@@ -56,7 +57,9 @@ internal fun measuredDockHeight(tab: MainTab): androidx.compose.ui.unit.Dp {
     val measurer = rememberTextMeasurer()
     val style = MaterialTheme.typography.labelSmall
     val label = stringResource(R.string.tab_me)
-    val labelHeight = with(density) { measurer.measure(label, style = style).size.height.toDp() }
+    val labelHeight = remember(density, style, label) {
+        with(density) { measurer.measure(label, style = style).size.height.toDp() }
+    }
     return maxOf(TabBarHeight, labelHeight + 42.dp)
 }
 
@@ -73,18 +76,24 @@ internal fun LauncherDock(
     selectedTab: MainTab,
     onSelect: (MainTab) -> Unit,
     hazeState: HazeState,
+    liveGlass: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val desktop = selectedTab == MainTab.HOME
     val height = measuredDockHeight(selectedTab)
     val shape = RoundedCornerShape(if (desktop) 34.dp else 32.dp)
+    val glass = if (liveGlass) {
+        Modifier.glassSurface(hazeState, shape = shape)
+    } else {
+        Modifier.staticGlassSurface(shape = shape)
+    }
     Box(
         modifier.widthIn(max = 500.dp).fillMaxWidth().navigationBarsPadding()
             .padding(horizontal = 18.dp, vertical = 10.dp),
     ) {
         DockItems(selectedTab, onSelect, Modifier.fillMaxWidth()
             .height(height)
-            .glassSurface(hazeState, shape = shape))
+            .then(glass))
     }
 }
 

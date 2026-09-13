@@ -22,4 +22,6 @@ internal fun AddDraft.toNewEntity(page: Int, slot: Int, createdAt: Long, fallbac
         isLocal = isLocal,
         externalLinksToBrowser = externalLinksToBrowser,
         textZoomPercent = 100,
+        siteShellNewWindowPolicy = siteShellNewWindowPolicy,
+        importSourceKey = importSourceKey,
     )

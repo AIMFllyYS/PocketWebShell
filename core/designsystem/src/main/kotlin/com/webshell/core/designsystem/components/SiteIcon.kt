@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.webshell.core.model.LocalAppUrls
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -35,6 +36,14 @@ import java.io.File
 /** The app-owned Playbook disables loading even when a visitor edits a fixture's URL. */
 val LocalImageLoadingEnabled = compositionLocalOf { true }
 
+enum class SiteIconGlyph { Letter, LocalHtml, Markdown }
+
+fun siteIconGlyph(isLocal: Boolean, url: String): SiteIconGlyph = when {
+    !isLocal -> SiteIconGlyph.Letter
+    LocalAppUrls.isMarkdown(url) -> SiteIconGlyph.Markdown
+    else -> SiteIconGlyph.LocalHtml
+}
+
 /**
  * The single website-icon loader. Callers map domain models to these presentation values.
  * The frame is deterministic, loading and error use the same fallback, and Coil owns all IO.
@@ -47,6 +56,7 @@ fun SiteIcon(
     size: Dp = 60.dp,
     cornerRadiusPercent: Int = 26,
     localFallback: Boolean = false,
+    glyph: SiteIconGlyph = if (localFallback) SiteIconGlyph.LocalHtml else SiteIconGlyph.Letter,
 ) {
     val shape = RoundedCornerShape(cornerRadiusPercent.coerceIn(0, 50))
     val loadingEnabled = LocalImageLoadingEnabled.current
@@ -65,7 +75,7 @@ fun SiteIcon(
         modifier = modifier.size(size).clip(shape).semantics { contentDescription = title },
         contentAlignment = Alignment.Center,
     ) {
-        if (!imageLoaded || model == null) SiteIconFallback(title, size, localFallback)
+        if (!imageLoaded || model == null) SiteIconFallback(title, size, glyph)
         if (model != null) {
             AsyncImage(
                 model = model,
@@ -79,7 +89,7 @@ fun SiteIcon(
 }
 
 @Composable
-private fun SiteIconFallback(title: String, size: Dp, localFallback: Boolean) {
+private fun SiteIconFallback(title: String, size: Dp, glyph: SiteIconGlyph) {
     val dark = LocalIsDarkTheme.current
     val palette = if (dark) fallbackPaletteDark else fallbackPaletteLight
     val key = remember(title) { title.trim().ifBlank { "?" } }
@@ -87,16 +97,23 @@ private fun SiteIconFallback(title: String, size: Dp, localFallback: Boolean) {
     // A fallback glyph is artwork, not a reading label. Keep it inside the fixed icon frame.
     val glyphScale = LocalDensity.current.fontScale
     Box(Modifier.fillMaxSize().background(colors.first), contentAlignment = Alignment.Center) {
-        if (localFallback) Icon(Icons.Rounded.Code, null, tint = colors.second, modifier = Modifier.size(size * 0.52f))
-        else Text(
-            key.substring(0, key.offsetByCodePoints(0, 1)).uppercase(),
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = (size.value * 0.4f / glyphScale).sp,
-                lineHeight = (size.value * 0.52f / glyphScale).sp,
-            ),
-            color = colors.second,
-            maxLines = 1,
-        )
+        when (glyph) {
+            SiteIconGlyph.LocalHtml -> Icon(
+                Icons.Rounded.Code, null, tint = colors.second, modifier = Modifier.size(size * 0.52f),
+            )
+            SiteIconGlyph.Markdown -> Icon(
+                MarkdownFileIcon, null, tint = colors.second, modifier = Modifier.size(size * 0.62f),
+            )
+            SiteIconGlyph.Letter -> Text(
+                key.substring(0, key.offsetByCodePoints(0, 1)).uppercase(),
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = (size.value * 0.4f / glyphScale).sp,
+                    lineHeight = (size.value * 0.52f / glyphScale).sp,
+                ),
+                color = colors.second,
+                maxLines = 1,
+            )
+        }
     }
 }
 

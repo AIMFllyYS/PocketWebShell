@@ -2,9 +2,11 @@ package com.webshell.feature.home
 
 import kotlin.math.min
 
-/** The footer reserves its edit-mode height even before editing, so cells never jump on entry. */
-internal fun stackLauncherEditActions(widthDp: Float, fontScale: Float): Boolean =
-    fontScale > 1.3f || (widthDp < 360f && fontScale > 1.1f)
+/** Kept for geometry tests that still describe a 48dp action line. */
+internal const val EDIT_HEADER_MARGIN_DP = 8f
+
+internal fun launcherDoneHeightDp(actionLineHeightDp: Float): Float =
+    maxOf(48f, actionLineHeightDp + 16f)
 
 /**
  * Constraint-only launcher geometry. Images and drawing/drag transforms never enter this model.
@@ -22,8 +24,8 @@ internal data class LauncherGeometry(
     val requiresVerticalScroll: Boolean,
 ) {
     companion object {
-        // Both reservations exist outside edit mode, keeping grid and drag registration fixed
-        // when the Done affordance replaces blank header space or the footer changes controls.
+        // Header/footer stay the same in and out of edit mode so cells never jump.
+        // The unified edit toolbar replaces LauncherDock in the app shell, not this grid.
         const val HEADER_HEIGHT_DP = 56f
         const val SEARCH_FOOTER_HEIGHT_DP = 52f // 48dp touch target + 4dp bottom margin
 

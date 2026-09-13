@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -11,6 +12,16 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Public Download/PocketWebShell reads on API 29–32. READ_MEDIA_* cannot open mixed APKs/PDFs. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Sideload / non-Play: read-only HTML listing in the in-app picker.
+         Play forbids All-files access for “user picks a single file”; do not claim Play compliance.
+         Never add READ_MEDIA_* for this flow. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
@@ -26,6 +37,16 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="*/*" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -36,16 +57,72 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.WebShell">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Temporary HTML / Markdown viewer. Filters are wider than the
+                 runtime policy so WeChat (often octet-stream, sometimes no
+                 extension) can list 玄览. Do not add pathless */* VIEW. -->
+            <intent-filter android:label="@string/incoming_open_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="application/xhtml+xml" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/x-markdown" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter android:label="@string/incoming_open_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter android:label="@string/incoming_open_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.html" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.htm" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.markdown" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.html" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.htm" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.markdown" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\.html" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\.htm" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\.md" />
+                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\..*\\.markdown" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.html" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.htm" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.md" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.markdown" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.html" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.htm" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.md" />
+                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\..*\\.markdown" />
+            </intent-filter>
+            <intent-filter android:label="@string/incoming_open_label">
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="application/xhtml+xml" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/x-markdown" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="application/octet-stream" />
             </intent-filter>
         </activity>
 

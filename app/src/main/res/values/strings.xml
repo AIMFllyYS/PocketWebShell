@@ -32,4 +32,10 @@
     <string name="download_history_running">正在下载</string>
     <string name="download_history_failed">下载失败</string>
     <string name="download_history_delete">删除这条下载记录</string>
+    <string name="download_open_folder">打开下载文件夹</string>
+    <string name="download_open_system">系统下载内容</string>
+    <string name="download_open_file">打开文件</string>
+    <string name="download_share">分享</string>
+    <string name="download_hide_capsule">隐藏辅助球</string>
+    <string name="incoming_open_label">用玄览打开</string>
 </resources>

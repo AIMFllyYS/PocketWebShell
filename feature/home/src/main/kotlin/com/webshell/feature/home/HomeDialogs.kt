@@ -164,6 +164,44 @@ internal fun HomeDissolveDialog(cell: HomeCell, onConfirm: () -> Unit, onDismiss
 }
 
 @Composable
+internal fun HomeDeleteManyDialog(count: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AppConfirmDialog(
+        title = stringResource(R.string.home_delete_selected_title, count),
+        text = stringResource(R.string.home_delete_selected_message),
+        confirmText = stringResource(R.string.home_delete),
+        dismissText = stringResource(R.string.home_cancel),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        destructive = true,
+    )
+}
+
+@Composable
+internal fun HomeFolderPickerDialog(
+    folders: List<Pair<String, String>>,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AppConfirmDialog(
+        title = stringResource(R.string.home_move_to_folder_title),
+        text = "",
+        confirmText = stringResource(R.string.home_new_folder),
+        dismissText = stringResource(R.string.home_cancel),
+        onConfirm = { onSelect(null) },
+        onDismiss = onDismiss,
+        content = {
+            Column(Modifier.fillMaxWidth()) {
+                folders.forEach { (id, name) ->
+                    TextButton(onClick = { onSelect(id) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(name.ifBlank { stringResource(R.string.home_folder) })
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
 internal fun HomeDeleteDialog(cell: HomeCell, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AppConfirmDialog(
         title = if (cell.isFolder) stringResource(R.string.home_delete_folder_title)

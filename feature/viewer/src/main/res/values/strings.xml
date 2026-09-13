@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="viewer_opening">正在打开</string>
+    <string name="viewer_opening_hint">正在读取这份临时文档。</string>
+    <string name="viewer_unavailable">无法打开</string>
+    <string name="viewer_unsupported_hint">这份文件不是可预览的 HTML 或 Markdown。</string>
+    <string name="viewer_too_large_hint">文件超过 20 MB，无法临时打开。</string>
+    <string name="viewer_unreadable_hint">无法读取这份文件。请再从原应用打开一次。</string>
+    <string name="viewer_close">返回</string>
+    <string name="viewer_retry">重试</string>
+    <string name="viewer_renderer_gone">页面已停止</string>
+    <string name="viewer_renderer_gone_hint">渲染进程已退出。可以重试，应用不会自动重新加载同一份本地文档。</string>
+    <string name="viewer_add_home_title">添加到主屏幕？</string>
+    <string name="viewer_add_home_text">把「%1$s」保存为主屏幕快捷方式，之后可从玄览直接打开。</string>
+    <string name="viewer_add_home_confirm">添加</string>
+    <string name="viewer_add_home_dismiss">仅查看</string>
+    <string name="viewer_added_home">已添加到主屏幕</string>
+    <string name="viewer_add_home_failed">添加失败，请重试</string>
+</resources>

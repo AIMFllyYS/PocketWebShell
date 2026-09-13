@@ -31,6 +31,16 @@ data class WebAppEntity(
     val folderName: String? = null,
     /** 文件夹内序号（可空）：展开文件夹中的成员顺序；null 视为排最后（回落 createdAt）。 */
     val folderCellIndex: Int? = null,
+    /**
+     * 站点壳新窗口策略覆盖：null = 跟随全局；
+     * [SITE_SHELL_NEW_WINDOW_ADOPT] / [SITE_SHELL_NEW_WINDOW_REPLACE]。
+     */
+    val siteShellNewWindowPolicy: String? = null,
+    /**
+     * Normalized incoming source path / stable document URI for local apps.
+     * Used to reopen the same HTML/MD instead of creating another tmp-* copy.
+     */
+    val importSourceKey: String? = null,
 )
 
 /** 自由摆放模式下的槽位分配：与 feature/home 的稀疏分页规则保持一致。 */

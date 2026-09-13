@@ -20,6 +20,7 @@
     <string name="catalog_icons_hint">Fixed frames and shared initial or local-page fallbacks; no remote image loading in the catalog.</string>
     <string name="catalog_sample_name">PocketWebShell</string>
     <string name="catalog_sample_local">Local page</string>
+    <string name="catalog_sample_markdown">Local note</string>
     <string name="catalog_dialog">Confirmation and input dialogs</string>
     <string name="catalog_dialog_hint">Production dialog with content slots and disabled confirmation; no data is deleted.</string>
     <string name="catalog_menu">Context menu</string>

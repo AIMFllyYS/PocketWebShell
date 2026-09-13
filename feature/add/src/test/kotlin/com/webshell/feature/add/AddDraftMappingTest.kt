@@ -38,6 +38,15 @@ class AddDraftMappingTest {
         assertFalse(entity.keepAlive)
         assertTrue(entity.externalLinksToBrowser)
         assertEquals(100, entity.textZoomPercent)
+        assertNull(entity.siteShellNewWindowPolicy)
+        assertNull(entity.importSourceKey)
+        val withKey = draft.copy(importSourceKey = "/storage/emulated/0/Download/a.html")
+            .toNewEntity(0, -1, 20L, "unused")
+        assertEquals("/storage/emulated/0/Download/a.html", withKey.importSourceKey)
+        val override = draft.copy(
+            siteShellNewWindowPolicy = com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE,
+        ).toNewEntity(0, -1, 20L, "unused")
+        assertEquals(com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE, override.siteShellNewWindowPolicy)
     }
 
     @Test

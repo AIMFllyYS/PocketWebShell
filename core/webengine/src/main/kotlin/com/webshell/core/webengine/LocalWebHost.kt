@@ -160,6 +160,42 @@ object LocalWebHost {
         java.net.URLEncoder.encode(segment, Charsets.UTF_8.name()).replace("+", "%20")
 
     /**
+     * Stream a local file without buffering it into a [ByteArray].
+     * [File.length] supplies Content-Length; the caller owns [LocalAppFileServe.data].
+     */
+    internal fun serveLocalAppFile(file: File): LocalAppFileServe? {
+        if (!file.isFile) return null
+        val mime = URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream"
+        val encoding = if (
+            mime.startsWith("text/") || mime == "application/javascript" || mime == "application/json"
+        ) "UTF-8" else null
+        val contentType = if (encoding != null) "$mime; charset=$encoding" else mime
+        val headers = mapOf(
+            "Content-Length" to file.length().toString(),
+            "Content-Type" to contentType,
+        )
+        return runCatching {
+            LocalAppFileServe(
+                mimeType = mime,
+                encoding = encoding,
+                statusCode = 200,
+                reasonPhrase = "OK",
+                headers = headers,
+                data = FileInputStream(file),
+            )
+        }.getOrNull()
+    }
+
+    internal data class LocalAppFileServe(
+        val mimeType: String,
+        val encoding: String?,
+        val statusCode: Int,
+        val reasonPhrase: String,
+        val headers: Map<String, String>,
+        val data: java.io.InputStream,
+    )
+
+    /**
      * The stock InternalStoragePathHandler protects against `..` escaping its
      * root, but a shared `/local/` root would still allow app-A to address
      * app-B by naming B's first path segment. Resolve the app id first and
@@ -185,9 +221,20 @@ object LocalWebHost {
             if (!isWithin(appRoot, root)) return null
             val target = File(appRoot, relative).canonicalFile
             if (!isWithin(target, appRoot) || !target.isFile) return null
-            val mime = URLConnection.guessContentTypeFromName(target.name) ?: "application/octet-stream"
-            val encoding = if (mime.startsWith("text/") || mime == "application/javascript" || mime == "application/json") "UTF-8" else null
-            return runCatching { WebResourceResponse(mime, encoding, FileInputStream(target)) }.getOrNull()
+            val serve = serveLocalAppFile(target) ?: return null
+            return runCatching {
+                WebResourceResponse(
+                    serve.mimeType,
+                    serve.encoding,
+                    serve.statusCode,
+                    serve.reasonPhrase,
+                    serve.headers,
+                    serve.data,
+                )
+            }.getOrElse {
+                runCatching { serve.data.close() }
+                null
+            }
         }
 
         private fun isWithin(child: File, parent: File): Boolean {

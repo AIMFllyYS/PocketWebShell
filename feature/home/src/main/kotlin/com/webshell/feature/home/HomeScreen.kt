@@ -5,7 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -13,21 +12,23 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,7 +63,7 @@ import kotlinx.coroutines.launch
  * 交互层拆分（见同包文件）：
  * - [HomeInteractionState]：全部拖拽/菜单/编辑模式会话状态的集中持有者；
  * - [HomeGesturesKt]（HomeGestures.kt）：cell 手势检测、根级拖拽会话、空白长按、
- *   双指捏合、边缘悬停翻页等手势板块。本文件只保留组合根、网格容器、
+ *   多指进/出编辑、边缘悬停翻页等手势板块。本文件只保留组合根、网格容器、
  *   菜单/对话框与浮层。
  */
 @Composable
@@ -70,10 +71,16 @@ fun HomeScreen(
     onLaunch: (appId: String, url: String) -> Unit = { _, _ -> },
     onAddRequested: () -> Unit = {},
     wallpaperBacked: Boolean = false,
+    onEditChromeChange: (HomeEditChromeState?) -> Unit = {},
     viewModel: HomeViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
     CompositionLocalProvider(LocalLauncherWallpaperBacked provides wallpaperBacked) {
-        HomeScreenContent(onLaunch = onLaunch, onAddRequested = onAddRequested, viewModel = viewModel)
+        HomeScreenContent(
+            onLaunch = onLaunch,
+            onAddRequested = onAddRequested,
+            onEditChromeChange = onEditChromeChange,
+            viewModel = viewModel,
+        )
     }
 }
 
@@ -81,6 +88,7 @@ fun HomeScreen(
 private fun HomeScreenContent(
     onLaunch: (appId: String, url: String) -> Unit,
     onAddRequested: () -> Unit,
+    onEditChromeChange: (HomeEditChromeState?) -> Unit,
     viewModel: HomeViewModel,
 ) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
@@ -139,10 +147,6 @@ private fun HomeScreenContent(
     val labelHeightDp = with(density) {
         textMeasurer.measure("国Hg", style = labelStyle, maxLines = 1).size.height.toDp().value
     }
-    val actionLineHeightDp = with(density) {
-        textMeasurer.measure("国Hg", style = MaterialTheme.typography.labelLarge, maxLines = 1).size.height.toDp().value
-    }
-
     var rootOrigin by ui::rootOrigin
     var draggingKey by ui::draggingKey
     var dragPosition by ui::dragPosition
@@ -158,6 +162,8 @@ private fun HomeScreenContent(
     var allAppsView by rememberSaveable { mutableStateOf(AllAppsView.GRID) }
     var folderOpenFor by remember { mutableStateOf<String?>(null) }
     var confirmDeleteFor by remember { mutableStateOf<HomeCell?>(null) }
+    var confirmDeleteSelected by remember { mutableStateOf(false) }
+    var folderPickerOpen by remember { mutableStateOf(false) }
     var confirmDissolveFor by remember { mutableStateOf<HomeCell?>(null) }
     var renameFor by remember { mutableStateOf<HomeCell?>(null) }
     var renameFolderFor by remember { mutableStateOf<HomeCell?>(null) }
@@ -193,6 +199,42 @@ private fun HomeScreenContent(
         editSelection.clear()
     }
 
+    val reportEditChrome by rememberUpdatedState(onEditChromeChange)
+    val selectedCount = editSelection.values.count { it }
+    val selectedKeys = editSelection.filterValues { it }.keys
+    val selectedCells = selectedKeys.mapNotNull { cellsByKey[it] }
+    val canRemoveFromFolder = selectedCells.any { it.isFolder || it.app.folderId != null }
+    val canMoveToFolder = selectedCells.isNotEmpty() && selectedCells.none { it.isFolder }
+    LaunchedEffect(
+        editMode, selectedCount, cellsByKey.size, settings.homeScrollMode,
+        canRemoveFromFolder, canMoveToFolder, selectedKeys,
+    ) {
+        reportEditChrome(
+            if (editMode) {
+                HomeEditChromeState(
+                    selectedCount = selectedCount,
+                    totalCount = cellsByKey.size,
+                    scrollMode = settings.homeScrollMode,
+                    canRemoveFromFolder = canRemoveFromFolder,
+                    canMoveToFolder = canMoveToFolder,
+                    onDone = { exitEditMode() },
+                    onDelete = { confirmDeleteSelected = true },
+                    onRemoveFromFolder = { viewModel.removeSelectedFromFolder(selectedKeys) },
+                    onMoveToFolder = { folderPickerOpen = true },
+                    onSelectAll = {
+                        val allSelected = selectedCount == cellsByKey.size && cellsByKey.isNotEmpty()
+                        if (allSelected) editSelection.clear()
+                        else cellsByKey.keys.forEach { editSelection[it] = true }
+                    },
+                    onScrollModeChange = viewModel::setHomeScrollMode,
+                )
+            } else {
+                null
+            },
+        )
+    }
+    DisposableEffect(Unit) { onDispose { reportEditChrome(null) } }
+
     LaunchedEffect(Unit) {
         viewModel.messages.collect { toast = it }
     }
@@ -210,6 +252,13 @@ private fun HomeScreenContent(
             },
             moveApp = viewModel::moveApp,
             moveCell = { from, target -> viewModel.moveCell(from, target, pageCapacity) },
+            prependGroupMove = { group, anchor, slot ->
+                viewModel.prependGroupMove(group, anchor, slot, pageCapacity)
+            },
+            moveGroupToSlot = { group, anchor, page, slot ->
+                viewModel.moveGroupToSlot(group, anchor, page, slot, pageCapacity)
+            },
+            addGroupToFolder = viewModel::addGroupToFolder,
         )
     }
 
@@ -217,16 +266,15 @@ private fun HomeScreenContent(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { rootOrigin = it.positionInRoot() }
-            // 空白处长按菜单（Initial pass）与双指捏合编辑模式：手势板块见
+            // 空白处长按菜单（Initial pass）与多指进/出编辑模式：手势板块见
             // HomeGestures.kt，状态全部落在 ui（HomeInteractionState）。
             .homeBlankAreaMenu(ui, haptics)
-            .homePinchEditMode(ui, haptics),
+            .homeMultiFingerEditMode(ui, haptics),
     ) {
         // Wallpaper is owned by the app root so the dock samples the same single backdrop.
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
-        val footerHeightDp = launcherFooterHeightDp(maxWidth, cellsByKey.size)
-        val geometry = remember(maxWidth, maxHeight, settings.gridColumns, settings.gridRows, settings.iconSizeDp, settings.showLabels, density.fontScale, labelHeightDp, actionLineHeightDp, footerHeightDp) {
+        val geometry = remember(maxWidth, maxHeight, settings.gridColumns, settings.gridRows, settings.iconSizeDp, settings.showLabels, density.fontScale, labelHeightDp) {
             LauncherGeometry.resolve(
                 widthDp = maxWidth.value,
                 heightDp = maxHeight.value,
@@ -236,8 +284,8 @@ private fun HomeScreenContent(
                 showLabels = settings.showLabels,
                 fontScale = density.fontScale,
                 measuredLabelHeightDp = labelHeightDp,
-                measuredHeaderHeightDp = maxOf(56f, actionLineHeightDp + 24f),
-                measuredFooterHeightDp = footerHeightDp,
+                measuredHeaderHeightDp = LauncherGeometry.HEADER_HEIGHT_DP,
+                measuredFooterHeightDp = LauncherGeometry.SEARCH_FOOTER_HEIGHT_DP,
             )
         }
         val iconSize = geometry.iconSizeDp.dp
@@ -338,7 +386,7 @@ private fun HomeScreenContent(
 
         // 「全部应用」浮动入口：渲染在 Pager/Grid 之外的 overlay，不参与网格测量；
         // 位于 DragLayer 之下，拖拽图标时浮层始终在最上。
-        if (settings.allAppsEntryVisible) {
+        if (settings.allAppsEntryVisible && !editMode) {
             AllAppsEntry(
                 iconSize = iconSize,
                 cornerRadiusPercent = settings.iconCornerRadiusPercent,
@@ -362,50 +410,59 @@ private fun HomeScreenContent(
                 animationSpec = spring(dampingRatio = 0.68f, stiffness = 520f),
                 label = "drag-icon-scale",
             )
-            AppIcon(
-                app = cell.app,
-                size = iconSize,
-                cornerRadiusPercent = settings.iconCornerRadiusPercent,
-                folderPreview = cell.folderMembers,
-                shadowElevation = 18.dp,
+            val groupKeys = ui.dragGroup.ifEmpty { setOf(cell.key) }
+            val ghosts = groupKeys.filter { it != cell.key }.mapNotNull { cellsByKey[it] }.take(3)
+            val overflow = (groupKeys.size - 1 - ghosts.size).coerceAtLeast(0)
+            val progress = ui.convergeProgress
+            ghosts.forEachIndexed { index, ghost ->
+                val layer = index + 1
+                AppIcon(
+                    app = ghost.app,
+                    size = iconSize,
+                    cornerRadiusPercent = settings.iconCornerRadiusPercent,
+                    folderPreview = ghost.folderMembers,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.graphicsLayer {
+                        val destX = dragPosition.x - rootOrigin.x - dragRegistration.x
+                        val destY = dragPosition.y - rootOrigin.y - dragRegistration.y
+                        val stack = 4.dp.toPx() * layer
+                        val start = ui.cellBounds[ghost.key]
+                        val startX = (start?.left?.toFloat() ?: (rootOrigin.x + destX)) - rootOrigin.x
+                        val startY = (start?.top?.toFloat() ?: (rootOrigin.y + destY)) - rootOrigin.y
+                        translationX = startX + (destX + stack - startX) * progress
+                        translationY = startY + (destY + stack - startY) * progress
+                        val ghostScale = scale * (1f - layer * 0.06f)
+                        scaleX = ghostScale
+                        scaleY = ghostScale
+                        alpha = (0.88f - layer * 0.16f).coerceAtLeast(0.35f)
+                    },
+                )
+            }
+            Box(
                 modifier = Modifier.graphicsLayer {
                     translationX = dragPosition.x - rootOrigin.x - dragRegistration.x
                     translationY = dragPosition.y - rootOrigin.y - dragRegistration.y
                     scaleX = scale
                     scaleY = scale
                 },
-            )
-        }
-
-        // 编辑模式覆盖层：顶部"完成"胶囊 + 底部批量操作行。
-        if (editMode) {
-            EditModeOverlay(
-                selectedCount = editSelection.values.count { it },
-                totalCount = cellsByKey.size,
-                onSelectAll = {
-                    val allSelected = editSelection.values.count { it } == cellsByKey.size
-                    cellsByKey.keys.forEach { editSelection[it] = !allSelected }
-                },
-                onClearSelection = { editSelection.clear() },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-            // 完成胶囊：右上。
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(end = 16.dp),
             ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.heightIn(min = 48.dp).clickable(onClick = { exitEditMode() }),
-                ) {
+                AppIcon(
+                    app = cell.app,
+                    size = iconSize,
+                    cornerRadiusPercent = settings.iconCornerRadiusPercent,
+                    folderPreview = cell.folderMembers,
+                    shadowElevation = 18.dp,
+                )
+                if (overflow > 0) {
                     Text(
-                        stringResource(R.string.home_done),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                        stringResource(R.string.home_drag_group_overflow, overflow),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(20.dp)
+                            .background(MaterialTheme.colorScheme.primary, CircleShape)
+                            .padding(top = 2.dp),
                     )
                 }
             }
@@ -535,6 +592,38 @@ private fun HomeScreenContent(
             onImportIcon = viewModel::importIcon,
             onConfirm = { url -> viewModel.updateIcon(cell.app.id, url.ifBlank { null }); iconEditFor = null },
             onDismiss = { iconEditFor = null },
+        )
+    }
+
+    if (confirmDeleteSelected) {
+        val count = editSelection.values.count { it }
+        HomeDeleteManyDialog(
+            count = count,
+            onConfirm = {
+                viewModel.deleteSelected(editSelection.filterValues { it }.keys)
+                editSelection.clear()
+                confirmDeleteSelected = false
+            },
+            onDismiss = { confirmDeleteSelected = false },
+        )
+    }
+
+    if (folderPickerOpen) {
+        val folders = remember(apps) {
+            apps.filter { it.folderId != null }
+                .groupBy { it.folderId!! }
+                .map { (id, members) ->
+                    id to (members.firstNotNullOfOrNull { it.folderName }.orEmpty())
+                }
+                .sortedBy { it.second }
+        }
+        HomeFolderPickerDialog(
+            folders = folders,
+            onSelect = { folderId ->
+                viewModel.moveSelectedToFolder(editSelection.filterValues { it }.keys, folderId)
+                folderPickerOpen = false
+            },
+            onDismiss = { folderPickerOpen = false },
         )
     }
 

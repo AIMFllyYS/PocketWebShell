@@ -50,8 +50,13 @@ open class SwipeRefreshWebView(context: Context) : SwipeRefreshLayout(context) {
     override fun canChildScrollUp(): Boolean =
         if (pullToRefreshEnabled) webView.canScrollVertically(-1) else true
 
-    override fun onInterceptTouchEvent(event: MotionEvent): Boolean =
-        pullToRefreshEnabled && super.onInterceptTouchEvent(event)
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        if (event.pointerCount > 1) {
+            isRefreshing = false
+            return false
+        }
+        return pullToRefreshEnabled && super.onInterceptTouchEvent(event)
+    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean =
         pullToRefreshEnabled && super.onTouchEvent(event)
