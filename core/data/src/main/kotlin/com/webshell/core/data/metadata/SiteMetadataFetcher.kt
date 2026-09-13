@@ -108,6 +108,11 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
         }
         add(resolveUrl(pageUrl, DEFAULT_FAVICON_PATH), 50)
         wellKnownIconUrl(pageUrl)?.let { add(it, 80) }
+        doc.selectFirst("meta[property=og:image], meta[name=og:image]")
+            ?.attr("content")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { add(resolveUrl(pageUrl, it), 30) }
         return ranked.sortedByDescending { it.first }.map { it.second }
     }
 
@@ -126,22 +131,25 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
         return fallbackIconUrl(finalUrl)
     }
 
-    /** HTML 抓不到或地址不可用时，用 Google 公开的标签页图标接口（返回 PNG）。 */
+    /** HTML 抓不到时：常用站备份 → 站点自己的 /favicon.ico。 */
     fun fallbackIconUrl(pageUrl: String): String? {
-        val host = runCatching { URI(pageUrl.trim()).host }.getOrNull()
-            ?.takeIf { it.isNotBlank() } ?: return null
         wellKnownIconUrl(pageUrl)?.let { known ->
             sanitizeIconUrl(known)?.let { return it }
         }
-        return sanitizeIconUrl("https://www.google.com/s2/favicons?domain=$host&sz=128")
+        return originFaviconUrl(pageUrl)?.let(::sanitizeIconUrl)
     }
 
-    /** 展示层兜底：不访问 DNS，只拼公开图标地址。 */
+    /** 展示层兜底：不访问 DNS，优先站内 /favicon.ico（浏览器标签页同源）。 */
     fun displayFallbackIconUrl(pageUrl: String): String? {
         wellKnownIconUrl(pageUrl)?.let { return it }
-        val host = runCatching { URI(pageUrl.trim()).host }.getOrNull()
-            ?.takeIf { it.isNotBlank() } ?: return null
-        return "https://www.google.com/s2/favicons?domain=$host&sz=128"
+        return originFaviconUrl(pageUrl)
+    }
+
+    fun originFaviconUrl(pageUrl: String): String? {
+        val uri = runCatching { URI(pageUrl.trim()) }.getOrNull() ?: return null
+        val scheme = uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" } ?: return null
+        val host = uri.host?.takeIf { it.isNotBlank() } ?: return null
+        return "$scheme://$host$DEFAULT_FAVICON_PATH"
     }
 
     /** 仅接受 http(s) 图标地址；data:/blob: 等伪 URL 一律视为无图标 */

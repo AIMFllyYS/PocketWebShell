@@ -17,7 +17,11 @@ import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.WebEngineDefaults
 import com.webshell.core.webengine.WebViewPool
 import com.webshell.core.webengine.resolveForceEnableZoom
+import com.webshell.feature.browser.IncomingDocumentAccess
+import com.webshell.feature.viewer.IncomingFilePolicy
 import com.webshell.feature.viewer.IncomingMarkdownPolicy
+import com.webshell.feature.viewer.IncomingStore
+import com.webshell.feature.browser.R as BrowserR
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -53,6 +57,9 @@ sealed interface SiteShellState {
         val title: String,
         val content: String,
         val request: Pair<String, String?>,
+        val displayPath: String = "",
+        val sourceKey: String? = null,
+        val temporary: Boolean = false,
     ) : SiteShellState
 }
 
@@ -74,6 +81,7 @@ class SiteShellViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val savedPages: BrowserSavedPagesRepository,
     private val metadataFetcher: SiteMetadataFetcher,
+    private val incomingDocuments: IncomingDocumentAccess,
 ) : ViewModel() {
     /**
      * null = the persisted setting has not been read yet (DataStore's first
@@ -110,6 +118,10 @@ class SiteShellViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
     private val _state = MutableStateFlow<SiteShellState>(SiteShellState.Loading)
     val state: StateFlow<SiteShellState> = _state.asStateFlow()
+    private val _askAddToHome = MutableStateFlow(false)
+    val askAddToHome: StateFlow<Boolean> = _askAddToHome.asStateFlow()
+    private val _statusMessage = MutableStateFlow<Int?>(null)
+    val statusMessage: StateFlow<Int?> = _statusMessage.asStateFlow()
     private var openJob: Job? = null
     private var latestRequest: Pair<String, String?>? = null
     /** Survives the UI listener being torn down while a popup is handed to Browse. */
@@ -125,6 +137,7 @@ class SiteShellViewModel @Inject constructor(
         }
         if (!force && sameOpen) return
         latestRequest = request
+        _askAddToHome.value = false
         openJob?.cancel()
         val pooled = appId?.let { WebViewPool.get(it) }
         val pooledUrl = pooled?.currentUrl()
@@ -172,6 +185,14 @@ class SiteShellViewModel @Inject constructor(
         if (!sameOpen || force) _state.value = SiteShellState.Loading
         openJob = viewModelScope.launch {
             try {
+                if (appId != null &&
+                    IncomingFilePolicy.isTemporarySessionId(appId) &&
+                    LocalAppUrls.isMarkdown(initialUrl)
+                ) {
+                    val markdown = withContext(Dispatchers.IO) { readTemporaryMarkdown(appId, request) }
+                    _state.value = markdown ?: SiteShellState.Unavailable
+                    return@launch
+                }
                 val app = if (appId != null) lookup.getById(appId) else lookup.findByUrl(initialUrl)
                 if (appId != null && app == null) {
                     _state.value = SiteShellState.Unavailable
@@ -306,6 +327,40 @@ class SiteShellViewModel @Inject constructor(
         settingsRepository.setSiteShellOrbEnabled(false)
     }
 
+    fun offerAddToHome() {
+        val markdown = _state.value as? SiteShellState.Markdown ?: return
+        if (markdown.temporary) _askAddToHome.value = true
+    }
+
+    fun dismissAddToHome() {
+        _askAddToHome.value = false
+    }
+
+    fun consumeStatusMessage() {
+        _statusMessage.value = null
+    }
+
+    fun addIncomingToHome(onOpened: (appId: String, url: String) -> Unit) {
+        val markdown = _state.value as? SiteShellState.Markdown ?: return
+        if (!markdown.temporary) return
+        val sessionId = markdown.request.second ?: return
+        viewModelScope.launch {
+            val persisted = incomingDocuments.persistMarkdownSession(
+                localAppId = sessionId,
+                title = markdown.title,
+                displayPath = markdown.displayPath,
+                sourceKey = markdown.sourceKey,
+            )
+            _askAddToHome.value = false
+            if (persisted == null) {
+                _statusMessage.value = BrowserR.string.browser_add_home_failed
+                return@launch
+            }
+            incomingDocuments.deleteTemporary(sessionId)
+            onOpened(persisted.appId, persisted.url)
+        }
+    }
+
     fun toggleBookmark(): Boolean {
         val ready = _state.value as? SiteShellState.Ready ?: return false
         val url = ready.pageUrl
@@ -322,6 +377,28 @@ class SiteShellViewModel @Inject constructor(
 
     private fun isLocalMarkdown(app: WebAppEntity): Boolean =
         app.isLocal && LocalAppUrls.isMarkdown(app.url)
+
+    private fun readTemporaryMarkdown(
+        appId: String,
+        request: Pair<String, String?>,
+    ): SiteShellState.Markdown? {
+        val dir = runCatching { IncomingStore.sessionDir(context.filesDir, appId) }.getOrNull() ?: return null
+        val file = File(dir, IncomingFilePolicy.DEFAULT_MARKDOWN_NAME)
+        if (!file.isFile || file.length() > 20L * 1024 * 1024) return null
+        val raw = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        val meta = IncomingStore.readMeta(dir)
+        val title = meta?.title?.takeIf { it.isNotBlank() }
+            ?: IncomingFilePolicy.originalDocumentTitle(null, meta?.displayPath)
+                .ifBlank { IncomingFilePolicy.DEFAULT_MARKDOWN_NAME.substringBeforeLast('.') }
+        return SiteShellState.Markdown(
+            title = title,
+            content = IncomingMarkdownPolicy.forDisplay(raw),
+            request = request,
+            displayPath = meta?.displayPath.orEmpty(),
+            sourceKey = meta?.sourceKey,
+            temporary = true,
+        )
+    }
 
     private fun readLocalMarkdown(app: WebAppEntity): String? {
         val uri = runCatching { URI(app.url.trim()) }.getOrNull() ?: return null

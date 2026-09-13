@@ -13,4 +13,5 @@ data class HistoryEntity(
     val url: String,
     val title: String,
     val visitedAt: Long,
+    val iconUrl: String? = null,
 )

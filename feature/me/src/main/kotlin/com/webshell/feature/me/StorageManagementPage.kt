@@ -63,6 +63,7 @@ import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.AppSearchField
 import com.webshell.core.designsystem.components.AppSettingsSection
+import com.webshell.core.designsystem.components.RevealFromPoint
 import com.webshell.core.designsystem.components.SiteIcon
 import com.webshell.core.designsystem.components.siteIconGlyph
 import com.webshell.core.designsystem.theme.AppMotion
@@ -302,6 +303,7 @@ private fun StorageOverviewSection(
                 modifier = Modifier.padding(AppSpacing.lg),
             )
         } else {
+            RevealFromPoint {
             Column(Modifier.padding(AppSpacing.lg)) {
                 val walkedTotal = overview.clearableBytes + overview.siteDataBytes + overview.appBytes
                 val total = overview.systemTotalBytes?.takeIf { it > 0L } ?: walkedTotal
@@ -439,6 +441,7 @@ private fun StorageOverviewSection(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+            }
             }
         }
     }

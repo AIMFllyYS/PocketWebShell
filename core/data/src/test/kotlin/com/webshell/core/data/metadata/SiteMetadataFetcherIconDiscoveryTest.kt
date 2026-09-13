@@ -37,9 +37,13 @@ class SiteMetadataFetcherIconDiscoveryTest {
             "https://www.wikipedia.org/static/apple-touch/wikipedia.png",
             fetcher.displayFallbackIconUrl("https://en.wikipedia.org/wiki/Android"),
         )
-        assertTrue(
-            fetcher.displayFallbackIconUrl("https://unknown-site.example/path")!!
-                .startsWith("https://www.google.com/s2/favicons?domain=unknown-site.example"),
+        assertEquals(
+            "https://unknown-site.example/favicon.ico",
+            fetcher.displayFallbackIconUrl("https://unknown-site.example/path"),
+        )
+        assertEquals(
+            "https://unknown-site.example/favicon.ico",
+            fetcher.originFaviconUrl("https://unknown-site.example/path"),
         )
     }
 

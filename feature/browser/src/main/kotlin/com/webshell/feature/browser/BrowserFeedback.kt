@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.TransformOrigin
+import com.webshell.core.designsystem.components.RevealFromPoint
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -63,9 +65,16 @@ fun WebSessionEmptyState(
 
 @Composable
 fun WebSessionStatusMessage(message: String, modifier: Modifier = Modifier) {
-    Text(message,
-        modifier = modifier.semantics { liveRegion = LiveRegionMode.Polite }
-            .clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.inverseSurface)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.inverseOnSurface)
+    RevealFromPoint(modifier = modifier, origin = TransformOrigin.Center) {
+        Text(
+            message,
+            modifier = Modifier
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.inverseSurface)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.inverseOnSurface,
+        )
+    }
 }

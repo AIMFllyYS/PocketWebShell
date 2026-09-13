@@ -98,32 +98,36 @@ fun MainScaffold(
     LaunchedEffect(incoming?.token, tabsHydrated) {
         if (!tabsHydrated) return@LaunchedEffect
         val candidate = incoming ?: return@LaunchedEffect
-        selectedTab = MainTab.BROWSE
-        openedUrl = null
-        openedAppId = null
         playbookOpen = false
-        browserChrome.dispatch(BrowserChromeEvent.Reveal)
         when (val mounted = viewModel.mountIncoming(candidate, browserViewModel.incomingReuseTokens())) {
-            is IncomingMountResult.Html -> browserViewModel.openIncomingHtml(
-                startUrl = mounted.startUrl,
-                title = mounted.title,
-                displayPath = mounted.displayPath,
-                localAppId = mounted.localAppId,
-                sourceKey = mounted.sourceKey,
-            )
-            is IncomingMountResult.Markdown -> browserViewModel.openIncomingMarkdown(
-                title = mounted.title,
-                displayPath = mounted.displayPath,
-                content = mounted.content,
-                localAppId = mounted.localAppId,
-                sourceKey = mounted.sourceKey,
-            )
+            is IncomingMountResult.Html -> {
+                selectedTab = MainTab.BROWSE
+                openedUrl = null
+                openedAppId = null
+                browserChrome.dispatch(BrowserChromeEvent.Reveal)
+                browserViewModel.openIncomingHtml(
+                    startUrl = mounted.startUrl,
+                    title = mounted.title,
+                    displayPath = mounted.displayPath,
+                    localAppId = mounted.localAppId,
+                    sourceKey = mounted.sourceKey,
+                )
+            }
+            is IncomingMountResult.Markdown -> {
+                selectedTab = MainTab.HOME
+                openedAppId = mounted.localAppId
+                openedUrl = mounted.startUrl
+            }
             is IncomingMountResult.ReuseHome -> {
                 selectedTab = MainTab.HOME
                 openedAppId = mounted.appId
                 openedUrl = mounted.url
             }
             is IncomingMountResult.ReuseTab -> {
+                selectedTab = MainTab.BROWSE
+                openedUrl = null
+                openedAppId = null
+                browserChrome.dispatch(BrowserChromeEvent.Reveal)
                 browserViewModel.activateIncomingBySourceKey(mounted.sourceKey, mounted.html)
             }
             is IncomingMountResult.Failed -> incomingError = mounted.reason

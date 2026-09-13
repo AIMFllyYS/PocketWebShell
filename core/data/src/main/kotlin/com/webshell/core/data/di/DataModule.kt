@@ -30,11 +30,13 @@ object DataModule {
             // v3 → v4：显式迁移新增 web_apps.folderName/folderCellIndex 两列。
             // v4 → v5：web_apps.siteShellNewWindowPolicy + browser_open_tabs。
             // v5 → v6：web_apps.importSourceKey + browser_open_tabs.sourceKey。
+            // v6 → v7：history.iconUrl。
             .addMigrations(
                 WebShellDatabase.MIGRATION_2_3,
                 WebShellDatabase.MIGRATION_3_4,
                 WebShellDatabase.MIGRATION_4_5,
                 WebShellDatabase.MIGRATION_5_6,
+                WebShellDatabase.MIGRATION_6_7,
             )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()

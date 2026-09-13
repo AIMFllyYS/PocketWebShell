@@ -50,4 +50,27 @@ class IncomingFilePolicyTest {
         assertFalse(IncomingFilePolicy.isTemporarySessionId("app-a"))
         assertFalse(IncomingFilePolicy.isTemporarySessionId("tmp-../x"))
     }
+
+    @Test
+    fun originalTitleUsesRealFilenameAndSkipsProviderJunk() {
+        assertEquals("notes", IncomingFilePolicy.originalDocumentTitle("notes.md", null))
+        assertEquals(
+            "readme",
+            IncomingFilePolicy.originalDocumentTitle(null, "/storage/emulated/0/Download/readme.md"),
+        )
+        assertEquals("报告", IncomingFilePolicy.originalDocumentTitle("报告.markdown", null))
+        assertEquals("", IncomingFilePolicy.originalDocumentTitle("WeixinFile", "document"))
+        assertEquals(
+            "",
+            IncomingFilePolicy.originalDocumentTitle(
+                null,
+                "content://com.tencent.mm.external.fileprovider/foo",
+            ),
+        )
+        assertEquals("", IncomingFilePolicy.originalDocumentTitle("blob", null))
+        assertEquals(
+            "",
+            IncomingFilePolicy.originalDocumentTitle("a1b2c3d4-e5f6-7890-abcd-ef1234567890.md", null),
+        )
+    }
 }

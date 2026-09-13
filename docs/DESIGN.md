@@ -61,7 +61,7 @@
 | 壁纸主色提取 | AndroidX Palette 1.0.0（`palette-ktx`） | 照片主题取色，后台线程执行 |
 | 字体 | 内置 MiSans（regular / medium / semibold，子集化 TTF） | 全设备字度量一致，杜绝系统字体替换导致的文字截半 |
 | 动效 | Compose Animation（随 BOM）+ `AppMotion` token | 150–250ms 过渡 + 弹簧曲线，不引入 Lottie/GIF 动图库 |
-| Markdown 渲染 | mikepenz `multiplatform-markdown-renderer` + `-m3` 0.41.0 | 系统打开的 `.md` 临时预览；不引入 `-coil3` / `-code`，远程图不加载 |
+| Markdown 渲染 | mikepenz `multiplatform-markdown-renderer` + `-m3` 0.41.0 | 全屏站点壳预览（悬浮球、原生长按选中）；不引入 `-coil3` / `-code`，远程图不加载 |
 
 已确认不引入：Lottie（动效需求由 Compose Animation 覆盖）、第三方拖拽库（主页 DragLayer 为自研且受 launcher 不变量约束）、Markwon（与 Compose 栈重复）。
 
@@ -77,13 +77,14 @@
 | 字体 | `theme/Type.kt` | MiSans 字阶：标题 Semibold、功能文本 Medium、正文 Regular；行高 ≥ 1.3× 字号 |
 | 圆角 | `theme/Shape.kt` | 8 / 12 / 16 / 20 / 28 五档 |
 | 间距 | `theme/Spacing.kt` | `AppSpacing`：4 / 8 / 12 / 16 / 24 / 32 六档 |
-| 动效 | `theme/Motion.kt` | `AppMotion`：fast 150ms / normal 250ms / spring |
+| 动效 | `theme/Motion.kt` | `AppMotion`：fast 150ms / normal 250ms / spring；细节卡片用 `revealSpring` + `RevealFromPoint` |
 
 ### 5.2 统一组件
 
 | 组件 | 用途 |
 |---|---|
 | `AppCard` | 分组卡片：20dp 圆角、`surfaceContainerLow` 底（浅色纯白）、0.5dp 低透明度发丝描边、零阴影 |
+| `RevealFromPoint` | 延迟出现的细节卡片/通知：graphicsLayer 从细点弹簧撑开，不改测量 bounds |
 | `AppListRow` | 列表行：单行 ≥56dp、双行 ≥72dp；21dp 图标，可配 30dp 彩色圆角底；副标题强制 `onSurfaceVariant` |
 | `AppListDivider` | 卡片内分割线，左缩进对齐文字起点 |
 | `AppSectionHeader` | 分组标题，置于卡片上方（iOS 分组列表风格） |

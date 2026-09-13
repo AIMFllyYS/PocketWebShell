@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LogEntity::class,
         BrowserOpenTabEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class WebShellDatabase : RoomDatabase() {
@@ -80,6 +80,13 @@ abstract class WebShellDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE web_apps ADD COLUMN importSourceKey TEXT")
                 db.execSQL("ALTER TABLE browser_open_tabs ADD COLUMN sourceKey TEXT")
+            }
+        }
+
+        /** v6 → v7：浏览历史记住页面图标，收藏/历史列表不再共用同一个地球标。 */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE history ADD COLUMN iconUrl TEXT")
             }
         }
     }

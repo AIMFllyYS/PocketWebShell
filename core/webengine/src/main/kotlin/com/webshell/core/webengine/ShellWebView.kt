@@ -502,6 +502,11 @@ class ShellWebView internal constructor(
             notifyListeners { onTitleReceived(title) }
         }
 
+        override fun onReceivedTouchIconUrl(view: WebView, url: String, precomposed: Boolean) {
+            if (!isCurrent(view) || url.isBlank()) return
+            notifyListeners { onIconUrl(url) }
+        }
+
         override fun onCreateWindow(
             view: WebView,
             isDialog: Boolean,

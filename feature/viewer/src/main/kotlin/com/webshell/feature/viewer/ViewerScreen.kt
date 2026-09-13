@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -208,6 +209,8 @@ fun SafeMarkdown(content: String, modifier: Modifier = Modifier) {
         }
     }
     CompositionLocalProvider(LocalUriHandler provides handler) {
-        Markdown(content, modifier = modifier)
+        SelectionContainer(modifier) {
+            Markdown(content)
+        }
     }
 }

@@ -62,6 +62,7 @@ fun BrowserScreen(
     val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
     val bookmarkPages by viewModel.bookmarks.collectAsStateWithLifecycle()
     val recentPages by viewModel.history.collectAsStateWithLifecycle()
+    val historyQuery by viewModel.historyQuery.collectAsStateWithLifecycle()
     val desktopModes by viewModel.desktopModes.collectAsStateWithLifecycle()
     val forceEnableZoomUser by viewModel.forceEnableZoomEnabled.collectAsStateWithLifecycle()
     val activeTab = tabs.firstOrNull { it.tabId == activeTabId }
@@ -346,8 +347,14 @@ fun BrowserScreen(
             BrowserOverlay.History, BrowserOverlay.Bookmarks -> {
                 val bookmarks = chrome.state.overlay == BrowserOverlay.Bookmarks
                 val entries = if (bookmarks) bookmarkPages else recentPages
-                SavedPagesSheet(entries, bookmarks, ::navigate, viewModel::removeBookmark,
-                    { chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.ClearHistory)) }, ::dismissOverlay)
+                SavedPagesSheet(
+                    entries, bookmarks, ::navigate, viewModel::removeBookmark,
+                    { chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.ClearHistory)) },
+                    ::dismissOverlay,
+                    onLoadMore = if (bookmarks) null else viewModel::loadMoreHistory,
+                    searchQuery = if (bookmarks) "" else historyQuery,
+                    onSearchQueryChange = viewModel::setHistoryQuery,
+                )
             }
             BrowserOverlay.CloseAll -> AppConfirmDialog(
                 title = stringResource(R.string.browser_close_all_tabs), text = stringResource(R.string.browser_close_all_message),

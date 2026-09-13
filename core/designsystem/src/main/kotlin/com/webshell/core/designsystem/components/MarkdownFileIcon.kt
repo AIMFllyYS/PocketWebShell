@@ -34,12 +34,12 @@ val MarkdownFileIcon: ImageVector
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round,
             ) {
-                moveTo(6.4f, 3.4f)
-                lineTo(17.6f, 3.4f)
+                moveTo(5.6f, 3.4f)
+                lineTo(18.4f, 3.4f)
                 arcToRelative(2.1f, 2.1f, 0f, false, true, 2.1f, 2.1f)
                 verticalLineTo(18.5f)
                 arcToRelative(2.1f, 2.1f, 0f, false, true, -2.1f, 2.1f)
-                horizontalLineTo(6.4f)
+                horizontalLineTo(5.6f)
                 arcToRelative(2.1f, 2.1f, 0f, false, true, -2.1f, -2.1f)
                 verticalLineTo(5.5f)
                 arcToRelative(2.1f, 2.1f, 0f, false, true, 2.1f, -2.1f)
@@ -47,27 +47,27 @@ val MarkdownFileIcon: ImageVector
             }
             path(fill = SolidColor(Color.Black)) {
                 // M
-                moveTo(6.9f, 16.4f)
+                moveTo(6.4f, 16.4f)
                 verticalLineTo(7.7f)
-                horizontalLineTo(8.55f)
+                horizontalLineTo(8.2f)
                 lineTo(10.35f, 10.85f)
-                lineTo(12.15f, 7.7f)
-                horizontalLineTo(13.8f)
+                lineTo(12.5f, 7.7f)
+                horizontalLineTo(14.3f)
                 verticalLineTo(16.4f)
-                horizontalLineTo(12.2f)
+                horizontalLineTo(12.5f)
                 verticalLineTo(11.15f)
                 lineTo(10.35f, 14.15f)
-                lineTo(8.5f, 11.15f)
+                lineTo(8.2f, 11.15f)
                 verticalLineTo(16.4f)
                 close()
                 // down-arrow
-                moveTo(17.55f, 16.4f)
-                lineTo(14.35f, 12.35f)
-                horizontalLineTo(15.7f)
+                moveTo(18.15f, 16.4f)
+                lineTo(14.7f, 12.35f)
+                horizontalLineTo(16.1f)
                 verticalLineTo(7.7f)
-                horizontalLineTo(17.55f)
+                horizontalLineTo(18.15f)
                 verticalLineTo(12.35f)
-                horizontalLineTo(18.9f)
+                horizontalLineTo(19.55f)
                 close()
             }
         }.build().also { markdownFileIcon = it }

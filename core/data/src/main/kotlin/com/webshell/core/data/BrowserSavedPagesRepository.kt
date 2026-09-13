@@ -9,7 +9,8 @@ class BrowserSavedPagesRepository @Inject constructor(
     private val historyDao: HistoryDao,
     private val bookmarkDao: BookmarkDao,
 ) {
-    fun observeHistory() = historyDao.observeRecent()
+    fun observeHistory(limit: Int = 20) = historyDao.observeRecent(limit)
+    fun observeHistorySearch(pattern: String, limit: Int) = historyDao.observeSearch(pattern, limit)
     fun observeBookmarks() = bookmarkDao.observeAll()
 
     suspend fun toggleBookmark(url: String, title: String, iconUrl: String? = null) {
@@ -27,10 +28,22 @@ class BrowserSavedPagesRepository @Inject constructor(
 
     suspend fun removeBookmark(url: String) = bookmarkDao.deleteByUrl(url)
 
-    suspend fun recordVisit(url: String, title: String) {
+    suspend fun recordVisit(url: String, title: String, iconUrl: String? = null) {
         if (url.isBlank() || url == "about:blank" || url.startsWith("data:")) return
         historyDao.deleteByUrl(url)
-        historyDao.insert(HistoryEntity(url = url, title = title.ifBlank { url }, visitedAt = System.currentTimeMillis()))
+        historyDao.insert(
+            HistoryEntity(
+                url = url,
+                title = title.ifBlank { url },
+                visitedAt = System.currentTimeMillis(),
+                iconUrl = iconUrl,
+            ),
+        )
+    }
+
+    suspend fun updateHistoryIcon(url: String, iconUrl: String) {
+        if (url.isBlank() || iconUrl.isBlank()) return
+        historyDao.updateIcon(url, iconUrl)
     }
 
     suspend fun clearHistory() = historyDao.clearAll()
