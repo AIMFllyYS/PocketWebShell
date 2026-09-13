@@ -25,20 +25,23 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 ## 功能
 
 - **网站添加**：URL 规范化、HTML 元数据解析、多来源图标候选与保存前编辑。
+- **本地 HTML**：自绘选择页，可从下载、文档和常见聊天目录导入离线网页。
+- **外部打开**：微信或文件管理器可用玄览打开 HTML / Markdown；同一路径会回到已有标签或主屏应用。Markdown 使用文档图标，本地 HTML 使用代码块图标。
 - **手机桌面**：可配置行列、图标大小、圆角、标题和页码。
 - **稳定分页**：按 `rows × columns` 固定容量分页；满页时“添加”入口自动进入新页。
 - **Launcher 式拖动**：独立浮层、触点 registration point、触觉反馈、重排、文件夹热点和边缘翻页。
-- **多标签浏览**：地址栏、返回、前进、刷新、新建标签和标签切换器。
+- **多标签浏览**：地址栏、返回、前进、刷新、新建标签和标签切换器；杀进程后标签条仍在。
+- **站点壳**：从主屏打开的网站带可拖动辅助球；新窗口可跳到浏览页或覆盖当前应用。
 - **多会话 WebView**：站点配置、WebView 池、Profile 兼容和本地资源加载。
 - **系统状态联动**：通知运行时权限、电池优化白名单状态和前台服务开关。
 
 ## 界面
 
-| iOS 风格主屏 | 分组设置 |
+| 主屏 | 设置 |
 |---|---|
-| ![主屏](docs/verification/ios-0.1.14/home-light.png) | ![设置页](docs/verification/ios-0.1.14/settings-light.png) |
+| ![主屏](docs/verification/0.1.47/home-light.png) | ![设置页](docs/verification/0.1.47/settings.png) |
 
-0.1.14 将桌面、玻璃 Dock、文件夹、菜单和功能页统一为 iOS 风格的原生 Compose 呈现。设计边界、结构性性能优化与实际检查结果见 [重构说明](docs/IOS_REDESIGN.md) 和 [验收记录](docs/verification/ios-0.1.14/VERIFICATION.md)。上图使用离线测试数据和图标加载兜底。
+桌面、玻璃 Dock、文件夹、菜单和功能页为 iOS 风格的原生 Compose 呈现。上图为 0.1.47 在 Android 15 模拟器中添加 GitHub、Wikipedia、YouTube 后的真实界面。设计边界见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 下方是拖拽机制的历史验收截图，仅展示交互行为，不代表当前视觉：
 
@@ -55,8 +58,9 @@ core/data/           Room、DataStore、Repository 与持久化设置
 core/designsystem/   iOS 风格 token、Haze 材质、菜单与原生组件
 core/webengine/      ShellWebView、池化、站点配置、Profile 与资源加载
 feature/home/        固定桌面、分页、文件夹与 DragLayer
-feature/add/         URL、元数据、图标候选与属性编辑
+feature/add/         URL、元数据、图标候选、本地 HTML 选择
 feature/browser/     多标签浏览器与标签切换器
+feature/viewer/      外部 VIEW/SEND 的 HTML/Markdown 解析与策略
 feature/me/          桌面、通知、电池、后台运行和会话设置
 ```
 
