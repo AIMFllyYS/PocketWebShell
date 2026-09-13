@@ -19,7 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
 
-internal enum class MeSection { APPEARANCE, FONT, LAYOUT, BACKGROUND, ENGINE, STORAGE, DATA, UPDATE_LOG, DEVELOPER, SESSIONS }
+internal enum class MeSection { APPEARANCE, FONT, LAYOUT, BACKGROUND, FEATURES, ENGINE, STORAGE, DATA, UPDATE_LOG, DEVELOPER, SESSIONS }
 
 /** Route/state collection only. Playbook is aggregated by app, not by this feature. */
 @Composable
@@ -104,14 +104,23 @@ fun MeScreen(
                 onBatteryState = viewModel::refreshBatteryState,
                 onBack = ::goBack,
             )
-            MeSection.ENGINE -> EngineInfoPage(
-                capabilities = state.capabilities,
+            MeSection.FEATURES -> FeatureSettingsPage(
                 autoCollapse = settings.browserAutoCollapse,
                 pullToRefresh = settings.pullToRefreshEnabled,
+                forceEnableZoom = settings.forceEnableZoomEnabled,
                 siteShellOrb = settings.siteShellOrbEnabled,
+                downloadCapsule = settings.downloadCapsuleEnabled,
+                newWindowAdopt = settings.siteShellNewWindowPolicy != com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE,
                 onAutoCollapse = viewModel::setBrowserAutoCollapse,
                 onPullToRefresh = viewModel::setPullToRefreshEnabled,
+                onForceEnableZoom = viewModel::setForceEnableZoomEnabled,
                 onSiteShellOrb = viewModel::setSiteShellOrbEnabled,
+                onDownloadCapsule = viewModel::setDownloadCapsuleEnabled,
+                onNewWindowAdopt = viewModel::setSiteShellNewWindowAdopt,
+                onBack = ::goBack,
+            )
+            MeSection.ENGINE -> EngineInfoPage(
+                capabilities = state.capabilities,
                 onBack = ::goBack,
             )
             MeSection.STORAGE -> StorageManagementPage(onBack = ::goBack)

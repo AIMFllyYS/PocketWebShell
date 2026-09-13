@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -62,12 +64,29 @@ internal fun BackgroundSettingsPage(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> notificationsGranted = granted }
     var settingsUnavailable by remember { mutableStateOf(false) }
+    var filesAccessGranted by remember { mutableStateOf(hasHtmlFileAccess(context)) }
 
     fun openSystemSettings(intent: Intent, fallback: Intent? = null) {
         settingsUnavailable = runCatching { context.startActivity(intent) }.recoverCatching {
             if (fallback == null) throw it
             context.startActivity(fallback)
         }.isFailure
+    }
+
+    fun openFilesAccessSettings() {
+        val pkg = Uri.parse("package:${context.packageName}")
+        val chain = listOf(
+            Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).setData(pkg),
+            Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(pkg),
+        )
+        settingsUnavailable = true
+        for (intent in chain) {
+            if (runCatching { context.startActivity(intent) }.isSuccess) {
+                settingsUnavailable = false
+                return
+            }
+        }
     }
 
     fun refreshRuntimeState() {
@@ -80,6 +99,7 @@ internal fun BackgroundSettingsPage(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) == PackageManager.PERMISSION_GRANTED
+        filesAccessGranted = hasHtmlFileAccess(context)
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -95,6 +115,7 @@ internal fun BackgroundSettingsPage(
         BackgroundSettingsContent(
             batteryWhitelisted = state.batteryWhitelisted,
             notificationsGranted = notificationsGranted,
+            filesAccessGranted = filesAccessGranted,
             keepAliveEnabled = keepAliveEnabled,
             oemHint = state.oemHint,
             onKeepAliveChanged = onKeepAliveChanged,
@@ -110,6 +131,7 @@ internal fun BackgroundSettingsPage(
                 } else openSystemSettings(
                     Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
             },
+            onFilesAccessClick = { openFilesAccessSettings() },
         )
         if (settingsUnavailable) Text(stringResource(R.string.me_system_settings_unavailable),
             color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
@@ -121,11 +143,13 @@ internal fun BackgroundSettingsPage(
 internal fun BackgroundSettingsContent(
     batteryWhitelisted: Boolean,
     notificationsGranted: Boolean,
+    filesAccessGranted: Boolean,
     keepAliveEnabled: Boolean,
     oemHint: String,
     onKeepAliveChanged: (Boolean) -> Unit,
     onBatteryClick: () -> Unit,
     onNotificationClick: () -> Unit,
+    onFilesAccessClick: () -> Unit,
 ) {
     AppSettingsSection(stringResource(R.string.me_system_permissions)) {
         AppListRow(
@@ -145,6 +169,15 @@ internal fun BackgroundSettingsContent(
             onClick = onNotificationClick,
             trailing = { SettingsChevron() },
         )
+        AppListDivider()
+        AppListRow(
+            title = stringResource(if (filesAccessGranted) R.string.me_files_access_allowed else R.string.me_files_access_denied),
+            subtitle = stringResource(R.string.me_files_access_hint),
+            leadingIcon = Icons.Rounded.Folder,
+            leadingIconBackground = Color(0xFF007AFF),
+            onClick = onFilesAccessClick,
+            trailing = { SettingsChevron() },
+        )
     }
     Spacer(Modifier.height(16.dp))
     AppSettingsSection(stringResource(R.string.me_keep_alive)) {
@@ -161,64 +194,117 @@ internal fun BackgroundSettingsContent(
     Spacer(Modifier.height(24.dp))
 }
 
+/** 二级页：悬浮球与浏览手势。 */
+@Composable
+internal fun FeatureSettingsPage(
+    autoCollapse: Boolean,
+    pullToRefresh: Boolean,
+    forceEnableZoom: Boolean,
+    siteShellOrb: Boolean,
+    downloadCapsule: Boolean,
+    newWindowAdopt: Boolean,
+    onAutoCollapse: (Boolean) -> Unit,
+    onPullToRefresh: (Boolean) -> Unit,
+    onForceEnableZoom: (Boolean) -> Unit,
+    onSiteShellOrb: (Boolean) -> Unit,
+    onDownloadCapsule: (Boolean) -> Unit,
+    onNewWindowAdopt: (Boolean) -> Unit,
+    onBack: () -> Unit,
+) {
+    DetailPage(stringResource(R.string.me_features), onBack) {
+        FeatureSettingsContent(
+            autoCollapse,
+            pullToRefresh,
+            forceEnableZoom,
+            siteShellOrb,
+            downloadCapsule,
+            newWindowAdopt,
+            onAutoCollapse,
+            onPullToRefresh,
+            onForceEnableZoom,
+            onSiteShellOrb,
+            onDownloadCapsule,
+            onNewWindowAdopt,
+        )
+    }
+}
+
+@Composable
+internal fun FeatureSettingsContent(
+    autoCollapse: Boolean,
+    pullToRefresh: Boolean,
+    forceEnableZoom: Boolean,
+    siteShellOrb: Boolean,
+    downloadCapsule: Boolean,
+    newWindowAdopt: Boolean,
+    onAutoCollapse: (Boolean) -> Unit,
+    onPullToRefresh: (Boolean) -> Unit,
+    onForceEnableZoom: (Boolean) -> Unit,
+    onSiteShellOrb: (Boolean) -> Unit,
+    onDownloadCapsule: (Boolean) -> Unit,
+    onNewWindowAdopt: (Boolean) -> Unit,
+) {
+    AppSettingsSection(stringResource(R.string.me_browsing_experience)) {
+        AppToggleRow(
+            title = stringResource(R.string.me_site_shell_orb),
+            subtitle = stringResource(R.string.me_site_shell_orb_hint),
+            checked = siteShellOrb,
+            onCheckedChange = onSiteShellOrb,
+        )
+        AppListDivider(hasLeadingIcon = false)
+        AppToggleRow(
+            title = stringResource(R.string.me_download_orb),
+            subtitle = stringResource(R.string.me_download_orb_hint),
+            checked = downloadCapsule,
+            onCheckedChange = onDownloadCapsule,
+        )
+        AppListDivider(hasLeadingIcon = false)
+        AppToggleRow(
+            title = stringResource(R.string.me_auto_collapse),
+            subtitle = stringResource(R.string.me_auto_collapse_hint),
+            checked = autoCollapse,
+            onCheckedChange = onAutoCollapse,
+        )
+        AppListDivider(hasLeadingIcon = false)
+        AppToggleRow(
+            title = stringResource(R.string.me_pull_to_refresh),
+            subtitle = stringResource(R.string.me_pull_to_refresh_hint),
+            checked = pullToRefresh,
+            onCheckedChange = onPullToRefresh,
+        )
+        AppListDivider(hasLeadingIcon = false)
+        AppToggleRow(
+            title = stringResource(R.string.me_force_enable_zoom),
+            subtitle = stringResource(R.string.me_force_enable_zoom_hint),
+            checked = forceEnableZoom,
+            onCheckedChange = onForceEnableZoom,
+        )
+        AppListDivider(hasLeadingIcon = false)
+        AppToggleRow(
+            title = stringResource(R.string.me_new_window_adopt),
+            subtitle = stringResource(R.string.me_new_window_adopt_hint),
+            checked = newWindowAdopt,
+            onCheckedChange = onNewWindowAdopt,
+        )
+    }
+    Spacer(Modifier.height(24.dp))
+}
+
 /** 二级页：WebView 引擎版本与能力。 */
 @Composable
 internal fun EngineInfoPage(
     capabilities: WebViewCapabilities.Snapshot,
-    autoCollapse: Boolean,
-    pullToRefresh: Boolean,
-    siteShellOrb: Boolean,
-    onAutoCollapse: (Boolean) -> Unit,
-    onPullToRefresh: (Boolean) -> Unit,
-    onSiteShellOrb: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     DetailPage(stringResource(R.string.me_engine), onBack) {
-        EngineInfoContent(
-            capabilities,
-            autoCollapse,
-            pullToRefresh,
-            siteShellOrb,
-            onAutoCollapse,
-            onPullToRefresh,
-            onSiteShellOrb,
-        )
+        EngineInfoContent(capabilities)
     }
 }
 
 @Composable
 internal fun EngineInfoContent(
     capabilities: WebViewCapabilities.Snapshot,
-    autoCollapse: Boolean,
-    pullToRefresh: Boolean,
-    siteShellOrb: Boolean,
-    onAutoCollapse: (Boolean) -> Unit,
-    onPullToRefresh: (Boolean) -> Unit,
-    onSiteShellOrb: (Boolean) -> Unit,
 ) {
-        AppSettingsSection(stringResource(R.string.me_browsing_experience)) {
-            AppToggleRow(
-                title = stringResource(R.string.me_auto_collapse),
-                subtitle = stringResource(R.string.me_auto_collapse_hint),
-                checked = autoCollapse,
-                onCheckedChange = onAutoCollapse,
-            )
-            AppListDivider(hasLeadingIcon = false)
-            AppToggleRow(
-                title = stringResource(R.string.me_pull_to_refresh),
-                subtitle = stringResource(R.string.me_pull_to_refresh_hint),
-                checked = pullToRefresh,
-                onCheckedChange = onPullToRefresh,
-            )
-            AppListDivider(hasLeadingIcon = false)
-            AppToggleRow(
-                title = stringResource(R.string.me_site_shell_orb),
-                subtitle = stringResource(R.string.me_site_shell_orb_hint),
-                checked = siteShellOrb,
-                onCheckedChange = onSiteShellOrb,
-            )
-        }
-        Spacer(Modifier.height(16.dp))
         AppSettingsSection(title = stringResource(R.string.me_engine_info)) {
             AppListRow(
                 title = stringResource(R.string.me_engine_version),
@@ -235,6 +321,18 @@ internal fun EngineInfoContent(
             )
         }
         Spacer(Modifier.height(24.dp))
+}
+
+private fun hasHtmlFileAccess(context: android.content.Context): Boolean {
+    val sdk = Build.VERSION.SDK_INT
+    if (sdk >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) return true
+    if (sdk == 29) {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+    return false
 }
 
 @Composable

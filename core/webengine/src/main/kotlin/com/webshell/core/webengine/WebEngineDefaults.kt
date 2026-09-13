@@ -19,4 +19,115 @@ object WebEngineDefaults {
 
     /** WebViewAssetLoader 的本地资源域名（本地 HTML 导入用真实 https 源提供） */
     const val ASSET_LOADER_HOST: String = "appassets.androidplatform.net"
+
+    /** [android.webkit.WebViewClient.onReceivedError] 风格码：渲染进程已消失。 */
+    const val ERROR_RENDERER_GONE: Int = -99
+
+    /**
+     * Chrome「请求桌面网站」的默认布局宽。CSS 按此宽度走桌面 media query，
+     * 再由 WebView 的 overview 缩进手机屏，才能双指捏合放大。
+     */
+    const val DESKTOP_VIEWPORT_WIDTH: Int = 980
+
+    /**
+     * Chrome-style overview scale: layout width stays [DESKTOP_VIEWPORT_WIDTH],
+     * then the visual viewport shrinks to the current WebView width.
+     * `0` means "leave the platform default" (used when width is not known yet).
+     */
+    fun desktopInitialScalePercent(viewWidthPx: Int): Int {
+        if (viewWidthPx <= 0) return 0
+        return ((viewWidthPx * 100) / DESKTOP_VIEWPORT_WIDTH).coerceIn(1, 100)
+    }
+
+    /**
+     * document-start 引导脚本。始终注入安全区 CSS 变量。
+     * [desktopMode] 且非本地导入时，把 viewport 改成固定桌面宽度（对齐 Chrome RDS）。
+     * 仅 [forceEnableZoom] 时只解锁捏合，不改 width。
+     * 本地导入只用 viewport meta 观察，且永不改 width。
+     */
+    fun documentStartBootstrap(
+        forceEnableZoom: Boolean = false,
+        localApp: Boolean = false,
+        desktopMode: Boolean = false,
+    ): String {
+        val desktopLayout = desktopMode && !localApp
+        val zoomOnly = forceEnableZoom && !desktopLayout
+        val rewrite = when {
+            desktopLayout -> DESKTOP_VIEWPORT_REWRITE +
+                if (localApp) FORCE_ENABLE_ZOOM_OBSERVE_VIEWPORT else FORCE_ENABLE_ZOOM_OBSERVE_SUBTREE
+            zoomOnly -> FORCE_ENABLE_ZOOM_REWRITE +
+                if (localApp) FORCE_ENABLE_ZOOM_OBSERVE_VIEWPORT else FORCE_ENABLE_ZOOM_OBSERVE_SUBTREE
+            else -> ""
+        }
+        return DOCUMENT_START_PREFIX + rewrite + DOCUMENT_START_SUFFIX
+    }
+
+    private const val DOCUMENT_START_PREFIX =
+        "(function(){" +
+            "window.__wsBoot={t:Date.now()};" +
+            "if(!document.getElementById('ws-safe-style')){" +
+            "var s=document.createElement('style');s.id='ws-safe-style';" +
+            "s.textContent=':root{--ws-safe-top:0px;--ws-safe-bottom:0px;" +
+            "--ws-safe-left:0px;--ws-safe-right:0px;--ws-ime-height:0px;}';" +
+            "document.documentElement.appendChild(s);}"
+
+    private const val DOCUMENT_START_SUFFIX = "})();"
+
+    /**
+     * 桌面远程站：固定 width=980，去掉挡 overview 的 initial/minimum-scale，
+     * 没有 viewport 就新建。结果已正确则不再写入。
+     */
+    private const val DESKTOP_VIEWPORT_REWRITE =
+        "function wsForceZoom(){" +
+            "var W='" + DESKTOP_VIEWPORT_WIDTH + "';" +
+            "var head=document.head||document.documentElement;" +
+            "var metas=document.getElementsByTagName('meta');" +
+            "var m=null;" +
+            "for(var i=0;i<metas.length;i++){" +
+            "if((metas[i].getAttribute('name')||'').toLowerCase()==='viewport'){m=metas[i];break;}" +
+            "}" +
+            "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');head.appendChild(m);}" +
+            "var c=m.getAttribute('content')||'';" +
+            "var parts=c.split(',').map(function(p){return p.trim();}).filter(function(p){" +
+            "if(!p)return false;" +
+            "var k=p.split('=')[0].trim().toLowerCase();" +
+            "return k!=='width'&&k!=='initial-scale'&&k!=='minimum-scale'" +
+            "&&k!=='user-scalable'&&k!=='maximum-scale';" +
+            "});" +
+            "parts.unshift('width='+W);" +
+            "parts.push('user-scalable=yes');" +
+            "parts.push('maximum-scale=10');" +
+            "var n=parts.join(',');" +
+            "if(n!==c)m.setAttribute('content',n);" +
+            "}" +
+            "wsForceZoom();"
+
+    private const val FORCE_ENABLE_ZOOM_REWRITE =
+        "function wsForceZoom(){" +
+            "var metas=document.getElementsByTagName('meta');" +
+            "for(var i=0;i<metas.length;i++){" +
+            "var m=metas[i];" +
+            "if((m.getAttribute('name')||'').toLowerCase()!=='viewport')continue;" +
+            "var c=m.getAttribute('content')||'';" +
+            "var n=c.replace(/user-scalable\\s*=\\s*[^,\\s]+/ig,'user-scalable=yes')" +
+            ".replace(/maximum-scale\\s*=\\s*[^,\\s]+/ig,'maximum-scale=10');" +
+            "if(!/user-scalable\\s*=/i.test(n))n=n?n.replace(/,?\\s*$/,'')+',user-scalable=yes':'user-scalable=yes';" +
+            "if(!/maximum-scale\\s*=/i.test(n))n=n?n.replace(/,?\\s*$/,'')+',maximum-scale=10':'maximum-scale=10';" +
+            "if(n!==c)m.setAttribute('content',n);}" +
+            "}" +
+            "wsForceZoom();"
+
+    private const val FORCE_ENABLE_ZOOM_OBSERVE_SUBTREE =
+        "try{new MutationObserver(wsForceZoom).observe(document.documentElement," +
+            "{childList:true,subtree:true,attributes:true,attributeFilter:['content','name']});}catch(e){}"
+
+    private const val FORCE_ENABLE_ZOOM_OBSERVE_VIEWPORT =
+        "try{var r=document.head||document.documentElement;" +
+            "new MutationObserver(wsForceZoom).observe(r," +
+            "{childList:true,subtree:false,attributes:true,attributeFilter:['content','name']});" +
+            "var metas=r.getElementsByTagName('meta');" +
+            "for(var i=0;i<metas.length;i++){" +
+            "if((metas[i].getAttribute('name')||'').toLowerCase()==='viewport')" +
+            "try{new MutationObserver(wsForceZoom).observe(metas[i],{attributes:true,attributeFilter:['content','name']});}catch(e){}" +
+            "}}catch(e){}"
 }

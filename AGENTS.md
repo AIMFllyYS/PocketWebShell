@@ -25,6 +25,7 @@ Protect these product properties in every change:
 - `feature/add/`: URL normalization, metadata parsing, icon discovery and app editing.
 - `feature/browser/`: browser chrome, tabs and tab switcher.
 - `feature/me/`: settings, Android permission/status surfaces and running-session presentation.
+- `feature/viewer/`: VIEW/SEND 解析、临时文件拷贝、Markdown 消毒。实际展示复用浏览标签（`MainScaffold` 挂到 `BrowserViewModel`），不再整页早退到独立 Viewer。同一源路径复用已打开标签或已保存的本地应用；可选「制作应用」才会写入 Room。
 - `docs/`: maintained technical and release documentation.
 
 Do not place production code in generated `build/` directories, screenshots, or release artifact folders.
@@ -143,6 +144,7 @@ Run the narrowest relevant checks during iteration, then the required final chec
 | Documentation only | Link/path review; no Gradle build required unless commands changed |
 | `feature/home` | `:feature:home:testDebugUnitTest :app:assembleDebug` |
 | `feature/add` or parsing | `:feature:add:testDebugUnitTest :app:assembleDebug` |
+| `feature/viewer` or incoming VIEW/SEND | `:feature:viewer:testDebugUnitTest :core:webengine:testDebugUnitTest :app:assembleDebug` |
 | Browser/WebView/session | `testDebugUnitTest :app:assembleDebug` plus manual tab/session smoke test |
 | Room/DataStore | Relevant unit tests, migration review, `testDebugUnitTest :app:assembleDebug` |
 | Theme/layout | `:app:assembleDebug` plus compact-width and standard-width visual check |

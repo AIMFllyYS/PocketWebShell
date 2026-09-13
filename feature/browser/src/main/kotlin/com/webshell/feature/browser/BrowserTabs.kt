@@ -25,7 +25,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Public
+import com.webshell.core.designsystem.components.MarkdownFileIcon
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -114,8 +116,17 @@ internal fun TabCard(tab: BrowserTab, active: Boolean, onClick: () -> Unit, onCl
                 Image(bitmap = remember(thumb) { thumb.asImageBitmap() }, contentDescription = null,
                     modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
-                Icon(Icons.Rounded.Public, null, modifier = Modifier.align(Alignment.Center).size(42.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                val placeholder = when (tab.kind) {
+                    BrowserTabKind.INCOMING_MARKDOWN -> MarkdownFileIcon
+                    BrowserTabKind.INCOMING_HTML -> Icons.Rounded.Code
+                    BrowserTabKind.WEB -> Icons.Rounded.Public
+                }
+                Icon(
+                    placeholder,
+                    null,
+                    modifier = Modifier.align(Alignment.Center).size(42.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                )
             }
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(48.dp)) {
                 Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f), CircleShape),
@@ -128,7 +139,7 @@ internal fun TabCard(tab: BrowserTab, active: Boolean, onClick: () -> Unit, onCl
             Text(tab.title.ifBlank { stringResource(R.string.browser_new_tab) },
                 style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(tab.url.stripScheme(), style = MaterialTheme.typography.labelSmall,
+            Text(tab.secondaryLabel(), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp))
         }

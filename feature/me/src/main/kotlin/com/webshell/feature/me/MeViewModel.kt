@@ -150,8 +150,26 @@ class MeViewModel @Inject constructor(
         settingsRepository.setPullToRefreshEnabled(enabled)
     }
 
+    fun setForceEnableZoomEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setForceEnableZoomEnabled(enabled)
+    }
+
     fun setSiteShellOrbEnabled(enabled: Boolean) = viewModelScope.launch {
         settingsRepository.setSiteShellOrbEnabled(enabled)
+    }
+
+    fun setDownloadCapsuleEnabled(enabled: Boolean) = viewModelScope.launch {
+        settingsRepository.setDownloadCapsuleEnabled(enabled)
+    }
+
+    fun setSiteShellNewWindowAdopt(adopt: Boolean) = viewModelScope.launch {
+        settingsRepository.setSiteShellNewWindowPolicy(
+            if (adopt) {
+                com.webshell.core.data.SITE_SHELL_NEW_WINDOW_ADOPT
+            } else {
+                com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE
+            },
+        )
     }
 
     fun refreshSessions() {

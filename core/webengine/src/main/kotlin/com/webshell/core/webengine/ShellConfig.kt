@@ -19,7 +19,7 @@ data class ShellConfig(
      * profile. Packaged `/assets/…` resources remain available to all sessions.
      */
     val localAppId: String? = null,
-    /** 桌面模式：桌面 UA + UA-CH + 宽视口 */
+    /** 桌面模式：桌面 UA + UA-CH + CSS 布局宽 980（再由 overview 缩进屏幕） */
     val desktopMode: Boolean = false,
     /** 允许 WebView 算法深色（页面未适配深色时的系统级反色） */
     val algorithmicDark: Boolean = false,
@@ -29,10 +29,20 @@ data class ShellConfig(
     val autoplayMedia: Boolean = true,
     /** 下拉刷新；产品默认关闭，仅在设置打开且页面已到顶部时拦截。 */
     val pullToRefresh: Boolean = false,
+    /**
+     * 在 document-start 改写 viewport，绕过站点 `user-scalable=no`。
+     * 桌面模式默认打开；移动模式与本地导入默认关闭，由用户偏好打开。
+     */
+    val forceEnableZoom: Boolean = false,
     /** 内容边距模式 */
     val insetMode: InsetMode = InsetMode.PAD,
     /** 外链（非当前站点域）策略 */
     val externalLinkPolicy: ExternalLinkPolicy = ExternalLinkPolicy.OPEN_IN_BROWSER,
+    /**
+     * `target=_blank` / `window.open`：默认领养成浏览标签。
+     * 覆盖当前壳会清掉返回栈，OAuth/支付弹窗应保持领养。
+     */
+    val newWindowPolicy: NewWindowPolicy = NewWindowPolicy.ADOPT_IN_BROWSER,
     /** 文本缩放百分比（100 = 不缩放） */
     val textZoomPercent: Int = 100,
 ) {
@@ -53,4 +63,16 @@ data class ShellConfig(
     }
 
     enum class ExternalLinkPolicy { OPEN_IN_SAME, OPEN_IN_BROWSER }
+
+    enum class NewWindowPolicy { ADOPT_IN_BROWSER, REPLACE_IN_SHELL }
 }
+
+/**
+ * 桌面远程站默认允许捏合；本地 `/local/<appId>/` 导入不因桌面模式强开；
+ * 用户偏好可在移动模式（及本地导入）下打开。
+ */
+fun resolveForceEnableZoom(
+    desktopMode: Boolean,
+    localApp: Boolean,
+    userEnabled: Boolean,
+): Boolean = userEnabled || (desktopMode && !localApp)

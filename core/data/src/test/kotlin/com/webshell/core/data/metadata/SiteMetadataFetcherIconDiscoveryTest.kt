@@ -2,6 +2,7 @@ package com.webshell.core.data.metadata
 
 import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -40,5 +41,12 @@ class SiteMetadataFetcherIconDiscoveryTest {
             fetcher.displayFallbackIconUrl("https://unknown-site.example/path")!!
                 .startsWith("https://www.google.com/s2/favicons?domain=unknown-site.example"),
         )
+    }
+
+    @Test
+    fun `sniffs html even when the host labels it as plain text`() {
+        val html = "<!doctype html><html><head><link rel=\"icon\" href=\"/app.png\"></head></html>"
+        assertTrue(fetcher.looksLikeHtml(html.toByteArray()))
+        assertFalse(fetcher.looksLikeHtml("""{"ok":true}""".toByteArray()))
     }
 }

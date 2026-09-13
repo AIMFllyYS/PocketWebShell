@@ -1,6 +1,8 @@
 package com.webshell.core.webengine.storage
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StorageClassifierTest {
@@ -103,5 +105,39 @@ class StorageClassifierTest {
             StorageCategory.SITE_DATA,
             StorageClassifier.classifyProfileEntry("cache/index.txt"),
         )
+    }
+
+    @Test
+    fun `unknown top-level is site data and marked unknown`() {
+        assertEquals(
+            StorageCategory.SITE_DATA,
+            StorageClassifier.classifyProfileEntry("BrandNewStore/index"),
+        )
+        assertTrue(StorageClassifier.isUnknownProfileTopLevel("BrandNewStore/index"))
+        assertFalse(StorageClassifier.isUnknownProfileTopLevel("IndexedDB/https_example.com_0.indexeddb.leveldb"))
+        assertFalse(StorageClassifier.isUnknownProfileTopLevel("Cache/index.txt"))
+    }
+
+    @Test
+    fun `cache constants have a single source`() {
+        assertEquals(
+            listOf(
+                "Cache",
+                "Code Cache",
+                "GPUCache",
+                "GrShaderCache",
+                "ShaderCache",
+                "DawnGraphiteCache",
+                "DawnWebGPUCache",
+                "GraphiteDawnCache",
+            ),
+            StorageClassifier.CACHE_DIR_NAMES,
+        )
+        assertTrue("WebView" in StorageClassifier.WEBVIEW_CACHE_DIR_NAMES)
+        assertTrue("IndexedDB" in StorageClassifier.SITE_DATA_DIR_NAMES)
+        assertTrue(StorageClassifier.isLegacyProfileDirName("Profile 1"))
+        assertTrue(StorageClassifier.isLegacyProfileDirName("Profile 12"))
+        assertFalse(StorageClassifier.isLegacyProfileDirName("profiles"))
+        assertFalse(StorageClassifier.isLegacyProfileDirName("Default"))
     }
 }

@@ -42,6 +42,7 @@ import com.webshell.core.designsystem.components.AppToggleRow
 import com.webshell.core.designsystem.components.AppValueSlider
 import com.webshell.core.designsystem.components.AppValueStepper
 import com.webshell.core.designsystem.components.SiteIcon
+import com.webshell.core.designsystem.components.SiteIconGlyph
 
 /** Every demo calls the same component used in production, with only local fixture state. */
 fun designSystemCatalog(): List<CatalogEntry> = foundationCatalog() + listOf(
@@ -59,6 +60,7 @@ fun designSystemCatalog(): List<CatalogEntry> = foundationCatalog() + listOf(
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SiteIcon(stringResource(R.string.catalog_sample_name), null)
             SiteIcon(stringResource(R.string.catalog_sample_local), null, localFallback = true)
+            SiteIcon(stringResource(R.string.catalog_sample_markdown), null, glyph = SiteIconGlyph.Markdown)
             SiteIcon("", null, size = 44.dp)
         }
     },

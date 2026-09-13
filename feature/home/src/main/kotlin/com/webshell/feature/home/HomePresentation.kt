@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +40,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -167,7 +167,10 @@ internal fun LauncherCell(
         label = "press-scale",
     )
     val phase = remember(cell.key) { if ((cell.key.hashCode() and 1) == 0) 1f else -1f }
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.alpha(if (isSource) 0.18f else 1f)) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.fillMaxWidth().alpha(if (isSource) 0.18f else 1f),
+    ) {
         Box {
             Surface(
                 shape = RoundedCornerShape(settings.iconCornerRadiusPercent.coerceIn(0, 50)),
@@ -190,7 +193,9 @@ internal fun LauncherCell(
             if (isEditMode) {
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier.align(Alignment.TopStart).offset(x = (-4).dp, y = (-4).dp)
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(2.dp)
                         .size(22.dp)
                         .background(
                             if (isEditSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
@@ -212,8 +217,12 @@ internal fun LauncherCell(
                 text = if (cell.isFolder) (cell.folderName ?: stringResource(R.string.home_folder)) else cell.app.title,
                 style = launcherLabelStyle(),
                 maxLines = 1,
+                softWrap = false,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(top = 5.dp, start = 1.dp, end = 1.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 5.dp, start = 4.dp, end = 4.dp)
+                    .clipToBounds(),
             )
         }
     }
@@ -228,7 +237,7 @@ internal fun AddCell(
 ) {
     val wallpaper = LocalLauncherWallpaperBacked.current
     val shape = RoundedCornerShape(cornerRadiusPercent.coerceIn(0, 50))
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier.size(iconSize).staticGlassSurface(shape = shape, opacity = if (wallpaper) 0.25f else 0.8f),
             contentAlignment = Alignment.Center,
@@ -241,7 +250,17 @@ internal fun AddCell(
             )
         }
         if (showLabel) {
-            Text(stringResource(R.string.home_add), style = launcherLabelStyle(), modifier = Modifier.padding(top = 5.dp))
+            Text(
+                stringResource(R.string.home_add),
+                style = launcherLabelStyle(),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 5.dp, start = 4.dp, end = 4.dp)
+                    .clipToBounds(),
+            )
         }
     }
 }

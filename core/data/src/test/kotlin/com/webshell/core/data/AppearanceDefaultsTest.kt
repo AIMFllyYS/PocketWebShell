@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,8 +37,12 @@ class AppearanceDefaultsTest {
         assertEquals(100, settings.appFontScalePercent)
         assertTrue(settings.browserAutoCollapse)
         assertFalse(settings.pullToRefreshEnabled)
+        assertFalse(settings.forceEnableZoomEnabled)
         assertTrue(settings.siteShellOrbEnabled)
         assertFalse(settings.siteShellOrbParked)
+        assertTrue(settings.downloadCapsuleEnabled)
+        assertEquals(SITE_SHELL_NEW_WINDOW_ADOPT, settings.siteShellNewWindowPolicy)
+        assertNull(settings.browserActiveTabId)
         assertEquals(-1f, settings.browserOrbX, 0f)
         assertEquals(-1f, settings.siteShellOrbX, 0f)
         assertEquals(-1f, settings.siteShellOrbY, 0f)

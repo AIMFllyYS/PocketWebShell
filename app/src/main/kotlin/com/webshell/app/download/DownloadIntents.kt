@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.content.FileProvider
+import java.io.File
 
 /** One step in the Files / Downloads / share fallback chain. */
 data class DownloadIntentSpec(
@@ -22,6 +24,16 @@ object DownloadIntents {
     fun folderDocumentUriString(): String =
         "content://$DOCUMENTS_AUTHORITY/document/${encodeDocumentId(FOLDER_DOCUMENT_ID)}"
 
+    /**
+     * DocumentsUI tree browse URI. FLAG_GRANT on these URIs is a no-op: this
+     * app is not the ExternalStorageProvider, so a SecurityException is normal
+     * and [launch] must continue to DownloadManager / file VIEW.
+     */
+    fun folderTreeUriString(): String {
+        val id = encodeDocumentId(FOLDER_DOCUMENT_ID)
+        return "content://$DOCUMENTS_AUTHORITY/tree/$id/document/$id"
+    }
+
     fun encodeDocumentId(documentId: String): String =
         buildString(documentId.length + 8) {
             documentId.forEach { ch ->
@@ -35,6 +47,7 @@ object DownloadIntents {
 
     fun specs(fileUriString: String?): List<DownloadIntentSpec> = buildList {
         add(DownloadIntentSpec(Intent.ACTION_VIEW, folderDocumentUriString(), MIME_TYPE_DIR))
+        add(DownloadIntentSpec(Intent.ACTION_VIEW, folderTreeUriString(), MIME_TYPE_DIR))
         add(DownloadIntentSpec(DownloadManager.ACTION_VIEW_DOWNLOADS, null, null))
         fileUriString?.let { add(DownloadIntentSpec(Intent.ACTION_VIEW, it, "*/*")) }
         fileUriString?.let { add(DownloadIntentSpec(Intent.ACTION_SEND, it, "application/octet-stream")) }
@@ -42,11 +55,11 @@ object DownloadIntents {
 
     fun folderDocumentUri(): Uri = Uri.parse(folderDocumentUriString())
 
-    fun folderViewIntent(): Intent = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(folderDocumentUri(), MIME_TYPE_DIR)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        addCategory(Intent.CATEGORY_DEFAULT)
-    }
+    fun folderTreeUri(): Uri = Uri.parse(folderTreeUriString())
+
+    fun folderViewIntent(): Intent = documentsFolderIntent(folderDocumentUri())
+
+    fun folderTreeViewIntent(): Intent = documentsFolderIntent(folderTreeUri())
 
     fun systemDownloadsIntent(): Intent =
         Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
@@ -74,27 +87,49 @@ object DownloadIntents {
 
     fun candidates(documentUri: Uri?, fileUri: Uri?, shareTitle: String = ""): List<Intent> = buildList {
         add(folderViewIntent())
+        add(folderTreeViewIntent())
         add(systemDownloadsIntent())
         (documentUri ?: fileUri)?.let { add(fileViewIntent(it)) }
         (documentUri ?: fileUri)?.let { add(shareIntent(it, shareTitle)) }
     }
 
+    fun folderOpenIntents(): List<Intent> = listOf(
+        folderViewIntent(),
+        folderTreeViewIntent(),
+        systemDownloadsIntent(),
+    )
+
+    fun launch(context: Context, intent: Intent): Boolean = start(context, intent)
+
+    fun launchAll(context: Context, intents: List<Intent>): Boolean = intents.any { start(context, it) }
+
+    /**
+     * Try every candidate. Do not gate on resolveActivity: a Documents UI match
+     * plus SecurityException used to abort the chain before ACTION_VIEW_DOWNLOADS.
+     */
     fun launch(context: Context, documentUri: Uri?, fileUri: Uri?, shareTitle: String): Boolean {
-        val pm = context.packageManager
-        val folder = folderViewIntent()
-        if (folder.resolveActivity(pm) != null) return start(context, folder)
-        val downloads = systemDownloadsIntent()
-        if (downloads.resolveActivity(pm) != null) return start(context, downloads)
-        val file = (documentUri ?: fileUri)?.let { fileViewIntent(it) }
-        if (file != null && file.resolveActivity(pm) != null) return start(context, file)
-        val shareUri = documentUri ?: fileUri ?: return false
-        val probe = Intent(Intent.ACTION_SEND).apply {
-            type = "application/octet-stream"
-            putExtra(Intent.EXTRA_STREAM, shareUri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        if (probe.resolveActivity(pm) == null) return false
-        return start(context, shareIntent(shareUri, shareTitle))
+        val shareableFile = fileUri?.let { shareableUri(context, it) }
+        val shareableDocument = documentUri?.let { shareableUri(context, it) }
+        val viewUri = shareableFile ?: shareableDocument
+        return candidates(shareableDocument, viewUri, shareTitle).any { start(context, it) }
+    }
+
+    fun shareableUri(context: Context, uri: Uri): Uri {
+        if (!uri.scheme.equals("file", ignoreCase = true)) return uri
+        val path = uri.path ?: return uri
+        return runCatching {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                File(path),
+            )
+        }.getOrDefault(uri)
+    }
+
+    private fun documentsFolderIntent(uri: Uri): Intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, MIME_TYPE_DIR)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addCategory(Intent.CATEGORY_DEFAULT)
     }
 
     private fun start(context: Context, intent: Intent): Boolean =

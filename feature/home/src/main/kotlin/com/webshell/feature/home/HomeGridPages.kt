@@ -61,7 +61,7 @@ internal fun HomeGridPages(
                 columns = GridCells.Fixed(layout.columns), modifier = Modifier.fillMaxSize(), contentPadding = padding,
                 horizontalArrangement = Arrangement.spacedBy(geometry.columnGapDp.dp),
                 verticalArrangement = Arrangement.spacedBy(geometry.rowGapDp.dp),
-                // Short/large-type pages may overflow vertically, never clip accessible labels.
+                // Short/large-type pages scroll the whole grid; cell titles clip themselves.
                 userScrollEnabled = geometry.requiresVerticalScroll && !isDragging,
             ) {
                 itemsIndexed(cells, key = { slot, cell -> cell?.key ?: "slot-$page-$slot" }) { slot, cell ->

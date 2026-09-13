@@ -62,7 +62,7 @@ internal fun HomeGridSlot(
     val pressed by interaction.collectIsPressedAsState()
     LauncherCell(
         cell = cell, iconSize = iconSize, settings = settings,
-        isSource = ui.draggingKey == cell.key,
+        isSource = cell.key in ui.dragGroup || ui.draggingKey == cell.key,
         isMergeTarget = ui.folderArmed && ui.folderCandidate == cell.key,
         isReorderTarget = ui.dragHoverTarget == cell.key && !ui.folderArmed,
         jiggleRotation = jiggleRotation, isEditMode = ui.editMode,

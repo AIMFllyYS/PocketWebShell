@@ -65,8 +65,16 @@
     <string name="browser_ssl_message">网站证书校验失败（%1$s）。已拦截此连接，请勿输入密码或付款信息。重试仍会进行完整的证书检查。</string>
     <string name="browser_ssl_retry">重新检查</string>
     <string name="browser_leave">离开</string>
+    <string name="browser_make_app">制作应用</string>
+    <string name="browser_add_home_title">添加到主屏幕？</string>
+    <string name="browser_add_home_message">把「%1$s」保存为主屏幕快捷方式，之后可从玄览直接打开。</string>
+    <string name="browser_add_home_confirm">添加</string>
+    <string name="browser_add_home_dismiss">仅查看</string>
+    <string name="browser_added_home">已添加到主屏幕</string>
+    <string name="browser_add_home_failed">添加失败，请重试</string>
     <string name="browser_permission_title">网站申请权限</string>
     <string name="browser_permission_message">%1$s 申请使用%2$s。仅在你信任这个网站且正在使用相关功能时允许。</string>
+    <string name="browser_capture_permission_message">当前网页要使用%1$s拍摄或录制。仅在你信任这个网站且正在使用相关功能时允许。</string>
     <string name="browser_camera">摄像头</string>
     <string name="browser_microphone">麦克风</string>
     <string name="browser_allow">允许</string>
@@ -103,6 +111,7 @@
     <string name="browser_start_title">新标签页</string>
     <string name="browser_start_favorites">收藏夹</string>
     <string name="browser_start_favorites_empty">收藏的网站会出现在这里</string>
+    <string name="browser_start_favorites_guide">打开网页后，用菜单里的标星即可加入收藏。</string>
     <string name="browser_start_recent">最近访问</string>
     <string name="browser_start_recent_empty">最近打开的网页会出现在这里</string>
 </resources>

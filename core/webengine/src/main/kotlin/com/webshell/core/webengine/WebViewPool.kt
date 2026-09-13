@@ -129,6 +129,12 @@ object WebViewPool {
         pool[sessionId]?.detachForReuse()
     }
 
+    /** Drop every unprotected live session except [keepSessionId] so a heavy local app can load. */
+    fun evictUnprotectedExcept(keepSessionId: String) {
+        val victims = pool.keys.filter { it != keepSessionId && !isProtected(it) }
+        victims.forEach(::evict)
+    }
+
     private fun evictIfNeeded() {
         while (pool.size >= maxLive) {
             // access-order 下首位即最久未访问；跳过受保护的激活会话

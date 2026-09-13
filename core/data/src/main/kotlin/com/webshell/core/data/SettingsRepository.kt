@@ -55,12 +55,23 @@ data class HomeSettings(
     val browserOrbY: Float = -1f,
     /** 仅在页面已到顶部时允许下拉刷新；默认关闭，避免和网页内滚动冲突。 */
     val pullToRefreshEnabled: Boolean = false,
+    /**
+     * 移动模式下也强制允许网页捏合缩放（改写 viewport）。
+     * 桌面模式本身默认允许，不受此开关影响。
+     */
+    val forceEnableZoomEnabled: Boolean = false,
     /** Site-shell assist orb; default on to match the previous always-visible corner button. */
     val siteShellOrbEnabled: Boolean = true,
     /** Normalized center; -1 means the default top-right rest point. */
     val siteShellOrbX: Float = -1f,
     val siteShellOrbY: Float = -1f,
     val siteShellOrbParked: Boolean = false,
+    /** Right-edge download capsule; default on. History remains available from menus. */
+    val downloadCapsuleEnabled: Boolean = true,
+    /** Site-shell `window.open` default: adopt into Browse. */
+    val siteShellNewWindowPolicy: String = SITE_SHELL_NEW_WINDOW_ADOPT,
+    /** Last active browser tab id; null = none. */
+    val browserActiveTabId: String? = null,
 )
 
 /** 主题模式取值，见 docs/DESIGN.md */
@@ -106,10 +117,14 @@ class SettingsRepository @Inject constructor(
         val BROWSER_ORB_X = floatPreferencesKey("browser_orb_x")
         val BROWSER_ORB_Y = floatPreferencesKey("browser_orb_y")
         val PULL_TO_REFRESH = booleanPreferencesKey("pull_to_refresh")
+        val FORCE_ENABLE_ZOOM = booleanPreferencesKey("force_enable_zoom")
         val SITE_SHELL_ORB_ENABLED = booleanPreferencesKey("site_shell_orb_enabled")
         val SITE_SHELL_ORB_X = floatPreferencesKey("site_shell_orb_x")
         val SITE_SHELL_ORB_Y = floatPreferencesKey("site_shell_orb_y")
         val SITE_SHELL_ORB_PARKED = booleanPreferencesKey("site_shell_orb_parked")
+        val DOWNLOAD_CAPSULE_ENABLED = booleanPreferencesKey("download_capsule_enabled")
+        val SITE_SHELL_NEW_WINDOW_POLICY = stringPreferencesKey("site_shell_new_window_policy")
+        val BROWSER_ACTIVE_TAB_ID = stringPreferencesKey("browser_active_tab_id")
     }
 
     val settings: Flow<HomeSettings> = context.settingsStore.data.map { prefs ->
@@ -137,10 +152,16 @@ class SettingsRepository @Inject constructor(
             browserOrbX = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_X]),
             browserOrbY = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_Y]),
             pullToRefreshEnabled = prefs[Keys.PULL_TO_REFRESH] ?: false,
+            forceEnableZoomEnabled = prefs[Keys.FORCE_ENABLE_ZOOM] ?: false,
             siteShellOrbEnabled = prefs[Keys.SITE_SHELL_ORB_ENABLED] ?: true,
             siteShellOrbX = normalizedOrbCoordinate(prefs[Keys.SITE_SHELL_ORB_X]),
             siteShellOrbY = normalizedOrbCoordinate(prefs[Keys.SITE_SHELL_ORB_Y]),
             siteShellOrbParked = prefs[Keys.SITE_SHELL_ORB_PARKED] ?: false,
+            downloadCapsuleEnabled = prefs[Keys.DOWNLOAD_CAPSULE_ENABLED] ?: true,
+            siteShellNewWindowPolicy = normalizeSiteShellNewWindowPolicy(
+                prefs[Keys.SITE_SHELL_NEW_WINDOW_POLICY],
+            ),
+            browserActiveTabId = prefs[Keys.BROWSER_ACTIVE_TAB_ID]?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -221,6 +242,10 @@ class SettingsRepository @Inject constructor(
         context.settingsStore.edit { it[Keys.PULL_TO_REFRESH] = enabled }
     }
 
+    suspend fun setForceEnableZoomEnabled(enabled: Boolean) {
+        context.settingsStore.edit { it[Keys.FORCE_ENABLE_ZOOM] = enabled }
+    }
+
     suspend fun setSiteShellOrbEnabled(enabled: Boolean) {
         context.settingsStore.edit {
             it[Keys.SITE_SHELL_ORB_ENABLED] = enabled
@@ -249,6 +274,23 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setSiteShellOrbParked(parked: Boolean) {
         context.settingsStore.edit { it[Keys.SITE_SHELL_ORB_PARKED] = parked }
+    }
+
+    suspend fun setDownloadCapsuleEnabled(enabled: Boolean) {
+        context.settingsStore.edit { it[Keys.DOWNLOAD_CAPSULE_ENABLED] = enabled }
+    }
+
+    suspend fun setSiteShellNewWindowPolicy(value: String) {
+        context.settingsStore.edit {
+            it[Keys.SITE_SHELL_NEW_WINDOW_POLICY] = normalizeSiteShellNewWindowPolicy(value)
+        }
+    }
+
+    suspend fun setBrowserActiveTabId(tabId: String?) {
+        context.settingsStore.edit {
+            if (tabId.isNullOrBlank()) it.remove(Keys.BROWSER_ACTIVE_TAB_ID)
+            else it[Keys.BROWSER_ACTIVE_TAB_ID] = tabId
+        }
     }
 
     internal companion object {

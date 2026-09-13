@@ -20,6 +20,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -35,6 +36,9 @@ import com.webshell.core.designsystem.components.AppFormField
 import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.WebViewPool
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Platform objects are scoped to the current visible session, never to saved UI state. */
 @Stable
@@ -47,6 +51,9 @@ class WebSessionRequests internal constructor() {
     lateinit var listener: ShellListener
         internal set
     internal var allowPermission: () -> Unit = {}
+    internal var captureConsent by mutableStateOf<FileCapturePrompt?>(null)
+    internal var captureOutputUri: Uri? = null
+    internal var allowCapture: () -> Unit = {}
     internal var geolocation: ((Boolean, Boolean) -> Unit)? = null
     internal var geolocationOrigin by mutableStateOf<String?>(null)
     internal var allowGeolocation: () -> Unit = {}
@@ -55,7 +62,7 @@ class WebSessionRequests internal constructor() {
     var exitFullScreen: () -> Unit = {}
     internal var sslCancel: () -> Unit = {}
     internal var jsDialog by mutableStateOf<PendingJsDialog?>(null)
-    val busy: Boolean get() = permission != null || sslError != null || fileCallback != null || geolocationOrigin != null || fullScreenView != null || jsDialog != null
+    val busy: Boolean get() = permission != null || sslError != null || fileCallback != null || captureConsent != null || geolocationOrigin != null || fullScreenView != null || jsDialog != null
 
     internal fun denyPermission() {
         permission?.deny()
@@ -78,10 +85,21 @@ class WebSessionRequests internal constructor() {
      * must call [denyGeolocation] instead, or it would also silently
      * cancel an unrelated pending JS dialog/file chooser/SSL decision.
      */
-    internal fun cancelPending() {
+    internal fun failFileChooser() {
+        captureConsent = null
+        captureOutputUri = null
+        allowCapture = {}
         fileCallback?.onReceiveValue(null)
         fileCallback = null
         sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_FILE) }
+    }
+
+    internal fun denyCapture() {
+        failFileChooser()
+    }
+
+    internal fun cancelPending() {
+        failFileChooser()
         denyPermission()
         sslError = null
         sslCancel()
@@ -113,10 +131,16 @@ class WebSessionRequests internal constructor() {
 }
 
 /** Activity results can outlive a tab switch; route each result to its launch-time owner. */
+internal data class FileCapturePrompt(
+    val video: Boolean,
+    val params: WebChromeClient.FileChooserParams,
+)
+
 private class PlatformLaunchOwners {
     var file: WebSessionRequests? = null
     var permission: WebSessionRequests? = null
     var location: WebSessionRequests? = null
+    var capture: WebSessionRequests? = null
 }
 
 @Composable
@@ -125,6 +149,7 @@ fun rememberWebSessionRequests(
     onNewWindow: (NewWindowRequest) -> Unit, onMessage: (String) -> Unit,
 ): WebSessionRequests {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val requests = remember(sessionId) { WebSessionRequests() }
     val owners = remember { PlatformLaunchOwners() }
     val newWindow = rememberUpdatedState(onNewWindow)
@@ -132,10 +157,15 @@ fun rememberWebSessionRequests(
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val owner = owners.file
         owners.file = null
-        owner?.fileCallback?.onReceiveValue(if (owner.available) {
-            WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
-        } else null)
-                owner?.fileCallback = null
+        val captureUri = owner?.captureOutputUri
+        owner?.captureOutputUri = null
+        val uris = when {
+            owner == null || !owner.available -> null
+            captureUri != null -> if (result.resultCode == Activity.RESULT_OK) arrayOf(captureUri) else null
+            else -> WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        }
+        owner?.fileCallback?.onReceiveValue(uris)
+        owner?.fileCallback = null
         owner?.sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_FILE) }
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
@@ -152,6 +182,23 @@ fun rememberWebSessionRequests(
         }
         owner?.permission = null
         owner?.sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_PERMISSION) }
+    }
+    val capturePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        val owner = owners.capture
+        owners.capture = null
+        val prompt = owner?.captureConsent
+        owner?.captureConsent = null
+        if (owner == null || !owner.available || prompt == null) {
+            owner?.failFileChooser()
+            return@rememberLauncherForActivityResult
+        }
+        val cameraOk = grants[Manifest.permission.CAMERA] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (cameraOk) {
+            startCaptureOrPicker(scope, context, owner, owners, fileLauncher, prompt)
+        } else {
+            launchFilePicker(owner, owners, fileLauncher, prompt.params)
+        }
     }
     val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val owner = owners.location
@@ -172,9 +219,18 @@ fun rememberWebSessionRequests(
         requests.allowPermission = {
             val request = requests.permission
             if (request != null && requests.available) {
-                val permissions = request.resources.mapNotNull(::permissionForWebResource).distinct()
-                if (permissions.isEmpty() || owners.permission != null) requests.denyPermission()
-                else {
+                val permissions = androidPermissionsForWebResources(request.resources)
+                val grantable = grantableWebResources(request.resources)
+                if (permissions.isEmpty() || grantable.isEmpty() || owners.permission != null) {
+                    requests.denyPermission()
+                } else if (permissions.all { permission ->
+                        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+                    }
+                ) {
+                    request.grant(grantable.toTypedArray())
+                    requests.permission = null
+                    requests.sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_PERMISSION) }
+                } else {
                     owners.permission = requests
                     runCatching { permissionLauncher.launch(permissions.toTypedArray()) }.onFailure {
                         owners.permission = null
@@ -182,6 +238,27 @@ fun rememberWebSessionRequests(
                     }
                 }
             } else requests.denyPermission()
+        }
+        requests.allowCapture = {
+            val prompt = requests.captureConsent
+            if (prompt == null || !requests.available || owners.capture != null) {
+                requests.denyCapture()
+            } else {
+                val permissions = WebFileCapture.runtimePermissions(true, prompt.params.acceptTypes)
+                val missing = permissions.filter {
+                    ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+                }
+                if (missing.isEmpty()) {
+                    requests.captureConsent = null
+                    startCaptureOrPicker(scope, context, requests, owners, fileLauncher, prompt)
+                } else {
+                    owners.capture = requests
+                    runCatching { capturePermissionLauncher.launch(missing.toTypedArray()) }.onFailure {
+                        owners.capture = null
+                        requests.denyCapture()
+                    }
+                }
+            }
         }
         requests.allowGeolocation = {
             val callback = requests.geolocation
@@ -218,6 +295,7 @@ fun rememberWebSessionRequests(
             if (owners.file === requests) owners.file = null
             if (owners.permission === requests) owners.permission = null
             if (owners.location === requests) owners.location = null
+            if (owners.capture === requests) owners.capture = null
             requests.clear()
         }
     }
@@ -233,25 +311,17 @@ fun rememberWebSessionRequests(
                 requests.fileCallback = callback
                 owners.file = requests
                 requests.sessionId?.let { WebViewPool.protect(it, WebViewPool.ProtectionReason.PENDING_FILE) }
-                runCatching {
-                    val intent = params.createIntent().apply {
-                        if (params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
-                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                        }
-                        // Preserve the browser's capture intent without granting
-                        // the page a direct camera object; the system picker owns it.
-                        if (params.isCaptureEnabled) putExtra("android.intent.extra.CAPTURE", true)
-                    }
-                    fileLauncher.launch(intent)
-                }.onFailure {
-                    callback.onReceiveValue(null)
-                    requests.fileCallback = null
-                    owners.file = null
-                    requests.sessionId?.let { WebViewPool.unprotect(it, WebViewPool.ProtectionReason.PENDING_FILE) }
+                if (params.isCaptureEnabled) {
+                    requests.captureConsent = FileCapturePrompt(
+                        video = WebFileCapture.isVideoAccept(params.acceptTypes),
+                        params = params,
+                    )
+                } else {
+                    launchFilePicker(requests, owners, fileLauncher, params)
                 }
             }
             override fun onPermissionRequested(request: PermissionRequest) {
-                if (!requests.available || request.resources.any { permissionForWebResource(it) == null }) {
+                if (!requests.available || !shouldPromptWebPermission(request.resources)) {
                     request.deny()
                     return
                 }
@@ -371,6 +441,58 @@ internal fun permissionForWebResource(resource: String): String? = when (resourc
     else -> null
 }
 
+internal fun grantableWebResources(resources: Array<String>): List<String> =
+    resources.filter { permissionForWebResource(it) != null }
+
+internal fun androidPermissionsForWebResources(resources: Array<String>): List<String> =
+    resources.mapNotNull(::permissionForWebResource).distinct()
+
+internal fun shouldPromptWebPermission(resources: Array<String>): Boolean =
+    grantableWebResources(resources).isNotEmpty()
+
+private fun launchFilePicker(
+    owner: WebSessionRequests,
+    owners: PlatformLaunchOwners,
+    fileLauncher: androidx.activity.result.ActivityResultLauncher<Intent>,
+    params: WebChromeClient.FileChooserParams,
+) {
+    runCatching {
+        val intent = params.createIntent().apply {
+            if (params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }
+        }
+        fileLauncher.launch(intent)
+    }.onFailure {
+        owners.file = null
+        owner.failFileChooser()
+    }
+}
+
+private fun startCaptureOrPicker(
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context,
+    owner: WebSessionRequests,
+    owners: PlatformLaunchOwners,
+    fileLauncher: androidx.activity.result.ActivityResultLauncher<Intent>,
+    prompt: FileCapturePrompt,
+) {
+    scope.launch {
+        val prepared = withContext(Dispatchers.IO) {
+            WebFileCapture.intentOrNull(context, prompt.video)
+        }
+        if (prepared != null) {
+            owner.captureOutputUri = prepared.second
+            runCatching { fileLauncher.launch(prepared.first) }.onFailure {
+                owner.captureOutputUri = null
+                launchFilePicker(owner, owners, fileLauncher, prompt.params)
+            }
+        } else {
+            launchFilePicker(owner, owners, fileLauncher, prompt.params)
+        }
+    }
+}
+
 @Composable
 fun WebSessionDialogs(requests: WebSessionRequests, onRetry: () -> Unit, onLeave: () -> Unit) {
     requests.permission?.let { request ->
@@ -388,6 +510,23 @@ fun WebSessionDialogs(requests: WebSessionRequests, onRetry: () -> Unit, onLeave
             onConfirm = requests.allowPermission, onDismiss = requests::denyPermission,
         )
     }
+    requests.captureConsent?.let { prompt ->
+        val capabilities = buildString {
+            append(stringResource(R.string.browser_camera))
+            if (prompt.video) {
+                append(" / ")
+                append(stringResource(R.string.browser_microphone))
+            }
+        }
+        AppConfirmDialog(
+            title = stringResource(R.string.browser_permission_title),
+            text = stringResource(R.string.browser_capture_permission_message, capabilities),
+            confirmText = stringResource(R.string.browser_allow),
+            dismissText = stringResource(R.string.browser_deny),
+            onConfirm = requests.allowCapture,
+            onDismiss = requests::denyCapture,
+        )
+    }
     requests.geolocationOrigin?.let { origin ->
         AppConfirmDialog(
             title = stringResource(R.string.browser_location_title),
@@ -399,8 +538,11 @@ fun WebSessionDialogs(requests: WebSessionRequests, onRetry: () -> Unit, onLeave
         )
     }
     requests.sslError?.let { error ->
-        BrowserCertificateDialog(error, onRetry = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {}; onRetry() },
-            onLeave = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {}; onLeave() })
+        BrowserCertificateDialog(
+            error,
+            onRetry = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {}; onRetry() },
+            onDismiss = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {} },
+        )
     }
     requests.jsDialog?.let { dialog ->
         JsDialogPrompt(dialog, onComplete = requests::completeJsDialog)
@@ -497,10 +639,13 @@ fun WebSessionFullScreen(requests: WebSessionRequests) {
 }
 
 @Composable
-internal fun BrowserCertificateDialog(error: String, onRetry: () -> Unit, onLeave: () -> Unit) {
+internal fun BrowserCertificateDialog(error: String, onRetry: () -> Unit, onDismiss: () -> Unit) {
     AppConfirmDialog(
-        title = stringResource(R.string.browser_ssl_title), text = stringResource(R.string.browser_ssl_message, error),
-        confirmText = stringResource(R.string.browser_ssl_retry), dismissText = stringResource(R.string.browser_leave),
-        onConfirm = onRetry, onDismiss = onLeave,
+        title = stringResource(R.string.browser_ssl_title),
+        text = stringResource(R.string.browser_ssl_message, error),
+        confirmText = stringResource(R.string.browser_ssl_retry),
+        dismissText = stringResource(R.string.browser_cancel),
+        onConfirm = onRetry,
+        onDismiss = onDismiss,
     )
 }
