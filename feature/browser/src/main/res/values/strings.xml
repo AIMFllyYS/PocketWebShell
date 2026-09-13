@@ -31,6 +31,14 @@
     <string name="browser_start_hint">输入网址，或新建一个标签页开始浏览</string>
     <string name="browser_create_tab">新建标签页</string>
     <string name="browser_no_history">暂无历史记录</string>
+    <string name="browser_history_search">搜索历史</string>
+    <string name="browser_history_empty_search">没有匹配的历史记录</string>
+    <string name="browser_history_today">今天</string>
+    <string name="browser_history_yesterday">昨天</string>
+    <string name="browser_history_two_days_ago">前天</string>
+    <string name="browser_history_this_week">一周内</string>
+    <string name="browser_history_this_month">一个月内</string>
+    <string name="browser_history_earlier">更早</string>
     <string name="browser_clear_history">清空历史</string>
     <string name="browser_no_bookmarks">暂无收藏</string>
     <string name="browser_delete_bookmark">删除收藏</string>

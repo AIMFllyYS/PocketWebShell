@@ -6,16 +6,19 @@ import com.webshell.core.data.IncomingSourceKey
 import com.webshell.core.data.SettingsRepository
 import com.webshell.core.data.WebAppDao
 import com.webshell.core.data.WebAppEntity
+import com.webshell.core.data.metadata.LocalHtmlIcon
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.LocalWebHost
 import com.webshell.feature.browser.BrowserTab
 import com.webshell.feature.browser.BrowserTabKind
 import com.webshell.feature.browser.IncomingDocumentAccess
+import com.webshell.feature.browser.PersistedIncomingApp
 import com.webshell.feature.viewer.IncomingDocuments
 import com.webshell.feature.viewer.IncomingFilePolicy
 import com.webshell.feature.viewer.IncomingIntentParser
 import com.webshell.feature.viewer.IncomingMarkdownPolicy
 import com.webshell.feature.viewer.IncomingOpenCandidate
+import com.webshell.feature.viewer.IncomingSessionMeta
 import com.webshell.feature.viewer.IncomingStore
 import com.webshell.feature.viewer.IncomingTooLargeException
 import com.webshell.feature.viewer.IncomingUnsupportedException
@@ -42,9 +45,9 @@ sealed interface IncomingMountResult {
     data class Markdown(
         val title: String,
         val displayPath: String,
-        val content: String,
         val localAppId: String,
         val sourceKey: String? = null,
+        val startUrl: String,
     ) : IncomingMountResult
 
     data class ReuseHome(val appId: String, val url: String) : IncomingMountResult
@@ -88,9 +91,41 @@ class IncomingBrowserOpener @Inject constructor(
     }
 
     override suspend fun persistShortcut(tab: BrowserTab): Boolean = withContext(Dispatchers.IO) {
-        runCatching { persistShortcutOnIo(tab) }.onFailure {
+        runCatching {
+            val kind = when (tab.kind) {
+                BrowserTabKind.INCOMING_HTML -> ViewerDocumentKind.HTML
+                BrowserTabKind.INCOMING_MARKDOWN -> ViewerDocumentKind.MARKDOWN
+                BrowserTabKind.WEB -> throw IOException("not incoming")
+            }
+            persistLocalIncoming(
+                localAppId = tab.localAppId ?: throw IOException("no session"),
+                title = tab.title,
+                displayPath = tab.displayPath.orEmpty(),
+                sourceKey = tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath),
+                kind = kind,
+            )
+        }.onFailure {
             AppLog.warn("incoming", "Incoming document home add failed")
         }.isSuccess
+    }
+
+    override suspend fun persistMarkdownSession(
+        localAppId: String,
+        title: String,
+        displayPath: String,
+        sourceKey: String?,
+    ): PersistedIncomingApp? = withContext(Dispatchers.IO) {
+        runCatching {
+            persistLocalIncoming(
+                localAppId = localAppId,
+                title = title,
+                displayPath = displayPath,
+                sourceKey = sourceKey ?: IncomingSourceKey.fromFilesystemPath(displayPath),
+                kind = ViewerDocumentKind.MARKDOWN,
+            )
+        }.onFailure {
+            AppLog.warn("incoming", "Incoming document home add failed")
+        }.getOrNull()
     }
 
     private suspend fun mountOnIo(
@@ -113,9 +148,11 @@ class IncomingBrowserOpener @Inject constructor(
             val kind = IncomingFilePolicy.resolveKind(displayName, candidate.mimeType, prefix)
                 ?: throw IncomingUnsupportedException()
             val html = kind == ViewerDocumentKind.HTML
-            sourceKey?.let { IncomingSourceKey.reuseToken(html, it) }?.let { token ->
-                if (token in existingReuseTokens) {
-                    return@use IncomingMountResult.ReuseTab(sourceKey, html)
+            if (html) {
+                sourceKey?.let { IncomingSourceKey.reuseToken(html = true, it) }?.let { token ->
+                    if (token in existingReuseTokens) {
+                        return@use IncomingMountResult.ReuseTab(sourceKey, html = true)
+                    }
                 }
             }
             if (sourceKey != null) {
@@ -124,10 +161,12 @@ class IncomingBrowserOpener @Inject constructor(
                     return@use IncomingMountResult.ReuseHome(home.id, home.url)
                 }
             }
-            val title = IncomingFilePolicy.sanitizeFileName(
+            val fileName = IncomingFilePolicy.sanitizeFileName(
                 displayName ?: IncomingFilePolicy.defaultName(kind),
                 kind,
             )
+            val title = IncomingFilePolicy.originalDocumentTitle(displayName, displayPath)
+                .ifBlank { fileName.substringBeforeLast('.').ifBlank { fileName } }
             val chained = IncomingStore.prependedStream(prefix, input)
             when (kind) {
                 ViewerDocumentKind.HTML -> mountHtml(title, displayPath, chained, sourceKey)
@@ -181,27 +220,38 @@ class IncomingBrowserOpener @Inject constructor(
             throw IOException("import directory unavailable")
         }
         File(dir, IncomingFilePolicy.DEFAULT_MARKDOWN_NAME).writeText(raw)
+        IncomingStore.writeMeta(
+            dir,
+            IncomingSessionMeta(
+                title = title,
+                displayPath = displayPath,
+                sourceKey = sourceKey,
+            ),
+        )
+        val startUrl = LocalWebHost.buildLocalAppUrl(
+            localAppId,
+            IncomingFilePolicy.DEFAULT_MARKDOWN_NAME,
+        )
         return IncomingMountResult.Markdown(
             title = title,
             displayPath = displayPath,
-            content = IncomingMarkdownPolicy.forDisplay(raw),
             localAppId = localAppId,
             sourceKey = sourceKey,
+            startUrl = startUrl,
         )
     }
 
-    private suspend fun persistShortcutOnIo(tab: BrowserTab) {
-        val kind = when (tab.kind) {
-            BrowserTabKind.INCOMING_HTML -> ViewerDocumentKind.HTML
-            BrowserTabKind.INCOMING_MARKDOWN -> ViewerDocumentKind.MARKDOWN
-            BrowserTabKind.WEB -> throw IOException("not incoming")
-        }
-        val localAppId = tab.localAppId ?: throw IOException("no session")
-        val sourceKey = tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath)
+    private suspend fun persistLocalIncoming(
+        localAppId: String,
+        title: String,
+        displayPath: String,
+        sourceKey: String?,
+        kind: ViewerDocumentKind,
+    ): PersistedIncomingApp {
         if (sourceKey != null) {
             val existing = webAppDao.findLocalBySourceKey(sourceKey)
             if (existing != null && IncomingSourceKey.localAppMatchesKind(existing.url, kind == ViewerDocumentKind.HTML)) {
-                return
+                return PersistedIncomingApp(existing.id, existing.url)
             }
         }
         val appId = "app-" + UUID.randomUUID().toString().take(8)
@@ -236,13 +286,19 @@ class IncomingBrowserOpener @Inject constructor(
                 pageCapacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1),
             )
         }
-        val cleanTitle = tab.title.substringBeforeLast('.').ifBlank { tab.title }
+        val cleanTitle = title.substringBeforeLast('.').ifBlank { title }.ifBlank { "document" }
+        val url = LocalWebHost.buildLocalAppUrl(appId, entryName)
+        val iconUrl = if (kind == ViewerDocumentKind.HTML) {
+            LocalHtmlIcon.existingPath(destDir, entryName)
+        } else {
+            null
+        }
         webAppDao.upsert(
             WebAppEntity(
                 id = appId,
                 title = cleanTitle,
-                url = LocalWebHost.buildLocalAppUrl(appId, entryName),
-                iconUrl = null,
+                url = url,
+                iconUrl = iconUrl,
                 desktopMode = false,
                 darkMode = false,
                 keepAlive = false,
@@ -258,5 +314,6 @@ class IncomingBrowserOpener @Inject constructor(
             ),
         )
         AppLog.log("incoming", "Incoming document added to home")
+        return PersistedIncomingApp(appId, url)
     }
 }

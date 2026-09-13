@@ -44,6 +44,26 @@ object AppMotion {
         stiffness = 640f,
     )
 
+    /** 细节卡片/通知从细点撑开：略带回弹，不改测量 bounds（只走 graphicsLayer）。 */
+    fun <T> revealSpring(): SpringSpec<T> = SpringSpec(
+        dampingRatio = 0.68f,
+        stiffness = 420f,
+    )
+
+    val revealEnter: EnterTransition =
+        scaleIn(
+            animationSpec = revealSpring(),
+            initialScale = 0.08f,
+            transformOrigin = TransformOrigin(0.5f, 0f),
+        ) + fadeIn(animationSpec = tween(FastMs))
+
+    val popEnter: EnterTransition =
+        scaleIn(
+            animationSpec = revealSpring(),
+            initialScale = 0.08f,
+            transformOrigin = TransformOrigin.Center,
+        ) + fadeIn(animationSpec = tween(FastMs))
+
     /** 二级/三级页面进入：从右侧滑入 + 淡入（统一规格）。 */
     val enterDetail: EnterTransition =
         slideInHorizontally(

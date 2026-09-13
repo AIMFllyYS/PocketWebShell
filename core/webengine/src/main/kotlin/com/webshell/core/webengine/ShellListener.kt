@@ -22,6 +22,9 @@ interface ShellListener {
 
     fun onTitleReceived(title: String) {}
 
+    /** 页面声明的 touch icon / favicon 地址（可能晚于 onPageFinished）。 */
+    fun onIconUrl(url: String) {}
+
     /** 页面 <meta name="theme-color"> 变化，宿主可据此染色状态栏 */
     fun onThemeColor(color: Int?) {}
 

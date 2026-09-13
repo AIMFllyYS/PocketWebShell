@@ -65,6 +65,24 @@ class IncomingStoreTest {
     }
 
     @Test
+    fun sessionMetaRoundTripsTitleAndSource() {
+        val root = createTempDirectory("incoming-meta").toFile()
+        val dir = IncomingStore.sessionDir(root, "tmp-meta").apply { mkdirs() }
+        IncomingStore.writeMeta(
+            dir,
+            IncomingSessionMeta(
+                title = "笔记 / notes",
+                displayPath = "/storage/emulated/0/Download/notes.md",
+                sourceKey = "/storage/emulated/0/Download/notes.md",
+            ),
+        )
+        val meta = IncomingStore.readMeta(dir)
+        assertEquals("笔记 / notes", meta?.title)
+        assertEquals("/storage/emulated/0/Download/notes.md", meta?.displayPath)
+        assertEquals("/storage/emulated/0/Download/notes.md", meta?.sourceKey)
+    }
+
+    @Test
     fun decodeTextDropsUtf8Bom() {
         val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "# Hi".toByteArray()
         assertEquals("# Hi", IncomingStore.decodeText(bytes))

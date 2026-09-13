@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.AddToHomeScreen
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -114,6 +115,9 @@ internal fun SiteShellOrb(
     onOpenDownloads: () -> Unit,
     onHideOrb: () -> Unit,
     onLeave: () -> Unit,
+    documentMode: Boolean = false,
+    canAddToHome: Boolean = false,
+    onAddToHome: () -> Unit = {},
     currentSessionId: String? = null,
     onSwitchKeepAlive: (sessionId: String, url: String) -> Unit = { _, _ -> },
 ) {
@@ -345,6 +349,8 @@ internal fun SiteShellOrb(
             desktopMode = desktopMode,
             bookmarked = bookmarked,
             hasPage = pageUrl.isNotBlank() && pageUrl != "about:blank",
+            documentMode = documentMode,
+            canAddToHome = canAddToHome,
             onDismiss = { showMenu = false },
             onBack = { showMenu = false; onBack() },
             onForward = { showMenu = false; onForward() },
@@ -389,6 +395,10 @@ internal fun SiteShellOrb(
             onLeave = {
                 showMenu = false
                 onLeave()
+            },
+            onAddToHome = {
+                showMenu = false
+                onAddToHome()
             },
             currentSessionId = currentSessionId,
             onSwitchKeepAlive = { id, url ->
@@ -465,6 +475,8 @@ private fun SiteShellOrbMenu(
     desktopMode: Boolean,
     bookmarked: Boolean,
     hasPage: Boolean,
+    documentMode: Boolean = false,
+    canAddToHome: Boolean = false,
     onDismiss: () -> Unit,
     onBack: () -> Unit,
     onForward: () -> Unit,
@@ -474,6 +486,7 @@ private fun SiteShellOrbMenu(
     onOpenDownloads: () -> Unit,
     onHideOrb: () -> Unit,
     onLeave: () -> Unit,
+    onAddToHome: () -> Unit = {},
     currentSessionId: String? = null,
     onSwitchKeepAlive: (sessionId: String, url: String) -> Unit = { _, _ -> },
 ) {
@@ -563,7 +576,7 @@ private fun SiteShellOrbMenu(
                             if (bookmarked) BrowserR.string.browser_remove_bookmark else BrowserR.string.browser_add_bookmark,
                         ),
                         leadingIcon = if (bookmarked) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        onClick = onBookmark,
+                        onClick = if (documentMode) null else onBookmark,
                     )
                     AppListDivider()
                     AppListRow(
@@ -574,8 +587,16 @@ private fun SiteShellOrbMenu(
                                 Icon(Icons.Filled.Check, stringResource(BrowserR.string.browser_enabled))
                             }
                         },
-                        onClick = onDesktopMode,
+                        onClick = if (documentMode) null else onDesktopMode,
                     )
+                    if (canAddToHome) {
+                        AppListDivider()
+                        AppListRow(
+                            title = stringResource(BrowserR.string.browser_make_app),
+                            leadingIcon = Icons.AutoMirrored.Filled.AddToHomeScreen,
+                            onClick = onAddToHome,
+                        )
+                    }
                 }
                 AppSectionHeader(stringResource(BrowserR.string.browser_menu_library), startPadding = 0.dp)
                 AppCard(contentPadding = PaddingValues(0.dp)) {
@@ -590,7 +611,7 @@ private fun SiteShellOrbMenu(
                         leadingIcon = Icons.Filled.VisibilityOff,
                         onClick = onHideOrb,
                     )
-                    if (hasPage) {
+                    if (hasPage || documentMode) {
                         AppListDivider()
                         AppListRow(
                             title = stringResource(R.string.site_shell_leave_home),

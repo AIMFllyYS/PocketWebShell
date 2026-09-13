@@ -25,7 +25,7 @@ Protect these product properties in every change:
 - `feature/add/`: URL normalization, metadata parsing, icon discovery and app editing.
 - `feature/browser/`: browser chrome, tabs and tab switcher.
 - `feature/me/`: settings, Android permission/status surfaces and running-session presentation.
-- `feature/viewer/`: VIEW/SEND 解析、临时文件拷贝、Markdown 消毒。实际展示复用浏览标签（`MainScaffold` 挂到 `BrowserViewModel`），不再整页早退到独立 Viewer。同一源路径复用已打开标签或已保存的本地应用；可选「制作应用」才会写入 Room。
+- `feature/viewer/`: VIEW/SEND 解析、临时文件拷贝、Markdown 消毒。外部 Markdown 走站点壳全屏（悬浮球、无顶栏、原生长按选中）；外部 HTML 仍复用浏览标签。同一源路径复用已打开的 HTML 标签或已保存的本地应用；可选「制作应用」才会写入 Room。
 - `docs/`: maintained technical and release documentation.
 
 Do not place production code in generated `build/` directories, screenshots, or release artifact folders.

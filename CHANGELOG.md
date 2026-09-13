@@ -2,6 +2,95 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.52] - 2026-09-14
+
+开屏按最终流程定稿：字幕和粒子一起上，黑洞期间字幕不收，最后整层一起淡出再进主页。
+
+### Fixed
+
+- 开屏不再先把字拿掉再播黑洞。字和粒子同时出现，黑洞展示期间字幕一直在；播完后字幕、黑洞、遮罩同一层淡出，然后才进主页。
+- 空主页不再叠「把喜欢的网站放在主屏幕」文案，避免和开屏字幕叠在一起。
+
+### Testing
+
+- `:app:assembleDebug`
+- 手测：冷启动字不提前消失、结束时整层一起收、空主页不再出现那句广告语。
+
+## [0.1.51] - 2026-09-14
+
+开屏整段重写：文案、黑洞、品牌标按顺序播放，不再共用一条会打架的进度。
+
+### Fixed
+
+- 开屏标题和标语单独淡入、停住、淡出后才从树上拿掉；内爆成品牌标时已经没有字。主页在文字消失之后才组。
+- 去掉中文字距动画和多层透明度相乘，避免字看起来乱、动画完了字还在。
+
+### Testing
+
+- `:app:compileDebugKotlin :app:assembleDebug`
+- 手测：冷启动开屏字和黑洞是否同步、结束后有没有残留标题。
+
+## [0.1.50] - 2026-09-14
+
+开屏按单一时间轴重写；更新日志先显示 20 条；浏览历史按时间折叠分组并加上搜索。
+
+### Fixed
+
+- 开屏动画整段重写：文案、黑洞和淡出共用一条时钟，标题不再单独动画，避免收不干净或乱闪。
+
+### Changed
+
+- 项目更新日志默认展示最近 20 条，底部「加载更多」。
+- 浏览历史按今天 / 昨天 / 前天 / 一周内 / 一个月内 / 更早分组，可折叠；顶上增加搜索。收藏夹列表不变。
+
+### Testing
+
+- `:feature:browser:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`
+- 手测：冷启动开屏文案与黑洞同步、更新日志加载更多、历史分组折叠与搜索。
+
+## [0.1.49] - 2026-09-13
+
+开屏标题随黑洞收掉；网站图标跟浏览器标签页同源；收藏/历史显示各站自己的图标；历史分页加载；存储卡片用弹簧撑开。
+
+### Fixed
+
+- 开屏文案在黑洞内爆前收掉，不再在动画结束后还停半秒。
+- 单文件 HTML 会用页面里的远程 favicon / 小体积 data URI，不再只认同目录本地文件。
+- 收藏夹和历史左侧改为该站图标，不再共用星星/地球标。
+- 历史默认先加载 20 条，滑到底再加一页，避免一次铺开卡顿。
+- 存储占用卡片、确认框和状态提示从细点弹簧撑开，和全屏 iOS 动效一致。
+
+### Changed
+
+- 展示层图标兜底改为站点自己的 `/favicon.ico`，不再走 Google s2。
+- Room v7：`history.iconUrl`。浏览页收到 touch icon 时写回历史。
+
+### Testing
+
+- `:core:data:testDebugUnitTest :feature:browser:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`
+- 手测：冷启动标题收掉、导入单页 HTML 图标、历史下滑加载、存储管理卡片撑开。
+
+## [0.1.48] - 2026-09-13
+
+开屏动画播完再组主页，减轻卡顿；外部/主屏 Markdown 改为全屏站点壳加悬浮球，去掉顶栏，支持长按选中，并用原始文件名。
+
+### Fixed
+
+- 开屏黑洞播完、主壳在最后一帧底下组好之后再淡出，粒子从 32 收到 12，去掉星尘、拖尾和每帧 `dp.toPx()`，避免和主页抢 60 帧。
+- Markdown 打开页去掉顶部导航栏，改为全屏站点壳，并使用与网页应用相同的悬浮球（文档模式关掉收藏/桌面版，临时文件可「制作应用」）。
+- Markdown 渲染包在系统选区容器里，长按走手机原生选中，不再被顶栏或手势拦截。
+- 打开 Markdown 时用原始文件名作标题；微信等内容提供者路径拿不到名字时不再用垃圾段。
+- Markdown 文档图标左右略加宽，主屏字标从 0.62 收到 0.70。
+
+### Changed
+
+- 外部 Markdown 不再进浏览标签；已保存的主屏 Markdown 同样全屏打开。外部 HTML 仍走浏览标签。
+
+### Testing
+
+- `:feature:viewer:testDebugUnitTest :core:designsystem:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug`
+- 手测：冷启动开屏流畅度、外部打开 MD 全屏/悬浮球/长按选中/文件名、主屏 MD 图标宽度。
+
 ## [0.1.47] - 2026-09-13
 
 开屏统一成黑洞并缩短一半；外部打开的 Markdown 用专用文档图标，不再和本地 HTML 共用代码块标。

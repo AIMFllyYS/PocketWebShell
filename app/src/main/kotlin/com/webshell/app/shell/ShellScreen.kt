@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import com.webshell.core.designsystem.components.AppConfirmDialog
+import com.webshell.feature.browser.R as BrowserR
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +63,8 @@ fun ShellScreen(
     val forceEnableZoom by viewModel.forceEnableZoomEnabled.collectAsStateWithLifecycle()
     val orb by viewModel.siteShellOrb.collectAsStateWithLifecycle()
     val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
+    val askAddToHome by viewModel.askAddToHome.collectAsStateWithLifecycle()
+    val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
     val ready = state as? SiteShellState.Ready
     val markdown = state as? SiteShellState.Markdown
     val config = ready?.takeIf { it.request == (initialUrl to appId) }?.config
@@ -86,12 +90,24 @@ fun ShellScreen(
             viewModel.cancelPendingOpen()
         }
     }
+    val latestSwitch = rememberUpdatedState(onSwitchKeepAlive)
     LaunchedEffect(initialUrl, appId) { viewModel.open(initialUrl, appId) }
+    LaunchedEffect(markdown?.request, markdown?.temporary) {
+        if (markdown?.temporary == true) {
+            kotlinx.coroutines.delay(400)
+            viewModel.offerAddToHome()
+        }
+    }
     LaunchedEffect(message) {
         if (message != null) { kotlinx.coroutines.delay(2500); message = null }
     }
+    LaunchedEffect(statusMessage) {
+        if (statusMessage != null) { kotlinx.coroutines.delay(2500); viewModel.consumeStatusMessage() }
+    }
     BackHandler(enabled = requests.fullScreenView != null) { requests.exitFullScreen() }
-    BackHandler(enabled = requests.fullScreenView == null) { if (!viewModel.goBack()) onLeave() }
+    BackHandler(enabled = requests.fullScreenView == null) {
+        if (markdown != null || !viewModel.goBack()) onLeave()
+    }
 
     Box(Modifier.fillMaxSize()) {
         when (state) {
@@ -110,22 +126,16 @@ fun ShellScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
-            is SiteShellState.Markdown -> Column(
-                Modifier
+            is SiteShellState.Markdown -> SafeMarkdown(
+                content = markdown?.content.orEmpty(),
+                modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            ) {
-                AppNavigationBar(markdown?.title.orEmpty(), onBack = onLeave)
-                SafeMarkdown(
-                    content = markdown?.content.orEmpty(),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                )
-            }
+                    .background(MaterialTheme.colorScheme.background)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+            )
             is SiteShellState.Ready -> if (config != null && sessionId != null) {
                 ShellWebViewHost(
                     sessionId = sessionId,
@@ -166,33 +176,42 @@ fun ShellScreen(
             Column(Modifier.fillMaxWidth().statusBarsPadding()) {
                 PageLoadIndicator(loading = ready?.loading == true, rawProgress = ready?.progress ?: 0, sessionKey = sessionId)
             }
-            if (orb.enabled && !requests.busy) {
-                SiteShellOrb(
-                    posX = orb.x,
-                    posY = orb.y,
-                    parked = orb.parked,
-                    canGoBack = ready?.canGoBack == true,
-                    canGoForward = ready?.canGoForward == true,
-                    loading = ready?.loading == true,
-                    desktopMode = ready?.config?.desktopMode == true,
-                    pageUrl = ready?.pageUrl.orEmpty(),
-                    bookmarked = ready?.pageUrl.orEmpty() in bookmarkedUrls,
-                    onPlacement = viewModel::setOrbPlacement,
-                    onRefresh = viewModel::reload,
-                    onStop = viewModel::stopLoading,
-                    onBack = { viewModel.goBack() },
-                    onForward = { viewModel.goForward() },
-                    onDesktopMode = viewModel::setDesktopMode,
-                    onBookmark = { viewModel.toggleBookmark() },
-                    onOpenDownloads = onOpenDownloads,
-                    onHideOrb = viewModel::hideOrb,
-                    onLeave = onLeave,
-                    currentSessionId = sessionId,
-                    onSwitchKeepAlive = onSwitchKeepAlive,
-                )
-            }
         }
-        message?.let {
+        val showOrb = orb.enabled && !requests.busy &&
+            (state is SiteShellState.Ready || state is SiteShellState.Markdown)
+        if (showOrb) {
+            val documentMode = markdown != null
+            SiteShellOrb(
+                posX = orb.x,
+                posY = orb.y,
+                parked = orb.parked,
+                canGoBack = ready?.canGoBack == true,
+                canGoForward = ready?.canGoForward == true,
+                loading = ready?.loading == true,
+                desktopMode = ready?.config?.desktopMode == true,
+                pageUrl = ready?.pageUrl.orEmpty(),
+                bookmarked = ready?.pageUrl.orEmpty() in bookmarkedUrls,
+                documentMode = documentMode,
+                canAddToHome = markdown?.temporary == true,
+                onPlacement = viewModel::setOrbPlacement,
+                onRefresh = { if (documentMode) viewModel.retryOpen() else viewModel.reload() },
+                onStop = viewModel::stopLoading,
+                onBack = { viewModel.goBack() },
+                onForward = { viewModel.goForward() },
+                onDesktopMode = viewModel::setDesktopMode,
+                onBookmark = { viewModel.toggleBookmark() },
+                onOpenDownloads = onOpenDownloads,
+                onHideOrb = viewModel::hideOrb,
+                onLeave = onLeave,
+                onAddToHome = {
+                    viewModel.addIncomingToHome { id, url -> latestSwitch.value(id, url) }
+                },
+                currentSessionId = sessionId,
+                onSwitchKeepAlive = onSwitchKeepAlive,
+            )
+        }
+        val toast = message ?: statusMessage?.let { stringResource(it) }
+        toast?.let {
             WebSessionStatusMessage(
                 it,
                 Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp),
@@ -201,4 +220,19 @@ fun ShellScreen(
     }
     WebSessionDialogs(requests, onRetry = viewModel::reload, onLeave = onLeave)
     if (requests.fullScreenView != null) com.webshell.feature.browser.WebSessionFullScreen(requests)
+    if (askAddToHome && markdown?.temporary == true) {
+        AppConfirmDialog(
+            title = stringResource(BrowserR.string.browser_add_home_title),
+            text = stringResource(
+                BrowserR.string.browser_add_home_message,
+                markdown.title.ifBlank { stringResource(R.string.app_name) },
+            ),
+            confirmText = stringResource(BrowserR.string.browser_add_home_confirm),
+            dismissText = stringResource(BrowserR.string.browser_add_home_dismiss),
+            onConfirm = {
+                viewModel.addIncomingToHome { id, url -> latestSwitch.value(id, url) }
+            },
+            onDismiss = viewModel::dismissAddToHome,
+        )
+    }
 }

@@ -1,5 +1,6 @@
 package com.webshell.feature.viewer
 
+import com.webshell.core.data.IncomingSourceKey
 import java.util.UUID
 
 enum class ViewerDocumentKind { HTML, MARKDOWN }
@@ -109,4 +110,57 @@ object IncomingFilePolicy {
         ViewerDocumentKind.HTML -> DEFAULT_HTML_NAME
         ViewerDocumentKind.MARKDOWN -> DEFAULT_MARKDOWN_NAME
     }
+
+    /**
+     * Human document title from the original filename. Empty when the only
+     * available label is a content-provider / WeChat path that is not a name.
+     */
+    fun originalDocumentTitle(displayName: String?, displayPath: String? = null): String {
+        humanFileStem(displayName, allowGeneric = true)?.let { return it }
+        val path = displayPath?.trim().orEmpty()
+        if (path.startsWith("content:", ignoreCase = true)) return ""
+        if (path.contains("fileprovider", ignoreCase = true)) return ""
+        val pathLeaf = path
+            .replace('\\', '/')
+            .substringBefore('?')
+            .substringAfterLast('/')
+            .takeIf { it.isNotBlank() }
+        return humanFileStem(pathLeaf, allowGeneric = false).orEmpty()
+    }
+
+    private fun humanFileStem(raw: String?, allowGeneric: Boolean): String? {
+        if (raw.isNullOrBlank()) return null
+        val decoded = IncomingSourceKey.decodeRepeated(raw).trim()
+        if (decoded.startsWith("content:", ignoreCase = true)) return null
+        if (decoded.contains("fileprovider", ignoreCase = true)) return null
+        val base = decoded.substringAfterLast('/').substringAfterLast('\\')
+            .replace(Regex("[/\\\\:*?\"<>|]"), "_")
+            .trim()
+            .trim('.')
+        if (base.isBlank() || base == "." || base == "..") return null
+        if (isDeniedExtension(base)) return null
+        val lower = base.lowercase()
+        if (lower.startsWith("raw:") || lower.startsWith("tmp-")) return null
+        if (lower in PROVIDER_GENERIC_NAMES) return null
+        val stemSource = when (extensionOf(base)) {
+            in htmlExtensions, in markdownExtensions -> base.substringBeforeLast('.')
+            else -> base
+        }
+        val stemLower = stemSource.lowercase()
+        if (!allowGeneric && stemLower in GENERIC_STEMS) return null
+        if (UUID_LIKE.matches(stemLower) || HEX_LIKE.matches(stemLower) || DIGITS_LIKE.matches(stemLower)) {
+            return null
+        }
+        return stemSource.take(80).ifBlank { null }
+    }
+
+    private val PROVIDER_GENERIC_NAMES = setOf(
+        "blob", "weixinfile", "weixinshare", "mmfile",
+    )
+    private val GENERIC_STEMS = setOf("document", "index", "file", "untitled")
+    private val UUID_LIKE = Regex(
+        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    )
+    private val HEX_LIKE = Regex("[0-9a-f]{16,}")
+    private val DIGITS_LIKE = Regex("\\d{10,}")
 }
