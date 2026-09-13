@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -13,12 +16,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.AddToHomeScreen
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
@@ -40,9 +44,10 @@ import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.AppNavigationBar
 import com.webshell.core.designsystem.components.AppSectionHeader
 import com.webshell.core.designsystem.components.AppSheet
+import com.webshell.core.designsystem.theme.AppSpacing
 
 internal enum class BrowserMenuAction {
-    Back, Forward, RefreshOrStop, Bookmark, Find, NewTab, Desktop, History, Bookmarks,
+    Back, Forward, RefreshOrStop, Bookmark, Find, NewTab, Desktop, AddToHome, History, Bookmarks,
     Downloads, HideToolbar, Collapse, CloseAll,
 }
 
@@ -54,11 +59,17 @@ internal data class BrowserMenuState(
     val loading: Boolean = false,
     val bookmarked: Boolean = false,
     val desktopMode: Boolean = false,
+    val canAddToHome: Boolean = false,
 )
 
 @Composable
 internal fun BrowserMenuSheet(state: BrowserMenuState, onAction: (BrowserMenuAction) -> Unit, onDismiss: () -> Unit) {
-    AppSheet(onDismissRequest = onDismiss) { BrowserMenuContent(state, onAction, onDismiss) }
+    AppSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.fillMaxHeight(0.86f)) {
+            BrowserMenuHeader(onDismiss)
+            BrowserMenuBody(state, onAction, Modifier.weight(1f).verticalScroll(rememberScrollState()))
+        }
+    }
 }
 
 /** The catalog and production sheet share this content, not a facsimile of the menu. */
@@ -69,71 +80,129 @@ internal fun BrowserMenuContent(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
-        AppNavigationBar(
-            title = stringResource(R.string.browser_menu),
-            actions = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.browser_done)) } },
-        )
-        Column(Modifier.padding(horizontal = 16.dp)) {
-            AppCard(contentPadding = PaddingValues(0.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    IconButton(onClick = { onAction(BrowserMenuAction.Back) }, enabled = state.canGoBack,
-                        modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.browser_back))
-                    }
-                    IconButton(onClick = { onAction(BrowserMenuAction.Forward) }, enabled = state.canGoForward,
-                        modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.browser_forward))
-                    }
-                    IconButton(onClick = { onAction(BrowserMenuAction.RefreshOrStop) }, enabled = state.hasTabs,
-                        modifier = Modifier.size(48.dp)) {
-                        Icon(if (state.loading) Icons.Filled.Close else Icons.Filled.Refresh,
-                            stringResource(if (state.loading) R.string.browser_stop else R.string.browser_refresh))
-                    }
-                    IconButton(onClick = { onAction(BrowserMenuAction.NewTab) }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Filled.Add, stringResource(R.string.browser_new_tab))
-                    }
+    Column(modifier.fillMaxWidth()) {
+        BrowserMenuHeader(onDismiss)
+        BrowserMenuBody(state, onAction, Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()))
+    }
+}
+
+@Composable
+private fun BrowserMenuHeader(onDismiss: () -> Unit) {
+    AppNavigationBar(
+        title = stringResource(R.string.browser_menu),
+        actions = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.browser_done)) } },
+    )
+}
+
+@Composable
+private fun BrowserMenuBody(
+    state: BrowserMenuState,
+    onAction: (BrowserMenuAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth().padding(horizontal = AppSpacing.lg).padding(bottom = AppSpacing.lg)) {
+        AppCard(contentPadding = PaddingValues(vertical = AppSpacing.xs)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                IconButton(
+                    onClick = { onAction(BrowserMenuAction.Back) },
+                    enabled = state.canGoBack,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, stringResource(R.string.browser_back))
+                }
+                IconButton(
+                    onClick = { onAction(BrowserMenuAction.Forward) },
+                    enabled = state.canGoForward,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, stringResource(R.string.browser_forward))
+                }
+                IconButton(
+                    onClick = { onAction(BrowserMenuAction.RefreshOrStop) },
+                    enabled = state.hasTabs,
+                    modifier = Modifier.size(48.dp),
+                ) {
+                    Icon(
+                        if (state.loading) Icons.Filled.Close else Icons.Filled.Refresh,
+                        stringResource(if (state.loading) R.string.browser_stop else R.string.browser_refresh),
+                    )
+                }
+                IconButton(onClick = { onAction(BrowserMenuAction.NewTab) }, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Filled.Add, stringResource(R.string.browser_new_tab))
                 }
             }
-            AppSectionHeader(stringResource(R.string.browser_menu_page))
-            AppCard(contentPadding = PaddingValues(0.dp)) {
-                AppListRow(
-                    title = stringResource(if (state.bookmarked) R.string.browser_remove_bookmark else R.string.browser_add_bookmark),
-                    leadingIcon = if (state.bookmarked) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    onClick = { onAction(BrowserMenuAction.Bookmark) },
-                )
-                AppListDivider()
-                AppListRow(title = stringResource(R.string.browser_find), leadingIcon = Icons.Filled.FindInPage,
-                    onClick = if (state.hasPage) ({ onAction(BrowserMenuAction.Find) }) else null)
-                AppListDivider()
-                AppListRow(title = stringResource(R.string.browser_desktop), leadingIcon = Icons.Filled.DesktopWindows,
-                    trailing = { if (state.desktopMode) Icon(Icons.Filled.Check, stringResource(R.string.browser_enabled)) },
-                    onClick = { onAction(BrowserMenuAction.Desktop) })
-            }
-            AppSectionHeader(stringResource(R.string.browser_menu_library))
-            AppCard(contentPadding = PaddingValues(0.dp)) {
-                AppListRow(title = stringResource(R.string.browser_history), leadingIcon = Icons.Filled.History,
-                    onClick = { onAction(BrowserMenuAction.History) })
-                AppListDivider()
-                AppListRow(title = stringResource(R.string.browser_bookmarks), leadingIcon = Icons.Filled.Bookmarks,
-                    onClick = { onAction(BrowserMenuAction.Bookmarks) })
-                AppListDivider()
-                AppListRow(title = stringResource(R.string.browser_downloads), leadingIcon = Icons.Filled.Download,
-                    onClick = { onAction(BrowserMenuAction.Downloads) })
-            }
-            AppSectionHeader(stringResource(R.string.browser_menu_display))
-            AppCard(contentPadding = PaddingValues(0.dp)) {
-                AppListRow(title = stringResource(R.string.browser_hide_toolbar), leadingIcon = Icons.Filled.VisibilityOff,
-                    subtitle = stringResource(R.string.browser_restore_hint),
-                    onClick = { onAction(BrowserMenuAction.HideToolbar) })
-                AppListDivider()
-                AppListRow(title = stringResource(R.string.browser_collapse_dock), leadingIcon = Icons.Filled.RadioButtonUnchecked,
-                    onClick = { onAction(BrowserMenuAction.Collapse) })
-            }
-            TextButton(onClick = { onAction(BrowserMenuAction.CloseAll) }, enabled = state.hasTabs,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text(stringResource(R.string.browser_close_all_tabs), color = MaterialTheme.colorScheme.error)
-            }
+        }
+        Spacer(Modifier.height(AppSpacing.sm))
+        AppSectionHeader(stringResource(R.string.browser_menu_page), startPadding = 0.dp)
+        AppCard(contentPadding = PaddingValues(0.dp)) {
+            AppListRow(
+                title = stringResource(if (state.bookmarked) R.string.browser_remove_bookmark else R.string.browser_add_bookmark),
+                leadingIcon = if (state.bookmarked) Icons.Filled.Star else Icons.Filled.StarBorder,
+                onClick = { onAction(BrowserMenuAction.Bookmark) },
+            )
+            AppListDivider()
+            AppListRow(
+                title = stringResource(R.string.browser_find),
+                leadingIcon = Icons.Filled.FindInPage,
+                onClick = if (state.hasPage) ({ onAction(BrowserMenuAction.Find) }) else null,
+            )
+            AppListDivider()
+            AppListRow(
+                title = stringResource(R.string.browser_desktop),
+                leadingIcon = Icons.Filled.DesktopWindows,
+                trailing = { if (state.desktopMode) Icon(Icons.Filled.Check, stringResource(R.string.browser_enabled)) },
+                onClick = { onAction(BrowserMenuAction.Desktop) },
+            )
+            AppListDivider()
+            AppListRow(
+                title = stringResource(R.string.browser_make_app),
+                leadingIcon = Icons.AutoMirrored.Filled.AddToHomeScreen,
+                onClick = if (state.canAddToHome) ({ onAction(BrowserMenuAction.AddToHome) }) else null,
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.sm))
+        AppSectionHeader(stringResource(R.string.browser_menu_library), startPadding = 0.dp)
+        AppCard(contentPadding = PaddingValues(0.dp)) {
+            AppListRow(
+                title = stringResource(R.string.browser_history),
+                leadingIcon = Icons.Filled.History,
+                onClick = { onAction(BrowserMenuAction.History) },
+            )
+            AppListDivider()
+            AppListRow(
+                title = stringResource(R.string.browser_bookmarks),
+                leadingIcon = Icons.Filled.Bookmarks,
+                onClick = { onAction(BrowserMenuAction.Bookmarks) },
+            )
+            AppListDivider()
+            AppListRow(
+                title = stringResource(R.string.browser_downloads),
+                leadingIcon = Icons.Filled.Download,
+                onClick = { onAction(BrowserMenuAction.Downloads) },
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.sm))
+        AppSectionHeader(stringResource(R.string.browser_menu_display), startPadding = 0.dp)
+        AppCard(contentPadding = PaddingValues(0.dp)) {
+            AppListRow(
+                title = stringResource(R.string.browser_hide_toolbar),
+                leadingIcon = Icons.Filled.VisibilityOff,
+                subtitle = stringResource(R.string.browser_restore_hint),
+                onClick = { onAction(BrowserMenuAction.HideToolbar) },
+            )
+            AppListDivider()
+            AppListRow(
+                title = stringResource(R.string.browser_collapse_dock),
+                leadingIcon = Icons.Filled.RadioButtonUnchecked,
+                onClick = { onAction(BrowserMenuAction.Collapse) },
+            )
+        }
+        TextButton(
+            onClick = { onAction(BrowserMenuAction.CloseAll) },
+            enabled = state.hasTabs,
+            modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.sm),
+        ) {
+            Text(stringResource(R.string.browser_close_all_tabs), color = MaterialTheme.colorScheme.error)
         }
     }
 }

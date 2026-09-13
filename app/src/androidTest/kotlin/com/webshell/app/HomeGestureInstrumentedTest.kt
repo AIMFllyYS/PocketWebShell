@@ -3,6 +3,7 @@ package com.webshell.app
 import android.app.Instrumentation
 import android.graphics.Point
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
@@ -160,6 +161,18 @@ class HomeGestureInstrumentedTest {
         device.pressBack()
     }
 
+    @Test
+    fun a07_twoFingerPinchInEntersEditMode() {
+        launchHome()
+        val alpha = centerOf("Alpha")
+        twoFingerPinchIn(
+            center = Point(alpha.x + 80, alpha.y + 80),
+            startSpanPx = 280f,
+            endSpanPx = 160f,
+        )
+        assertNotNull("双指捏合应进入编辑模式（出现「完成」）", awaitEditToolbar())
+    }
+
     // ---------- 测试辅助 ----------
 
     private fun launchHome() {
@@ -185,13 +198,94 @@ class HomeGestureInstrumentedTest {
     )
 
     private fun enterEditModeViaBlankMenu() {
-        if (device.wait(Until.hasObject(By.text("完成")), 800)) return
+        if (device.wait(Until.hasObject(By.text("完成")), 800)) {
+            awaitEditToolbar()
+            return
+        }
         longPress(blankPoint())
         val item = find("编辑模式", 3000)
         assertNotNull("空白长按菜单缺少「编辑模式」项", item)
         item!!.click()
-        assertNotNull("点按「编辑模式」后应进入编辑模式（出现「完成」）", find("完成", 3000))
+        assertNotNull("点按「编辑模式」后应进入编辑模式（出现「完成」）", awaitEditToolbar())
         SystemClock.sleep(300)
+    }
+
+    private fun awaitEditToolbar(): androidx.test.uiautomator.UiObject2? {
+        val done = find("完成", 3000)
+        if (done != null) {
+            assertTrue("完成应在下半屏统一菜单栏", done.visibleBounds.centerY() > device.displayHeight * 0.55)
+        }
+        return done
+    }
+
+    /**
+     * 真实双指序列：ACTION_DOWN → ACTION_POINTER_DOWN → MOVE → POINTER_UP → UP。
+     * 间距从 [startSpanPx] 收到 [endSpanPx]，用于捏合进入编辑模式。
+     */
+    private fun twoFingerPinchIn(center: Point, startSpanPx: Float, endSpanPx: Float) {
+        val downTime = SystemClock.uptimeMillis()
+        val cx = center.x.toFloat()
+        val cy = center.y.toFloat()
+        val halfStart = startSpanPx / 2f
+        val halfEnd = endSpanPx / 2f
+        fun pair(half: Float) = listOf(
+            floatArrayOf(cx - half, cy),
+            floatArrayOf(cx + half, cy),
+        )
+        injectPointers(downTime, MotionEvent.ACTION_DOWN, pair(halfStart).take(1))
+        SystemClock.sleep(40)
+        injectPointers(
+            downTime,
+            MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            pair(halfStart),
+        )
+        for (step in 1..8) {
+            val half = halfStart + (halfEnd - halfStart) * step / 8f
+            injectPointers(downTime, MotionEvent.ACTION_MOVE, pair(half))
+            SystemClock.sleep(40)
+        }
+        injectPointers(
+            downTime,
+            MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+            pair(halfEnd),
+        )
+        injectPointers(downTime, MotionEvent.ACTION_UP, pair(halfEnd).take(1))
+        SystemClock.sleep(400)
+    }
+
+    private fun injectPointers(downTime: Long, action: Int, points: List<FloatArray>) {
+        val properties = Array(points.size) { index ->
+            MotionEvent.PointerProperties().apply {
+                id = index
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+        }
+        val coords = Array(points.size) { index ->
+            MotionEvent.PointerCoords().apply {
+                x = points[index][0]
+                y = points[index][1]
+                pressure = 1f
+                size = 1f
+            }
+        }
+        val event = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            action,
+            points.size,
+            properties,
+            coords,
+            0,
+            0,
+            1f,
+            1f,
+            0,
+            0,
+            InputDevice.SOURCE_TOUCHSCREEN,
+            0,
+        )
+        instrumentation.sendPointerSync(event)
+        event.recycle()
     }
 
     private fun inject(action: Int, x: Float, y: Float, downTime: Long) {
@@ -267,7 +361,12 @@ class HomeGestureInstrumentedTest {
             instrumentation.targetContext,
             WebShellDatabase::class.java,
             WebShellDatabase.NAME,
-        ).addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
+        ).addMigrations(
+            WebShellDatabase.MIGRATION_2_3,
+            WebShellDatabase.MIGRATION_3_4,
+            WebShellDatabase.MIGRATION_4_5,
+            WebShellDatabase.MIGRATION_5_6,
+        ).build()
         try {
             return runBlocking { db.webAppDao().getById(id) }
         } finally {
@@ -288,7 +387,12 @@ class HomeGestureInstrumentedTest {
                 context,
                 WebShellDatabase::class.java,
                 WebShellDatabase.NAME,
-            ).addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
+            ).addMigrations(
+                WebShellDatabase.MIGRATION_2_3,
+                WebShellDatabase.MIGRATION_3_4,
+                WebShellDatabase.MIGRATION_4_5,
+                WebShellDatabase.MIGRATION_5_6,
+            ).build()
             try {
                 val apps = listOf("alpha" to "Alpha", "beta" to "Beta", "gamma" to "Gamma", "delta" to "Delta")
                     .mapIndexed { index, (id, title) ->

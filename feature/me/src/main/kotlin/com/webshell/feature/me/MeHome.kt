@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -63,7 +64,7 @@ internal fun MeHome(
             )
         }
         item(key = "running-sessions") {
-            AppSettingsSection(stringResource(R.string.me_sessions), Modifier.padding(bottom = 24.dp)) {
+            AppSettingsSection(stringResource(R.string.me_protection_section), Modifier.padding(bottom = 24.dp)) {
                 val sessions = state.runningSessions
                 if (sessions.isEmpty()) {
                     SessionEmptyRow()
@@ -85,6 +86,8 @@ internal fun MeHome(
                         )
                     }
                 }
+                AppListDivider()
+                SettingsMenuEntry(Icons.Rounded.BatterySaver, stringResource(R.string.me_background), Color(0xFF34C759)) { onOpenSection(MeSection.BACKGROUND) }
             }
         }
         item(key = "display-settings") {
@@ -94,9 +97,9 @@ internal fun MeHome(
                 SettingsMenuEntry(Icons.Rounded.GridView, stringResource(R.string.me_layout), Color(0xFF007AFF)) { onOpenSection(MeSection.LAYOUT) }
             }
         }
-        item(key = "browser-settings") {
-            AppSettingsSection(stringResource(R.string.me_browser_section), Modifier.padding(bottom = 24.dp)) {
-                SettingsMenuEntry(Icons.Rounded.BatterySaver, stringResource(R.string.me_background), Color(0xFF34C759)) { onOpenSection(MeSection.BACKGROUND) }
+        item(key = "feature-settings") {
+            AppSettingsSection(stringResource(R.string.me_features_section), Modifier.padding(bottom = 24.dp)) {
+                SettingsMenuEntry(Icons.Rounded.TouchApp, stringResource(R.string.me_features), Color(0xFF5AC8FA)) { onOpenSection(MeSection.FEATURES) }
                 AppListDivider()
                 SettingsMenuEntry(Icons.Rounded.Public, stringResource(R.string.me_engine), Color(0xFF007AFF)) { onOpenSection(MeSection.ENGINE) }
             }

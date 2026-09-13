@@ -98,6 +98,38 @@ class LauncherGeometryTest {
     }
 
     @Test
+    fun `header reservation stays the done-free band in both modes`() {
+        val geometry = LauncherGeometry.resolve(
+            393f, 690f, 4, 5, 60f, true,
+            measuredHeaderHeightDp = LauncherGeometry.HEADER_HEIGHT_DP,
+            measuredFooterHeightDp = LauncherGeometry.SEARCH_FOOTER_HEIGHT_DP,
+        )
+        assertEquals(LauncherGeometry.HEADER_HEIGHT_DP, geometry.topPaddingDp, 0.001f)
+        assertTrue(geometry.bottomPaddingDp >= LauncherGeometry.SEARCH_FOOTER_HEIGHT_DP)
+        assertEquals(
+            LauncherGeometry.resolve(
+                393f, 690f, 4, 5, 60f, true,
+                measuredHeaderHeightDp = LauncherGeometry.HEADER_HEIGHT_DP,
+                measuredFooterHeightDp = LauncherGeometry.SEARCH_FOOTER_HEIGHT_DP,
+            ),
+            geometry,
+        )
+    }
+
+    @Test
+    fun `edit toolbar clearance covers two 48dp rows`() {
+        assertTrue(HOME_EDIT_TOOLBAR_CLEARANCE_DP >= 48f * 2 + 20f)
+        assertEquals(116f, HOME_EDIT_TOOLBAR_CLEARANCE_DP, 0.001f)
+        val reserved = launcherFooterHeightFromMeasuredAction(42f)
+        assertTrue(reserved >= maxOf(48f, 42f + 16f) + 4f)
+        assertEquals(
+            (393f - 64f) / LAUNCHER_EDIT_ACTION_COUNT - 24f,
+            launcherEditActionWidthDp(393f),
+            0.001f,
+        )
+    }
+
+    @Test
     fun `large type footer stacks before editing without changing geometry`() {
         assertTrue(stackLauncherEditActions(320f, 1.3f))
         assertTrue(stackLauncherEditActions(411f, 2.6f))

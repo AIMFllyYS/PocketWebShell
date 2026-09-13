@@ -44,7 +44,12 @@ class IosPresentationInstrumentedTest {
     @Before
     fun setUp(): Unit = runBlocking {
         database = Room.databaseBuilder(context, WebShellDatabase::class.java, WebShellDatabase.NAME)
-            .addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
+            .addMigrations(
+                WebShellDatabase.MIGRATION_2_3,
+                WebShellDatabase.MIGRATION_3_4,
+                WebShellDatabase.MIGRATION_4_5,
+                WebShellDatabase.MIGRATION_5_6,
+            ).build()
         originalApps = database.webAppDao().observeAll().first()
         originalSettings = settings.settings.first()
         originalApps.forEach { database.webAppDao().deleteById(it.id) }
@@ -139,7 +144,9 @@ class IosPresentationInstrumentedTest {
         val emptyY = text("音乐").visibleBounds.centerY()
         device.swipe(emptyX, emptyY, emptyX, emptyY, 150)
         text("编辑模式").click()
-        text("完成")
+        val done = text("完成")
+        assertNotNull(done)
+        assertTrue("完成应在下半屏统一菜单栏", done!!.visibleBounds.centerY() > device.displayHeight * 0.55)
         shot("home-edit")
     }
 

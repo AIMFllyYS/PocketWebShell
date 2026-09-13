@@ -3,6 +3,7 @@ package com.webshell.core.data.di
 import android.content.Context
 import androidx.room.Room
 import com.webshell.core.data.BookmarkDao
+import com.webshell.core.data.BrowserOpenTabDao
 import com.webshell.core.data.HistoryDao
 import com.webshell.core.data.LogDao
 import com.webshell.core.data.WebAppDao
@@ -27,7 +28,14 @@ object DataModule {
             // 里程碑阶段无迁移需求，直接重建库。
             // v2 → v3：显式迁移新增 app_log 表；fallback 仅作兜底，不能依赖它（会清掉用户数据）。
             // v3 → v4：显式迁移新增 web_apps.folderName/folderCellIndex 两列。
-            .addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4)
+            // v4 → v5：web_apps.siteShellNewWindowPolicy + browser_open_tabs。
+            // v5 → v6：web_apps.importSourceKey + browser_open_tabs.sourceKey。
+            .addMigrations(
+                WebShellDatabase.MIGRATION_2_3,
+                WebShellDatabase.MIGRATION_3_4,
+                WebShellDatabase.MIGRATION_4_5,
+                WebShellDatabase.MIGRATION_5_6,
+            )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 
@@ -42,4 +50,7 @@ object DataModule {
 
     @Provides
     fun provideLogDao(db: WebShellDatabase): LogDao = db.logDao()
+
+    @Provides
+    fun provideBrowserOpenTabDao(db: WebShellDatabase): BrowserOpenTabDao = db.browserOpenTabDao()
 }

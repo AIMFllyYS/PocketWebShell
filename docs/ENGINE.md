@@ -57,7 +57,7 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 2. **池语义修正（修 B4/C2）**：LinkedHashMap 改 access-order 真 LRU；**激活、保活、权限/文件/全屏操作中的会话受保护不被淘汰**；淘汰/关闭时快照写入池级 `sessionId → Bundle`，重建时恢复（打通 C2）；淘汰只移除 renderer，不删除标签 UI 状态。
 3. **共享登录态（修 R1）**：所有当前入口统一使用 WebView **默认共享 Profile**（cookie/token 全入口共享）；`MULTI_PROFILE` 仅展示为未来能力，不作为本版本安全边界。
 4. **兼容加固（修 R2/R5）**：移动模式默认使用不含 `wv` 的 Chrome 移动 UA；`thirdPartyCookies` 显式双向设置；`onPause`/`onStop` 等关键时机 flush Cookie。
-5. **泄漏与生命周期（修 C3/C4/C5）**：切走的 tab `onPause` 暂停渲染/媒体，切回 `onResume`；`ShellScreen.onNewWindow` 先销毁旧 `browse-*` 会话；`closeTab` 清理 `desktopModes`。
+5. **泄漏与生命周期（修 C3/C4/C5）**：切走的 tab `onPause` 暂停渲染/媒体，切回 `onResume`；站点壳弹窗经 `onAdoptWindow` 交给浏览标签，由 Browse 拥有该会话；`closeTab` 清理 `desktopModes`。
 6. **可观测（对 R4）**：开发者中心展示 WebView 包名/版本，版本过旧时引导用户到应用商店更新。
 
 ## 6. 验证
@@ -98,7 +98,7 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 - **`onCreateWindow` 不再区分来源类型**：站点壳（保存的网站/直链）的 `window.open`/`target=_blank` 现在和浏览器标签一样，总是分配一个真实的 `browser-window-*` pooled 会话（`profileId=null`，共享 Default），绝不再 `transport.setWebView(来源页面自己的 view)`。分配前用新增的 `WebViewPool.ProtectionReason.PENDING_WINDOW` 保护来源会话，避免池满淘汰正在处理回调的源页面。`ShellScreen` 收到 `onNewWindow` 后把这个会话交给 `MainScaffold` 领养：离开站点壳、切到 Browse、`BrowserViewModel.createTabForSession(...)`。`BrowserViewModel` 现在在 `MainScaffold` 顶层用 `hiltViewModel()` 提起，站点壳打开时它依然活着。
 - **收藏星标只是展示态**：`configuredSiteShell` 只看 `WebAppEntity.externalLinksToBrowser` 这一个显式开关决定外链策略；`isFavorite` 不再参与判断。主页星星不应该悄悄把 OAuth 跳转踢给系统浏览器。
 - **本地文件权跟随当前主文档 origin，不跟随会话曾有的能力**：`LocalWebHost.isAllowedLocalUrl` 新增 `isMainFrame`/`documentUrl` 参数——主框架导航只看 appId 是否匹配（不变）；但子资源请求（iframe/`<script src>`/图片等）还要求当前主文档本身仍解析到同一个 `/local/<appId>/` 树。一旦主文档离开本地 host，`allowedLocalAppId` 这个会话级能力就不再对子资源生效。
-- **存储管理不再假装"按站清理"**：共享 Default Profile 下没有可安全单独清理的站点边界，详情页整段"清理该站点"入口已移除。「清除全部网站数据」现在先 `CacheClearer.destroySessions`（`WebViewPool.destroyAndForget`，不留返回栈快照）再调用 `WebStorage.deleteAllData()`/`CookieManager.removeAllCookies()`，之后额外遍历删除 `IndexedDB`/`Local Storage`/`Session Storage`/`Service Worker`/`databases`/`blob_storage` 等站点数据目录（Default + 任何遗留 Profile 目录）作为纵深防御。
+- **按站定向删除由 `DELETE_BROWSING_DATA` 提供**：共享 Default Profile 上，`WebStorageCompat.deleteBrowsingDataForSite` 按 eTLD+1 删除 Cookie、网络缓存和全部脚本可读存储（含分区）。测量侧仍不能拆 HTTP 缓存与共享 LevelDB，站点行只展示可核实证据，不得假装独立沙箱体积。「清除全部网站数据」先 `CacheClearer.destroySessions`（`WebViewPool.destroyAndForget`）再优先走 `WebStorageCompat.deleteBrowsingData`，不支持时回退 `WebStorage.deleteAllData()`/`CookieManager.removeAllCookies()`，并补删 Default 与遗留 `Profile N` 下的站点数据目录。
 - **"结束会话"是生命周期动作，不是登出**：`MeViewModel.stopSessions` 只更新保活列表 UI；真正的 `WebViewPool.suspendSession` + 前台服务收尾现在桥接到 `MainScaffoldViewModel.closeSessions`（走 `ShellSessionController.closeSession`），因为 feature 模块不能依赖 `app` 模块。
 - **JS 对话框只发给可见宿主**：`ShellChromeClient` 的 `onJsAlert/Confirm/Prompt/BeforeUnload` 只投给 `listener`，不再落回 `sessionListener`（否则会静默继承 `ShellListener` 接口默认实现——alert 自动确认、confirm/prompt/beforeunload 自动拒绝）。没有可见宿主时给一个很短的宽限期（`JS_DIALOG_BACKGROUND_TIMEOUT_MS`，重新检查一次 `listener`）再落到安全默认值。
 - **`ShellWebView.reconfigure` 补齐结构相等短路径**：`ShellWebViewHost` 的 `SideEffect` 每次进度/标题回调都会重新调用 `reconfigure`；现在 `old.mergedWith(newConfig) == old` 时直接返回，不再每帧重跑 `configureBaseSettings()`/`CookieManager` 调用。
@@ -108,5 +108,21 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 
 - **下载不再只认导航型 `DownloadListener`**：`DownloadPolicy.looksLikeFileDownload` 把带常见文件后缀的主框架 URL 交给 `DownloadSink` / 系统 `DownloadManager`，而不是当网页打开。Blob 先取元数据再按块经 `WebMessageListener` 写出，避开 `evaluateJavascript` 的 Binder 上限；`onPageStarted` 不再在 blob / data URL 上取消正在写入的文件。
 - **下载记录是应用内账本，不是按站沙箱**：`DownloadRepository` 持久化条目；浏览菜单与站点壳菜单打开同一份记录，可打开文件或定向删除。进度胶囊挂在 `MainScaffold`，与当前入口无关。
-- **存储账本跟随共享 Default Profile**：运行时数据在 `app_webview/Default` 与 `cache/WebView/Default/HTTP Cache`，不是从未创建的 `app_webview/profiles/<appId>`。`siteDataBytes` 计入 Default 的 IndexedDB / Cache Storage / Cookie 等；HTTP 缓存与 Dawn/Shader 目录计入可清理。按站一行只展示共享池，不假装独立沙箱体积。
-- **清缓存与清网站数据分层不变**：清缓存调用仍存活 WebView 的 `clearCache(true)`，并删除 `cache/WebView/` 与 Profile 下缓存目录，不碰 Cookie / LocalStorage / IndexedDB。清全部网站数据走 `WebStorage.deleteAllData` + `CookieManager.removeAllCookies`，并补删 `Network/`、`Storage/`、`Shared Storage/`。应用日志占用并入存储页，随清缓存一起清空。
+- **存储账本跟随共享 Default Profile**：运行时数据在 `app_webview/Default` 与 `cache/WebView/Default/HTTP Cache`，不是从未创建的 `app_webview/profiles/<appId>`。`siteDataBytes` 计入 Default 的 IndexedDB / Cache Storage / Cookie 等；HTTP 缓存与 Dawn/Shader 目录计入可清理。按站一行只展示 Cookie / IndexedDB / 配额 / 本地导入等可核实证据，无法按站拆分的共享数据单独记账。
+- **清缓存与清网站数据分层**：清缓存调用仍存活 WebView 的 `clearCache(true)`，并删除 `cache/WebView/` 与 Default/根缓存目录，不碰 Cookie / LocalStorage / IndexedDB。按站清除走 `WebStorageCompat.deleteBrowsingDataForSite`（作用域 eTLD+1）；清全部网站数据优先 `WebStorageCompat.deleteBrowsingData`，否则 `deleteAllData` + `removeAllCookies`，并补删 `Network/`、`Storage/`、`Shared Storage/`。应用日志占用并入存储页，随清缓存一起清空。
+
+## 11. 0.1.45–0.1.46 桌面缩放、新窗口、浏览标签与源路径
+
+- **源路径只用于展示和去重**：地址栏显示规范化后的 `/storage/emulated/0/…`（与 `/sdcard` 同一主卷）。匹配键是 `importSourceKey` / `sourceKey`，**禁止**当作 WebView URL，也禁止 `loadUrl(file://)`。
+- **再次打开同一文件**：先比已打开的 incoming 标签，再比主屏本地应用；对不上才新建 `tmp-*`。文件名 alone 不去重。
+
+- **桌面模式对齐 Chrome RDS**：`setDesktopMode` 写入桌面 UA 后按 `viewWidth * 100 / 980` 调用 `WebView.setInitialScale`；浏览标签不再额外 `reload()`，由一次 `reconfigure` / `pendingDesktopReload` 刷新。本地导入不改 layout 宽。
+- **证书对话框不离开页面**：`onPageStarted` 仍会 cancel 未决 handler；用户点取消只关掉对话框，不再 `closeTab` / 退出站点壳。从不默认 `SslErrorHandler.proceed()`。
+- **站点壳新窗口**：`ShellConfig.NewWindowPolicy`。默认 `ADOPT_IN_BROWSER`（`onCreateWindow` 分配 `browser-*`）。`REPLACE_IN_SHELL` 把 transport 指回当前 WebView，并在下一帧 `clearHistory()`。全局 DataStore + 每站可空覆盖。
+- **外部 HTML/MD 复用浏览标签**：`MainScaffold` 不再整页早退 `ViewerScreen`。Markdown 是 Compose tab kind；HTML 创建时就带 `localAppId`。地址栏显示本机路径且只读。
+- **开页清单进 Room v5**：`browser_open_tabs` 只存标签条，不存 WebView Bundle/Cookie。系统返回在不能后退时回主屏，不关标签。
+
+## 12. 0.1.47 开屏黑洞与 Markdown 图标
+
+- **开屏**：浅深共用黑洞绘制（事件视界、光子环、多普勒吸积弧、坠入粒子、闪光内爆到品牌标）。主时长 1140ms + 90ms 淡出。`onReadyForShell` 约在进度 0.35 挂主壳，避免结尾一次性组树。仍禁止开屏中途预热/销毁 WebView。
+- **本地图标**：`siteIconGlyph(isLocal, url)`。Markdown 入口（`.md` / `.markdown`）用 `MarkdownFileIcon`（Markdown Mark）；其它本地入口仍用 `Icons.Rounded.Code`。远程站字母兜底。图标由展示层决定，不把系统文档缩略图写入 `iconUrl`。

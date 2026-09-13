@@ -8,6 +8,7 @@ import org.junit.Test
 class LocalWebHostBoundaryTest {
     @Test fun `local path accepts only an app relative safe path`() {
         assertTrue(LocalWebHost.isSafeLocalPath("app-a", "index.html"))
+        assertTrue(LocalWebHost.isSafeLocalPath("tmp-550e8400-e29b-41d4-a716-446655440000", "index.html"))
         assertTrue(LocalWebHost.isSafeLocalPath("app-a", "assets/icon.svg"))
         assertFalse(LocalWebHost.isSafeLocalPath("app-a", "../app-b/index.html"))
         assertFalse(LocalWebHost.isSafeLocalPath("app-a", "assets/../../app-b/index.html"))
@@ -76,5 +77,32 @@ class LocalWebHostBoundaryTest {
             "https://${LocalWebHost.HOST}/local/app-a/hello%20world.html?v=1#top",
             LocalWebHost.toHttpsUrl(persisted),
         )
+    }
+
+    @Test fun `local app file is streamed with content length and not read into a byte array`() {
+        val dir = kotlin.io.path.createTempDirectory("local-app-serve").toFile()
+        try {
+            val file = java.io.File(dir, "index.html")
+            val payload = ByteArray(2 * 1024 * 1024) { 0x61 }
+            file.writeBytes(payload)
+            val serve = requireNotNull(LocalWebHost.serveLocalAppFile(file))
+            try {
+                assertEquals(200, serve.statusCode)
+                assertEquals("OK", serve.reasonPhrase)
+                assertEquals(file.length().toString(), serve.headers["Content-Length"])
+                val contentType = requireNotNull(serve.headers["Content-Type"])
+                assertTrue(contentType.startsWith("text/html"))
+                assertTrue(contentType.contains("charset"))
+                assertTrue(serve.data is java.io.FileInputStream)
+                assertFalse(serve.data is java.io.ByteArrayInputStream)
+                val first = ByteArray(16)
+                assertEquals(16, serve.data.read(first))
+                assertEquals(file.length() - 16, serve.data.available().toLong())
+            } finally {
+                serve.data.close()
+            }
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 }

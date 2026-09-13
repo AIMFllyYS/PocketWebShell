@@ -48,30 +48,105 @@ internal fun splitProfileBytes(entries: List<FileEntry>): Pair<Long, Long> {
     return clearable to siteData
 }
 
-internal fun computeSiteStats(appId: String, entries: List<FileEntry>?): SiteStorageStats {
-    if (entries == null) {
-        return SiteStorageStats(appId, measurable = false, clearableBytes = 0, siteDataBytes = 0)
-    }
-    val (clearable, siteData) = splitProfileBytes(entries)
-    return SiteStorageStats(appId, measurable = true, clearableBytes = clearable, siteDataBytes = siteData)
+internal fun Map<String, Long>.sumForSiteGroup(groupKey: String): Long =
+    entries.filter { siteGroupKey(it.key) == groupKey }.sumOf { it.value }
+
+internal fun localImportMetric(bytes: Long?): Metric<Long> = when (bytes) {
+    null -> Metric.Unavailable
+    0L -> Metric.Absent
+    else -> Metric.Measured(bytes, exact = true)
 }
+
+internal fun attributableSum(
+    cookie: Metric<CookieFacts>,
+    indexedDb: Metric<Long>,
+    quota: Metric<Long>,
+    localImport: Metric<Long>,
+): Long {
+    var sum = 0L
+    if (cookie is Metric.Measured) sum += cookie.value.serializedBytes
+    if (indexedDb is Metric.Measured) sum += indexedDb.value
+    if (quota is Metric.Measured) sum += quota.value
+    if (localImport is Metric.Measured) sum += localImport.value
+    return sum
+}
+
+/**
+ * 按 siteKey 共享 Cookie / IndexedDB / 配额证据；本地导入仍按 appId。
+ * [quotaByHost] 为 null 表示没问到 → Unavailable，空 Map → Absent。
+ */
+internal fun attributeSites(
+    inputs: List<SiteScanInput>,
+    indexedDbByHost: Map<String, Long>,
+    cookiesBySiteKey: Map<String, Metric<CookieFacts>>,
+    quotaByHost: Map<String, Long>?,
+    localImportByAppId: Map<String, Long?>,
+): List<SiteStorageStats> = inputs.map { input ->
+    val localImport = if (localImportByAppId.containsKey(input.appId)) {
+        localImportMetric(localImportByAppId[input.appId])
+    } else {
+        Metric.Absent
+    }
+    if (input.isLocal) {
+        return@map SiteStorageStats(
+            appId = input.appId,
+            siteKey = input.siteKey,
+            host = input.host,
+            isLocal = true,
+            cookie = Metric.Absent,
+            indexedDbBytes = Metric.Absent,
+            quotaUsageBytes = Metric.Absent,
+            localImportBytes = localImport,
+            signedIn = false,
+            attributableBytes = attributableSum(Metric.Absent, Metric.Absent, Metric.Absent, localImport),
+        )
+    }
+    val cookie = cookiesBySiteKey[input.siteKey] ?: Metric.Unavailable
+    val idbSum = indexedDbByHost.sumForSiteGroup(input.siteKey)
+    val indexedDb = if (idbSum == 0L) Metric.Absent else Metric.Measured(idbSum, exact = true)
+    val quota = when {
+        quotaByHost == null -> Metric.Unavailable
+        else -> {
+            val usage = quotaByHost.sumForSiteGroup(input.siteKey)
+            if (usage == 0L) Metric.Absent else Metric.Measured(usage, exact = false)
+        }
+    }
+    SiteStorageStats(
+        appId = input.appId,
+        siteKey = input.siteKey,
+        host = input.host,
+        isLocal = false,
+        cookie = cookie,
+        indexedDbBytes = indexedDb,
+        quotaUsageBytes = quota,
+        localImportBytes = localImport,
+        signedIn = (cookie as? Metric.Measured)?.value?.count?.let { it > 0 } == true,
+        attributableBytes = attributableSum(cookie, indexedDb, quota, localImport),
+    )
+}
+
+internal fun attributedIndexedDbBytes(sites: List<SiteStorageStats>): Long =
+    sites.distinctBy { it.siteKey }.sumOf { stats ->
+        (stats.indexedDbBytes as? Metric.Measured)?.value ?: 0L
+    }
+
+internal fun unattributableSharedBytes(defaultSiteDataBytes: Long, sites: List<SiteStorageStats>): Long =
+    (defaultSiteDataBytes - attributedIndexedDbBytes(sites)).coerceAtLeast(0L)
 
 /**
  * 一次扫描的互斥分桶结果（由仓库层遍历磁盘装配，本类型纯 JVM 可测）：
  * 每个字节只落在其中一个桶里，汇总时不会重复计数。
  */
 internal data class OverviewBuckets(
-    /** appId → 其 Profile 文件列表；值为 null 表示目录存在但不可读（不可测）。键缺失表示目录不存在（可测，0 字节）。 */
-    val siteProfiles: Map<String, List<FileEntry>?>,
-    /** 不属于任何现存站点的孤儿 Profile 目录（已删除站点的残留）。 */
-    val orphanProfiles: List<List<FileEntry>>,
+    /** 遗留 `Profile N` 目录（产品从不创建命名 Profile；残留计入应用数据）。 */
+    val legacyProfiles: List<List<FileEntry>>,
     /** 默认共享 Profile 的缓存子目录 + app_webview 根部的旧版缓存目录。 */
     val defaultCache: List<FileEntry>,
     /** 默认共享 Profile 的非缓存部分（IndexedDB / Cache Storage / Cookie 等），计入网站数据。 */
     val defaultRest: List<FileEntry>,
     /** databases/ + filesDir/（含 icons、localapps、wallpaper、datastore）。 */
     val appDirs: List<FileEntry>,
-    /** cacheDir/image_cache（Coil）。 */
+    /** cacheDir/image_cache（Coil）以及 cache/WebView HTTP 缓存。 */
     val imageCache: List<FileEntry>,
     /** cacheDir 其余部分。 */
     val cacheDirRest: List<FileEntry>,
@@ -79,22 +154,17 @@ internal data class OverviewBuckets(
 
 internal fun computeOverview(
     buckets: OverviewBuckets,
-    appIds: List<String>,
+    sites: List<SiteStorageStats>,
     multiProfile: Boolean,
     scannedAt: Long,
+    probeCapabilities: SiteProbeCapabilities,
     systemTotalBytes: Long? = null,
     systemCacheBytes: Long? = null,
 ): StorageOverview {
-    val sites = appIds.map { id ->
-        val entries = if (buckets.siteProfiles.containsKey(id)) buckets.siteProfiles[id] else emptyList()
-        computeSiteStats(id, entries)
-    }
-    val walkedClearable = sites.sumOf { it.clearableBytes } +
-        buckets.defaultCache.totalBytes() +
-        buckets.imageCache.totalBytes()
-    val walkedSiteData = sites.sumOf { it.siteDataBytes } + buckets.defaultRest.totalBytes()
+    val walkedClearable = buckets.defaultCache.totalBytes() + buckets.imageCache.totalBytes()
+    val walkedSiteData = buckets.defaultRest.totalBytes()
     val walkedApp = buckets.appDirs.totalBytes() +
-        buckets.orphanProfiles.sumOf { it.totalBytes() } +
+        buckets.legacyProfiles.sumOf { it.totalBytes() } +
         buckets.cacheDirRest.totalBytes()
     val walkedTotal = walkedClearable + walkedSiteData + walkedApp
     val fallback = walkedTotal == 0L && systemTotalBytes != null && systemTotalBytes > 0L
@@ -102,7 +172,7 @@ internal fun computeOverview(
     val sharedSite = if (fallback) {
         (systemTotalBytes - (systemCacheBytes ?: 0L)).coerceAtLeast(0L)
     } else {
-        buckets.defaultRest.totalBytes()
+        walkedSiteData
     }
     val siteData = if (fallback) sharedSite else walkedSiteData
     val appBytes = if (fallback) 0L else walkedApp
@@ -111,8 +181,10 @@ internal fun computeOverview(
         siteDataBytes = siteData,
         appBytes = appBytes,
         sharedSiteDataBytes = sharedSite,
+        unattributableSharedBytes = unattributableSharedBytes(sharedSite, sites),
+        probeCapabilities = probeCapabilities,
         sites = sites,
-        unmeasurableSiteIds = sites.filter { !it.measurable }.map { it.appId },
+        unmeasurableSiteIds = sites.filter { it.allMetricsUnavailable() }.map { it.appId },
         multiProfile = multiProfile,
         scannedAt = scannedAt,
         systemTotalBytes = systemTotalBytes,

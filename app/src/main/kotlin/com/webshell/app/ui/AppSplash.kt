@@ -19,25 +19,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -51,19 +46,18 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlin.random.Random
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
-private const val SplashDurationMs = 2400
-private const val FadeOutDurationMs = 220
-private const val ParticleCount = 110
-private const val StarCount = 36
-private const val SurgeStart = 0.62f
-private const val FlashStart = 0.80f
-// 文字开场即到：先见文案，再见星河收束。
-private const val TextStart = 0.02f
-private const val TextEnd = 0.18f
-// 小星河：整体只占短边一小块，文案让出上半屏。
+private const val SplashDurationMs = 1140
+private const val FadeOutDurationMs = 90
+private const val TextDurationMs = 125
+private const val ParticleCount = 32
+private const val StarCount = 8
+private const val SurgeStart = 0.54f
+private const val FlashStart = 0.73f
+private const val ShellReadyAt = 0.35f
 private const val RingRadiusFrac = 0.145f
 private const val FieldRadiusFrac = 0.42f
 private const val GalaxyCenterYFrac = 0.60f
@@ -81,13 +75,6 @@ private val SplashColorsDark = listOf(
     BrandMarkPalette.ring,
     Color(0xFFD4C4A0),
 )
-
-private val RingColorLight = BrandMarkPalette.orbit
-private val CoreColorLight = BrandMarkPalette.core
-private val RingColorDark = BrandMarkPalette.orbit
-private val CoreColorDark = BrandMarkPalette.core
-private val StarColorLight = BrandMarkPalette.orbit
-private val StarColorDark = BrandMarkPalette.ring
 
 private class SplashParticle(
     val startRadius: Float,
@@ -124,9 +111,8 @@ private fun buildParticles(): List<SplashParticle> {
             colorIndex = random.nextInt(SplashColorsLight.size),
             driftPhase = random.nextFloat() * (2f * PI.toFloat()),
             driftFreq = 0.6f + random.nextFloat() * 1.2f,
-            // 轻微椭圆轨道：绕行不是正圆，更像真实吸积流
             eccentricity = 0.88f + random.nextFloat() * 0.24f,
-            glow = i % 9 == 0,
+            glow = i % 16 == 0,
         )
     }
 }
@@ -144,13 +130,12 @@ private fun buildStars(): List<BackdropStar> {
     }
 }
 
-/** 4 层径向衰减近似辉光；层数压到 4 兼顾性能（相比 6 层省 1/3 叠加绘制）。 */
 private fun DrawScope.drawSoftGlow(
     center: Offset,
     radius: Float,
     color: Color,
     alpha: Float,
-    layers: Int = 4,
+    layers: Int = 2,
 ) {
     if (radius <= 0f || alpha <= 0f) return
     for (i in layers downTo 1) {
@@ -173,42 +158,39 @@ private val BlockInputModifier = Modifier.pointerInput(Unit) {
 }
 
 /**
- * 冷启动开屏：文案先行（淡入 + 字距收紧），下方一弯"小星河"把局部粒子缓缓吸入核心
- * （亮色=白洞金辉，暗色=黑洞吸积环 + 事件视界 + 光子环），寓意"把互联网收进桌面"。
- * 单 Canvas、无实时模糊，远景星尘只用小圆点，单次播放后淡出移除。
+ * Cold-start splash: copy first, then a small accretion field pulls particles into a
+ * black-hole core (event horizon + photon ring) and collapses into the brand mark.
+ * Light and dark share that drawing path; only the page color and particle tint change.
  */
 @Composable
-fun AppSplash(onFinished: () -> Unit) {
+fun AppSplash(
+    onFinished: () -> Unit,
+    onReadyForShell: () -> Unit = {},
+) {
     val isDark = LocalIsDarkTheme.current
     val palette = if (isDark) SplashColorsDark else SplashColorsLight
     val background = if (isDark) Color.Black else Color.White
     val contentColor = if (isDark) Color(0xFFF2F2F7) else Color(0xFF1C1C1E)
-    val ringColor = if (isDark) RingColorDark else RingColorLight
-    val coreColor = if (isDark) CoreColorDark else CoreColorLight
-    val starColor = if (isDark) StarColorDark else StarColorLight
-    val density = LocalDensity.current
-    val glowRadius = with(density) { 22.dp.toPx() }
-    val glowBrushes = remember(palette, glowRadius) {
-        palette.map { color ->
-            Brush.radialGradient(
-                0f to color.copy(alpha = 0.55f),
-                1f to color.copy(alpha = 0f),
-                center = Offset.Zero,
-                radius = glowRadius,
-                tileMode = TileMode.Clamp,
-            )
-        }
-    }
+    val ringColor = BrandMarkPalette.orbit
+    val coreColor = BrandMarkPalette.core
+    val starColor = if (isDark) BrandMarkPalette.ring else BrandMarkPalette.orbit
     val particles = remember { buildParticles() }
     val stars = remember { buildStars() }
     val progress = remember { Animatable(0f) }
     val fade = remember { Animatable(1f) }
-    var playing by remember { mutableStateOf(true) }
+    val textProgress = remember { Animatable(0f) }
     val currentOnFinished by rememberUpdatedState(onFinished)
+    val currentOnReady by rememberUpdatedState(onReadyForShell)
 
     LaunchedEffect(Unit) {
+        launch {
+            snapshotFlow { progress.value }.first { it >= ShellReadyAt }
+            currentOnReady()
+        }
+        launch {
+            textProgress.animateTo(1f, tween(TextDurationMs, easing = FastOutSlowInEasing))
+        }
         progress.animateTo(1f, tween(SplashDurationMs, easing = LinearEasing))
-        playing = false
         fade.animateTo(0f, tween(FadeOutDurationMs, easing = LinearEasing))
         currentOnFinished()
     }
@@ -218,245 +200,25 @@ fun AppSplash(onFinished: () -> Unit) {
             .fillMaxSize()
             .graphicsLayer { alpha = fade.value }
             .background(background)
-            .then(if (playing) BlockInputModifier else Modifier),
+            .then(BlockInputModifier),
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            val p = progress.value
-            val fadeIn = (p / 0.06f).coerceIn(0f, 1f)
-            if (fadeIn <= 0f) return@Canvas
-            val width = size.width
-            val height = size.height
-            val center = Offset(width * 0.5f, height * GalaxyCenterYFrac)
-            val minDim = minOf(width, height)
-            val ringRadius = minDim * RingRadiusFrac
-            if (ringRadius <= 0f) return@Canvas
-            // 粒子只在星河周围的局部椭圆域内散布，不再铺满全屏对角线。
-            val startSpread = (minDim * FieldRadiusFrac - ringRadius * 1.15f).coerceAtLeast(1f)
-            val twoPi = 2f * PI.toFloat()
-            val fieldRotation = p * 0.45f
-            val surgeT = ((p - SurgeStart) / (FlashStart - SurgeStart)).coerceIn(0f, 1f)
-            val flashT = ((p - FlashStart) / (1f - FlashStart)).coerceIn(0f, 1f)
-
-            // 远景星尘：开场随 fadeIn 浮现并微微闪烁，衬出"小星河"纵深。
-            val starT = ((p - 0.04f) / 0.24f).coerceIn(0f, 1f)
-            if (starT > 0f) {
-                val starBase = 1.dp.toPx()
-                for (star in stars) {
-                    val twinkle = 0.55f + 0.45f * sin(star.phase + p * twoPi * star.freq)
-                    drawCircle(
-                        color = starColor,
-                        radius = starBase * star.radiusFactor,
-                        center = Offset(star.u * width, star.v * height),
-                        alpha = fadeIn * starT * 0.30f * twinkle,
-                    )
-                }
-            }
-
-            // 核心辉光：surge 阶段增强，闪光阶段收敛
-            drawSoftGlow(
-                center = center,
-                radius = ringRadius * (0.85f + 0.55f * surgeT),
-                color = coreColor,
-                alpha = fadeIn * (0.10f + 0.45f * surgeT) * (1f - flashT),
+            drawBlackHoleField(
+                progress = progress.value,
+                isDark = isDark,
+                palette = palette,
+                ringColor = ringColor,
+                coreColor = coreColor,
+                starColor = starColor,
+                particles = particles,
+                stars = stars,
             )
-            if (isDark && flashT <= 0f) {
-                // 事件视界：纯黑圆盘随 surge 微膨胀，外缘紧贴一圈细光子环。
-                val horizon = ringRadius * 0.42f * (1f + 0.10f * surgeT)
-                drawCircle(
-                    color = Color.Black,
-                    radius = horizon,
-                    center = center,
-                    alpha = fadeIn * (0.25f + 0.65f * surgeT),
-                )
-                if (surgeT > 0f) {
-                    drawCircle(
-                        color = Color.White,
-                        radius = horizon * 1.06f,
-                        center = center,
-                        alpha = fadeIn * (0.10f + 0.50f * surgeT),
-                        style = Stroke(0.8.dp.toPx()),
-                    )
-                }
-            }
-            // 吸积环：淡入后随 surge 增亮；亮暗两半弧模拟多普勒集束（接近侧更亮）。
-            if (flashT <= 0f) {
-                val ringVisibility = ((p - 0.08f) / 0.30f).coerceIn(0f, 1f)
-                if (ringVisibility > 0f) {
-                    val pulse = 1f + 0.03f * sin(p * twoPi * 2f)
-                    val ringAlpha = fadeIn * ringVisibility * (0.35f + 0.45f * surgeT)
-                    val strokeWidth = 1.2.dp.toPx() * (1f + 1.2f * surgeT)
-                    val ringRadiusPulsed = ringRadius * pulse
-                    // 外侧宽淡晕环
-                    drawCircle(
-                        color = ringColor,
-                        radius = ringRadiusPulsed,
-                        center = center,
-                        alpha = ringAlpha * 0.25f,
-                        style = Stroke(strokeWidth * 3.2f),
-                    )
-                    // 多普勒不对称：与场旋转同向的半弧亮、背向半弧暗
-                    val arcStart = Math.toDegrees(fieldRotation.toDouble()).toFloat()
-                    val arcSize = Size(ringRadiusPulsed * 2f, ringRadiusPulsed * 2f)
-                    val arcTopLeft = Offset(center.x - ringRadiusPulsed, center.y - ringRadiusPulsed)
-                    drawArc(
-                        color = ringColor,
-                        startAngle = arcStart,
-                        sweepAngle = 180f,
-                        useCenter = false,
-                        topLeft = arcTopLeft,
-                        size = arcSize,
-                        alpha = ringAlpha,
-                        style = Stroke(strokeWidth, cap = StrokeCap.Round),
-                    )
-                    drawArc(
-                        color = ringColor,
-                        startAngle = arcStart + 180f,
-                        sweepAngle = 180f,
-                        useCenter = false,
-                        topLeft = arcTopLeft,
-                        size = arcSize,
-                        alpha = ringAlpha * 0.38f,
-                        style = Stroke(strokeWidth * 0.8f, cap = StrokeCap.Round),
-                    )
-                }
-            }
-
-            for (particle in particles) {
-                val u = ((p - particle.delay) / particle.span).coerceIn(0f, 1f)
-                val eased = u * u * u
-                val startR = ringRadius * 1.15f + particle.startRadius * startSpread
-                val r = startR * (1f - eased)
-                val theta = particle.startAngle + particle.twist * eased + fieldRotation
-                val drift = (1f - eased) * 5.dp.toPx() *
-                    sin(particle.driftPhase + p * twoPi * particle.driftFreq)
-                val x = center.x + r * particle.eccentricity * cos(theta) - drift * sin(theta)
-                val y = center.y + r * sin(theta) + drift * cos(theta)
-                // 越过吸积环的粒子缩小、变暗直至消失
-                val vanish = (r / (ringRadius * 0.9f)).coerceIn(0f, 1f)
-                if (vanish <= 0f) continue
-                // 多普勒集束：顺行侧（朝观察者）略亮，逆行侧略暗
-                val doppler = 0.80f + 0.40f * (0.5f + 0.5f * sin(theta - fieldRotation))
-                val alpha = fadeIn * (0.35f + 0.65f * eased) * vanish * vanish * doppler
-                if (alpha <= 0.01f) continue
-                val dotRadius = particle.size.dp.toPx() * (0.75f + 0.45f * eased) *
-                    (0.35f + 0.65f * vanish)
-                if (particle.glow) {
-                    translate(x, y) {
-                        drawCircle(
-                            brush = glowBrushes[particle.colorIndex],
-                            radius = glowRadius,
-                            center = Offset.Zero,
-                            alpha = alpha * 0.45f,
-                        )
-                    }
-                }
-                // surge 阶段粒子拖出径向短迹线，模拟加速坠入
-                if (surgeT > 0f && u > 0f && r > 0.5f) {
-                    val streakLen = (dotRadius * (2f + 5f * surgeT)).coerceAtMost(r)
-                    val ux = (x - center.x) / r
-                    val uy = (y - center.y) / r
-                    drawLine(
-                        color = palette[particle.colorIndex],
-                        start = Offset(x + ux * streakLen, y + uy * streakLen),
-                        end = Offset(x, y),
-                        strokeWidth = dotRadius * 1.1f,
-                        cap = StrokeCap.Round,
-                        alpha = alpha * 0.8f,
-                    )
-                }
-                drawCircle(
-                    color = palette[particle.colorIndex],
-                    radius = dotRadius,
-                    center = Offset(x, y),
-                    alpha = alpha,
-                )
-            }
-
-            if (flashT > 0f) {
-                if (isDark) {
-                    // 光子环骤亮后内爆坍缩成一点
-                    val flareT = (flashT / 0.35f).coerceIn(0f, 1f)
-                    val dimT = ((flashT - 0.35f) / 0.65f).coerceIn(0f, 1f)
-                    val implRadius = ringRadius * (1f - flashT * flashT)
-                    val flashAlpha = fadeIn * (0.55f + 0.45f * flareT) * (1f - dimT)
-                    if (implRadius > 0.5f && flashAlpha > 0f) {
-                        val w = 1.4.dp.toPx() * (1f + 2f * flareT) * (1f - 0.6f * dimT)
-                        drawCircle(
-                            color = ringColor,
-                            radius = implRadius,
-                            center = center,
-                            alpha = flashAlpha * 0.35f,
-                            style = Stroke(w * 3f),
-                        )
-                        drawCircle(
-                            color = Color.White,
-                            radius = implRadius,
-                            center = center,
-                            alpha = flashAlpha,
-                            style = Stroke(w),
-                        )
-                    }
-                    val pointT = ((flashT - 0.55f) / 0.45f).coerceIn(0f, 1f)
-                    if (pointT > 0f) {
-                        drawSoftGlow(
-                            center = center,
-                            radius = ringRadius * 0.35f * (1f - 0.7f * pointT),
-                            color = BrandMarkPalette.core,
-                            alpha = fadeIn * sin(pointT * PI.toFloat()) * 0.9f,
-                        )
-                    }
-                } else {
-                    // 金色闪环在白底上向外绽放：双环 + 余晖，收束成一点暖芯
-                    val easeOut = 1f - (1f - flashT) * (1f - flashT)
-                    val bloomRadius = ringRadius * (1f + 2.6f * easeOut)
-                    val bloomAlpha = fadeIn * (1f - flashT)
-                    if (bloomAlpha > 0f) {
-                        val w = 1.6.dp.toPx() * (1f + 4f * (1f - flashT))
-                        drawCircle(
-                            color = coreColor,
-                            radius = bloomRadius,
-                            center = center,
-                            alpha = bloomAlpha * 0.5f,
-                            style = Stroke(w),
-                        )
-                        drawCircle(
-                            color = ringColor,
-                            radius = bloomRadius * 0.92f,
-                            center = center,
-                            alpha = bloomAlpha * 0.9f,
-                            style = Stroke(w * 0.45f),
-                        )
-                    }
-                    val fillT = (flashT / 0.30f).coerceIn(0f, 1f)
-                    if (fillT < 1f) {
-                        drawSoftGlow(
-                            center = center,
-                            radius = ringRadius * (1.2f + 1.5f * fillT),
-                            color = coreColor,
-                            alpha = fadeIn * 0.55f * (1f - fillT),
-                        )
-                    }
-                }
-            }
-
-            val markT = ((p - 0.78f) / 0.18f).coerceIn(0f, 1f)
-            if (markT > 0f) {
-                val markEase = FastOutSlowInEasing.transform(markT)
-                drawBrandMark(
-                    center = center,
-                    radius = ringRadius * (0.72f + 0.28f * markEase),
-                    alpha = fadeIn * markEase,
-                )
-            }
         }
-        // 文案先于星河收束登场：淡入 + 字距收紧 + 轻微上浮，位于上半屏。
         Column(
             modifier = Modifier.align(BiasAlignment(0f, -0.30f)),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            val textT = FastOutSlowInEasing.transform(
-                ((progress.value - TextStart) / (TextEnd - TextStart)).coerceIn(0f, 1f),
-            )
+            val textT = textProgress.value
             Text(
                 text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.labelLarge,
@@ -474,5 +236,247 @@ fun AppSplash(onFinished: () -> Unit) {
                 },
             )
         }
+    }
+}
+
+private fun DrawScope.drawBlackHoleField(
+    progress: Float,
+    isDark: Boolean,
+    palette: List<Color>,
+    ringColor: Color,
+    coreColor: Color,
+    starColor: Color,
+    particles: List<SplashParticle>,
+    stars: List<BackdropStar>,
+) {
+    val fadeIn = (progress / 0.06f).coerceIn(0f, 1f)
+    if (fadeIn <= 0f) return
+    val center = Offset(size.width * 0.5f, size.height * GalaxyCenterYFrac)
+    val minDim = minOf(size.width, size.height)
+    val ringRadius = minDim * RingRadiusFrac
+    if (ringRadius <= 0f) return
+    val startSpread = (minDim * FieldRadiusFrac - ringRadius * 1.15f).coerceAtLeast(1f)
+    val twoPi = 2f * PI.toFloat()
+    val fieldRotation = progress * 0.45f
+    val surgeT = ((progress - SurgeStart) / (FlashStart - SurgeStart)).coerceIn(0f, 1f)
+    val flashT = ((progress - FlashStart) / (1f - FlashStart)).coerceIn(0f, 1f)
+
+    drawStars(progress, fadeIn, starColor, stars, twoPi)
+    drawSoftGlow(
+        center = center,
+        radius = ringRadius * (0.85f + 0.55f * surgeT),
+        color = coreColor,
+        alpha = fadeIn * (0.10f + 0.45f * surgeT) * (1f - flashT),
+    )
+    if (flashT <= 0f) {
+        drawHorizon(center, ringRadius, fadeIn, surgeT, isDark)
+        drawAccretionRing(center, ringRadius, fadeIn, progress, surgeT, fieldRotation, ringColor)
+    }
+    drawInfallingParticles(
+        progress = progress,
+        fadeIn = fadeIn,
+        surgeT = surgeT,
+        center = center,
+        ringRadius = ringRadius,
+        startSpread = startSpread,
+        fieldRotation = fieldRotation,
+        twoPi = twoPi,
+        palette = palette,
+        particles = particles,
+    )
+    if (flashT > 0f) {
+        drawImplosion(center, ringRadius, fadeIn, flashT, ringColor)
+    }
+    val markT = ((progress - 0.70f) / 0.26f).coerceIn(0f, 1f)
+    if (markT > 0f) {
+        val markEase = FastOutSlowInEasing.transform(markT)
+        drawBrandMark(
+            center = center,
+            radius = ringRadius * (0.72f + 0.28f * markEase),
+            alpha = fadeIn * markEase,
+        )
+    }
+}
+
+private fun DrawScope.drawStars(
+    progress: Float,
+    fadeIn: Float,
+    starColor: Color,
+    stars: List<BackdropStar>,
+    twoPi: Float,
+) {
+    val starT = ((progress - 0.02f) / 0.16f).coerceIn(0f, 1f)
+    if (starT <= 0f) return
+    val starBase = 1.dp.toPx()
+    for (star in stars) {
+        val twinkle = 0.55f + 0.45f * sin(star.phase + progress * twoPi * star.freq)
+        drawCircle(
+            color = starColor,
+            radius = starBase * star.radiusFactor,
+            center = Offset(star.u * size.width, star.v * size.height),
+            alpha = fadeIn * starT * 0.30f * twinkle,
+        )
+    }
+}
+
+private fun DrawScope.drawHorizon(
+    center: Offset,
+    ringRadius: Float,
+    fadeIn: Float,
+    surgeT: Float,
+    isDark: Boolean,
+) {
+    val horizon = ringRadius * 0.42f * (1f + 0.10f * surgeT)
+    drawCircle(
+        color = Color.Black,
+        radius = horizon,
+        center = center,
+        alpha = fadeIn * if (isDark) (0.25f + 0.65f * surgeT) else (0.18f + 0.50f * surgeT),
+    )
+    if (surgeT <= 0f) return
+    drawCircle(
+        color = Color.White,
+        radius = horizon * 1.06f,
+        center = center,
+        alpha = fadeIn * (0.10f + 0.50f * surgeT),
+        style = Stroke(0.8.dp.toPx()),
+    )
+}
+
+private fun DrawScope.drawAccretionRing(
+    center: Offset,
+    ringRadius: Float,
+    fadeIn: Float,
+    progress: Float,
+    surgeT: Float,
+    fieldRotation: Float,
+    ringColor: Color,
+) {
+    val ringVisibility = ((progress - 0.05f) / 0.22f).coerceIn(0f, 1f)
+    if (ringVisibility <= 0f) return
+    val twoPi = 2f * PI.toFloat()
+    val pulse = 1f + 0.03f * sin(progress * twoPi * 2f)
+    val ringAlpha = fadeIn * ringVisibility * (0.35f + 0.45f * surgeT)
+    val strokeWidth = 1.2.dp.toPx() * (1f + 1.2f * surgeT)
+    val ringRadiusPulsed = ringRadius * pulse
+    drawCircle(
+        color = ringColor,
+        radius = ringRadiusPulsed,
+        center = center,
+        alpha = ringAlpha * 0.25f,
+        style = Stroke(strokeWidth * 3.2f),
+    )
+    val arcStart = Math.toDegrees(fieldRotation.toDouble()).toFloat()
+    val arcSize = Size(ringRadiusPulsed * 2f, ringRadiusPulsed * 2f)
+    val arcTopLeft = Offset(center.x - ringRadiusPulsed, center.y - ringRadiusPulsed)
+    drawArc(
+        color = ringColor,
+        startAngle = arcStart,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = arcTopLeft,
+        size = arcSize,
+        alpha = ringAlpha,
+        style = Stroke(strokeWidth, cap = StrokeCap.Round),
+    )
+    drawArc(
+        color = ringColor,
+        startAngle = arcStart + 180f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = arcTopLeft,
+        size = arcSize,
+        alpha = ringAlpha * 0.38f,
+        style = Stroke(strokeWidth * 0.8f, cap = StrokeCap.Round),
+    )
+}
+
+private fun DrawScope.drawInfallingParticles(
+    progress: Float,
+    fadeIn: Float,
+    surgeT: Float,
+    center: Offset,
+    ringRadius: Float,
+    startSpread: Float,
+    fieldRotation: Float,
+    twoPi: Float,
+    palette: List<Color>,
+    particles: List<SplashParticle>,
+) {
+    for (particle in particles) {
+        if (progress <= particle.delay) continue
+        val u = ((progress - particle.delay) / particle.span).coerceIn(0f, 1f)
+        val eased = u * u * u
+        val startR = ringRadius * 1.15f + particle.startRadius * startSpread
+        val r = startR * (1f - eased)
+        val theta = particle.startAngle + particle.twist * eased + fieldRotation
+        val drift = (1f - eased) * 5.dp.toPx() *
+            sin(particle.driftPhase + progress * twoPi * particle.driftFreq)
+        val x = center.x + r * particle.eccentricity * cos(theta) - drift * sin(theta)
+        val y = center.y + r * sin(theta) + drift * cos(theta)
+        val vanish = (r / (ringRadius * 0.9f)).coerceIn(0f, 1f)
+        if (vanish <= 0f) continue
+        val doppler = 0.80f + 0.40f * (0.5f + 0.5f * sin(theta - fieldRotation))
+        val alpha = fadeIn * (0.35f + 0.65f * eased) * vanish * vanish * doppler
+        if (alpha <= 0.01f) continue
+        val dotRadius = particle.size.dp.toPx() * (0.75f + 0.45f * eased) *
+            (0.35f + 0.65f * vanish)
+        val color = palette[particle.colorIndex]
+        if (particle.glow) {
+            drawSoftGlow(Offset(x, y), dotRadius * 3f, color, alpha * 0.35f)
+        }
+        if (surgeT > 0f && u > 0f && r > 0.5f) {
+            val streakLen = (dotRadius * (2f + 5f * surgeT)).coerceAtMost(r)
+            val ux = (x - center.x) / r
+            val uy = (y - center.y) / r
+            drawLine(
+                color = color,
+                start = Offset(x + ux * streakLen, y + uy * streakLen),
+                end = Offset(x, y),
+                strokeWidth = dotRadius * 1.1f,
+                cap = StrokeCap.Round,
+                alpha = alpha * 0.8f,
+            )
+        }
+        drawCircle(color = color, radius = dotRadius, center = Offset(x, y), alpha = alpha)
+    }
+}
+
+private fun DrawScope.drawImplosion(
+    center: Offset,
+    ringRadius: Float,
+    fadeIn: Float,
+    flashT: Float,
+    ringColor: Color,
+) {
+    val flareT = (flashT / 0.35f).coerceIn(0f, 1f)
+    val dimT = ((flashT - 0.35f) / 0.65f).coerceIn(0f, 1f)
+    val implRadius = ringRadius * (1f - flashT * flashT)
+    val flashAlpha = fadeIn * (0.55f + 0.45f * flareT) * (1f - dimT)
+    if (implRadius > 0.5f && flashAlpha > 0f) {
+        val w = 1.4.dp.toPx() * (1f + 2f * flareT) * (1f - 0.6f * dimT)
+        drawCircle(
+            color = ringColor,
+            radius = implRadius,
+            center = center,
+            alpha = flashAlpha * 0.35f,
+            style = Stroke(w * 3f),
+        )
+        drawCircle(
+            color = Color.White,
+            radius = implRadius,
+            center = center,
+            alpha = flashAlpha,
+            style = Stroke(w),
+        )
+    }
+    val pointT = ((flashT - 0.55f) / 0.45f).coerceIn(0f, 1f)
+    if (pointT > 0f) {
+        drawSoftGlow(
+            center = center,
+            radius = ringRadius * 0.35f * (1f - 0.7f * pointT),
+            color = BrandMarkPalette.core,
+            alpha = fadeIn * sin(pointT * PI.toFloat()) * 0.9f,
+        )
     }
 }

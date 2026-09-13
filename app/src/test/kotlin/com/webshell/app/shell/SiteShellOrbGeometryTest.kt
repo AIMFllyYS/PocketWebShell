@@ -21,10 +21,7 @@ class SiteShellOrbGeometryTest {
 
     @Test
     fun expandCentersAndParkRemembersSide() {
-        val center = SiteShellOrbAnchor.expandedCenter()
-        assertEquals(0.5f, center.x, 0f)
-        assertEquals(0.5f, center.y, 0f)
-        assertFalse(center.parked)
+        val bounds = SiteShellOrbBounds(360f, 640f)
         val left = SiteShellOrbAnchor.parked(left = true, y = 0.35f)
         assertTrue(left.parkedLeft)
         assertEquals(0f, left.x, 0f)
@@ -33,6 +30,28 @@ class SiteShellOrbGeometryTest {
         assertFalse(right.parkedLeft)
         assertEquals(1f, right.x, 0f)
         assertEquals(0.8f, right.y, 0f)
+
+        val lastFree = bounds.anchorAt(120f, bounds.centerY(left))
+        val restored = expandFromParked(left, lastFree, bounds)
+        assertEquals(lastFree.x, restored.x, 0f)
+        assertEquals(lastFree.y, restored.y, 0f)
+        assertFalse(restored.parked)
+
+        val expectedInner = bounds.anchorAt(
+            SiteShellOrbMetrics.PARK_EDGE_BAND_DP + SiteShellOrbMetrics.UNPARK_SLACK_DP,
+            bounds.centerY(left),
+        )
+        val noMemory = expandFromParked(left, lastFree = null, bounds)
+        assertFalse(noMemory.parked)
+        assertFalse(noMemory.x == 0.5f && noMemory.y == 0.5f)
+        assertEquals(expectedInner.x, noMemory.x, 0.001f)
+        assertEquals(expectedInner.y, noMemory.y, 0.001f)
+
+        val opposite = bounds.anchorAt(280f, bounds.centerY(left))
+        val fromOpposite = expandFromParked(left, opposite, bounds)
+        assertFalse(fromOpposite.x == 0.5f && fromOpposite.y == 0.5f)
+        assertEquals(expectedInner.x, fromOpposite.x, 0.001f)
+        assertEquals(expectedInner.y, fromOpposite.y, 0.001f)
     }
 
     @Test
@@ -52,11 +71,14 @@ class SiteShellOrbGeometryTest {
 
     @Test
     fun parkedCapsuleIsAShortEdgeTab() {
-        assertEquals(56f, SiteShellOrbMetrics.ORB_SIZE, 0f)
+        assertEquals(48f, SiteShellOrbMetrics.ORB_SIZE, 0f)
         assertEquals(18f, SiteShellOrbMetrics.PARKED_WIDTH, 0f)
         assertEquals(48f, SiteShellOrbMetrics.PARKED_HEIGHT, 0f)
-        assertTrue(SiteShellOrbMetrics.PARKED_HEIGHT < SiteShellOrbMetrics.ORB_SIZE)
+        assertTrue(SiteShellOrbMetrics.PARKED_WIDTH < SiteShellOrbMetrics.ORB_SIZE)
+        assertTrue(SiteShellOrbMetrics.PARKED_HEIGHT <= SiteShellOrbMetrics.ORB_SIZE)
         assertEquals(0f, SiteShellOrbMetrics.PARKED_EDGE_INSET, 0f)
+        assertEquals(36f, SiteShellOrbMetrics.MARK_DOT_DIAMETER, 0f)
+        assertEquals(SiteShellOrbMetrics.ORB_SIZE * 0.75f, SiteShellOrbMetrics.MARK_DOT_DIAMETER, 0f)
         val bounds = SiteShellOrbBounds(360f, 640f)
         assertEquals(SiteShellOrbMetrics.ORB_SIZE, bounds.orbSize, 0f)
         val leftSnap = bounds.parkSnapCenter(SiteShellOrbAnchor.parked(left = true, y = 0.4f))
@@ -70,6 +92,18 @@ class SiteShellOrbGeometryTest {
         assertEquals(
             SiteShellOrbRelease.TAP,
             SiteShellOrbGesture.classifyRelease(8f, -4f, mid, bounds),
+        )
+        assertEquals(
+            SiteShellOrbRelease.STAY,
+            SiteShellOrbGesture.classifyRelease(20f, 8f, mid, bounds),
+        )
+        assertEquals(
+            SiteShellOrbRelease.STAY,
+            SiteShellOrbGesture.classifyRelease(4f, 40f, mid, bounds),
+        )
+        assertEquals(
+            SiteShellOrbRelease.STAY,
+            SiteShellOrbGesture.classifyRelease(28f, 70f, mid, bounds),
         )
         assertEquals(
             SiteShellOrbRelease.PARK_LEFT,

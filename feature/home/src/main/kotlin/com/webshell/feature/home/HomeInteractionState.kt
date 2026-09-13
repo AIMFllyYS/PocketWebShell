@@ -3,6 +3,7 @@ package com.webshell.feature.home
 import android.graphics.Rect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,12 @@ class HomeInteractionState {
 
     /** 正在拖拽的 cell key；非 null 即拖拽会话进行中（pager/列表滚动随之禁用）。 */
     var draggingKey by mutableStateOf<String?>(null)
+
+    /** 本次拖拽的单元格集合；锚点是 [draggingKey]，多选时含全部已选 key。 */
+    var dragGroup by mutableStateOf<Set<String>>(emptySet())
+
+    /** 多选汇聚进度 0..1；仅组 size>1 时由根层 Animatable 推进。 */
+    var convergeProgress by mutableFloatStateOf(0f)
 
     /** 手指在根布局坐标系中的位置（拖拽跟手锚点）。 */
     var dragPosition by mutableStateOf(Offset.Zero)
@@ -141,9 +148,12 @@ class HomeInteractionState {
             // pager 页号减左偏移才是数据页号；临时屏（映射后越界）无命中目标。
             keysByPage.getOrNull(currentPage - tempLeftOffset).orEmpty()
         }
+        val groupKeys = dragGroup.ifEmpty { setOfNotNull(draggingKey) }
+        val px = position.x.toInt()
+        val py = position.y.toInt()
         val target = cellBounds.entries.firstOrNull { (key, rect) ->
-            key != draggingKey && (currentKeys == null || key in currentKeys) &&
-                rect.contains(position.x.toInt(), position.y.toInt())
+            key !in groupKeys && (currentKeys == null || key in currentKeys) &&
+                px >= rect.left && px < rect.right && py >= rect.top && py < rect.bottom
         }
         val targetKey = target?.key
         if (targetKey != dragHoverTarget) {
@@ -159,8 +169,8 @@ class HomeInteractionState {
         var nearestDistance = Float.POSITIVE_INFINITY
         slotBounds.forEach { (key, rect) ->
             if (verticalMode || key.startsWith(pagePrefix)) {
-                val dx = rect.exactCenterX() - position.x
-                val dy = rect.exactCenterY() - position.y
+                val dx = (rect.left + rect.right) / 2f - position.x
+                val dy = (rect.top + rect.bottom) / 2f - position.y
                 val distance = dx * dx + dy * dy
                 if (distance < nearestDistance) {
                     nearestDistance = distance
@@ -178,15 +188,22 @@ class HomeInteractionState {
         // 文件夹合并热点：悬停目标图标中心附近（不依赖重组推导的 draggedCell ——
         // 首个 MOVE 事件可能先于重组到达，单点移入即静置也必须能武装合并）。
         val inFolderHotspot = target?.value?.let { rect ->
-            val centerX = rect.exactCenterX()
+            val centerX = (rect.left + rect.right) / 2f
             val centerY = rect.top + with(density) { iconSize.toPx() } / 2f
             val radius = with(density) { iconSize.toPx() } * 0.55f
             val dx = position.x - centerX
             val dy = position.y - centerY
             dx * dx + dy * dy <= radius * radius
         } == true
-        val sourceCanMerge = cellsByKey[draggingKey]?.isFolder == false
-        folderCandidate = targetKey.takeIf { inFolderHotspot && sourceCanMerge }
+        val sourceCanMerge = groupKeys.none { cellsByKey[it]?.isFolder == true }
+        val targetIsFolder = cellsByKey[targetKey]?.isFolder == true
+        folderCandidate = folderCandidateForGroup(
+            targetKey = targetKey,
+            inFolderHotspot = inFolderHotspot,
+            groupSize = groupKeys.size,
+            sourceCanMerge = sourceCanMerge,
+            targetIsFolder = targetIsFolder,
+        )
 
         if (verticalMode) {
             // 上下滚动：手指停在顶部/底部边缘区域时自动滚动列表。
@@ -216,6 +233,8 @@ class HomeInteractionState {
     /** 拖拽会话结束（落子/取消）时清空全部会话状态；临时屏未落子随状态清除被裁掉。 */
     fun resetDrag() {
         draggingKey = null
+        dragGroup = emptySet()
+        convergeProgress = 0f
         dragPosition = Offset.Zero
         dragRegistration = Offset.Zero
         menuPressPoint = null
@@ -233,6 +252,16 @@ class HomeInteractionState {
         editMode = false
         editSelection.clear()
     }
+}
+
+internal fun folderCandidateForGroup(
+    targetKey: String?,
+    inFolderHotspot: Boolean,
+    groupSize: Int,
+    sourceCanMerge: Boolean,
+    targetIsFolder: Boolean,
+): String? = targetKey.takeIf {
+    inFolderHotspot && sourceCanMerge && (groupSize <= 1 || targetIsFolder)
 }
 
 @Composable

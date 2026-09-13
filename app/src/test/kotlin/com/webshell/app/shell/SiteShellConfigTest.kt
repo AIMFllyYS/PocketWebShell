@@ -23,6 +23,7 @@ class SiteShellConfigTest {
         assertNull(config.profileId)
         assertEquals(125, config.textZoomPercent)
         assertTrue(config.desktopMode)
+        assertTrue(config.forceEnableZoom)
         assertTrue(config.algorithmicDark)
         assertFalse(config.pullToRefresh)
         assertEquals(ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME, config.externalLinkPolicy)
@@ -45,6 +46,8 @@ class SiteShellConfigTest {
         assertEquals("https://appassets.androidplatform.net/local/saved-app/index.html", config.startUrl)
         assertEquals("saved-app", config.localAppId)
         assertEquals(125, config.textZoomPercent)
+        assertFalse(config.forceEnableZoom)
+        assertTrue(requireNotNull(configuredSiteShell(app, forceEnableZoomUser = true)).forceEnableZoom)
         assertNull(configuredSiteShell(app.copy(url = "local://other-app/index.html")))
         assertNull(configuredSiteShell(app.copy(url = "local://saved-app/%2e%2e/other/index.html")))
     }
@@ -59,9 +62,39 @@ class SiteShellConfigTest {
         ).forEach { assertNull(it, validatedExternalSiteUrl(it)) }
     }
 
+    @Test fun newWindowPolicyFollowsPerAppThenGlobal() {
+        val adopt = requireNotNull(configuredSiteShell(site()))
+        assertEquals(ShellConfig.NewWindowPolicy.ADOPT_IN_BROWSER, adopt.newWindowPolicy)
+        val replaced = requireNotNull(
+            configuredSiteShell(
+                site().copy(siteShellNewWindowPolicy = com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE),
+            ),
+        )
+        assertEquals(ShellConfig.NewWindowPolicy.REPLACE_IN_SHELL, replaced.newWindowPolicy)
+        val globalReplace = requireNotNull(
+            configuredSiteShell(
+                site(),
+                globalNewWindowPolicy = com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE,
+            ),
+        )
+        assertEquals(ShellConfig.NewWindowPolicy.REPLACE_IN_SHELL, globalReplace.newWindowPolicy)
+        val perAppAdopt = requireNotNull(
+            configuredSiteShell(
+                site().copy(siteShellNewWindowPolicy = com.webshell.core.data.SITE_SHELL_NEW_WINDOW_ADOPT),
+                globalNewWindowPolicy = com.webshell.core.data.SITE_SHELL_NEW_WINDOW_REPLACE,
+            ),
+        )
+        assertEquals(ShellConfig.NewWindowPolicy.ADOPT_IN_BROWSER, perAppAdopt.newWindowPolicy)
+    }
+
     @Test fun defaultWebsiteZoomRemainsUnscaled() {
         val config = requireNotNull(configuredSiteShell(site().copy(textZoomPercent = 100, desktopMode = false)))
         assertEquals(100, config.textZoomPercent)
         assertFalse(config.desktopMode)
+        assertFalse(config.forceEnableZoom)
+        assertTrue(
+            requireNotNull(configuredSiteShell(site().copy(desktopMode = false), forceEnableZoomUser = true))
+                .forceEnableZoom,
+        )
     }
 }

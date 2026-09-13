@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppFormField
 import com.webshell.core.designsystem.components.PageLoadIndicator
 import com.webshell.core.designsystem.components.staticGlassSurface
+import com.webshell.core.designsystem.theme.AppSpacing
 
 /** One row, three reachable controls. Navigation actions live in the explicit menu. */
 @Composable
@@ -50,12 +51,14 @@ internal fun BrowserTopBar(
     onMenu: () -> Unit,
     progress: Int,
     sessionKey: Any? = null,
+    readOnly: Boolean = false,
+    stripScheme: Boolean = true,
 ) {
     val focusManager = LocalFocusManager.current
     val addressLabel = stringResource(R.string.browser_address)
     Column {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpacing.lg, vertical = AppSpacing.sm)
                 .staticGlassSurface(
                     shape = RoundedCornerShape(26.dp),
                     tint = MaterialTheme.colorScheme.surface,
@@ -72,15 +75,21 @@ internal fun BrowserTopBar(
                 onValueChange = onUrlInputChanged,
                 modifier = Modifier.weight(1f)
                     .semantics { contentDescription = addressLabel }
-                    .onFocusChanged { onEditingChanged(it.isFocused) },
+                    .onFocusChanged { if (!readOnly) onEditingChanged(it.isFocused) },
                 placeholder = stringResource(R.string.browser_address_placeholder),
-                displayText = if (editing) null else urlInput.text.stripScheme(),
+                displayText = when {
+                    editing -> null
+                    readOnly -> urlInput.text
+                    stripScheme -> urlInput.text.stripScheme()
+                    else -> null
+                },
+                readOnly = readOnly,
                 containerColor = Color.Transparent,
                 textStyle = MaterialTheme.typography.bodyMedium,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Go,
                 ),
-                keyboardActions = KeyboardActions(onGo = { onGo(); focusManager.clearFocus() }),
+                keyboardActions = KeyboardActions(onGo = { if (!readOnly) { onGo(); focusManager.clearFocus() } }),
             )
             IconButton(onClick = onTabSwitcher, modifier = Modifier.size(48.dp)) {
                 TabCountBadge(tabCount)

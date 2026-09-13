@@ -1,12 +1,17 @@
 package com.webshell.app.shell
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +30,12 @@ import com.webshell.app.R
 import com.webshell.core.designsystem.components.AppNavigationBar
 import com.webshell.core.designsystem.components.PageLoadIndicator
 import com.webshell.core.webengine.compose.ShellWebViewHost
+import com.webshell.core.webengine.resolveForceEnableZoom
 import com.webshell.feature.browser.WebSessionDialogs
 import com.webshell.feature.browser.WebSessionEmptyState
 import com.webshell.feature.browser.WebSessionStatusMessage
 import com.webshell.feature.browser.rememberWebSessionRequests
+import com.webshell.feature.viewer.SafeMarkdown
 
 /** Saved-site immersive launch. The configured app.id session is displayed, not a second random one. */
 @Composable
@@ -46,18 +53,21 @@ fun ShellScreen(
      */
     onAdoptWindow: (sessionId: String, initialUrl: String?) -> Unit = { _, _ -> },
     onOpenDownloads: () -> Unit = {},
+    onSwitchKeepAlive: (sessionId: String, url: String) -> Unit = { _, _ -> },
     viewModel: SiteShellViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pullToRefresh by viewModel.pullToRefreshEnabled.collectAsStateWithLifecycle()
+    val forceEnableZoom by viewModel.forceEnableZoomEnabled.collectAsStateWithLifecycle()
     val orb by viewModel.siteShellOrb.collectAsStateWithLifecycle()
     val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
     val ready = state as? SiteShellState.Ready
+    val markdown = state as? SiteShellState.Markdown
     val config = ready?.takeIf { it.request == (initialUrl to appId) }?.config
     val sessionId = config?.sessionId
     var message by remember { mutableStateOf<String?>(null) }
     val requests = rememberWebSessionRequests(
-        sessionId = sessionId, visible = true,
+        sessionId = sessionId, visible = markdown == null,
         onNewWindow = { request ->
             if (request.targetSessionId != request.sourceSessionId) {
                 onAdoptWindow(request.targetSessionId, request.initialUrl)
@@ -100,6 +110,22 @@ fun ShellScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+            is SiteShellState.Markdown -> Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                AppNavigationBar(markdown?.title.orEmpty(), onBack = onLeave)
+                SafeMarkdown(
+                    content = markdown?.content.orEmpty(),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                )
+            }
             is SiteShellState.Ready -> if (config != null && sessionId != null) {
                 ShellWebViewHost(
                     sessionId = sessionId,
@@ -107,12 +133,34 @@ fun ShellScreen(
                     // keep whatever pullToRefresh the session was already
                     // opened with (see pullToRefreshEnabled's kdoc) — never
                     // overwrite it with a synthetic "not yet loaded" default.
-                    configFactory = { config.copy(pullToRefresh = pullToRefresh ?: config.pullToRefresh) },
+                    configFactory = {
+                        config.copy(
+                            pullToRefresh = pullToRefresh ?: config.pullToRefresh,
+                            forceEnableZoom = forceEnableZoom?.let {
+                                resolveForceEnableZoom(
+                                    desktopMode = config.desktopMode,
+                                    localApp = config.localAppId != null,
+                                    userEnabled = it,
+                                )
+                            } ?: config.forceEnableZoom,
+                        )
+                    },
                     listener = requests.listener,
                     sessionListener = sessionListener,
                     onReady = { viewModel.onReady(config) },
                 )
             }
+        }
+        if (ready?.loadError == SiteShellLoadError.RENDERER_GONE) {
+            WebSessionEmptyState(
+                title = stringResource(R.string.site_shell_renderer_gone),
+                description = stringResource(R.string.site_shell_renderer_gone_hint),
+                actionLabel = stringResource(R.string.site_shell_retry),
+                onAction = viewModel::reload,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            )
         }
         if (state is SiteShellState.Ready) {
             Column(Modifier.fillMaxWidth().statusBarsPadding()) {
@@ -137,7 +185,10 @@ fun ShellScreen(
                     onDesktopMode = viewModel::setDesktopMode,
                     onBookmark = { viewModel.toggleBookmark() },
                     onOpenDownloads = onOpenDownloads,
+                    onHideOrb = viewModel::hideOrb,
                     onLeave = onLeave,
+                    currentSessionId = sessionId,
+                    onSwitchKeepAlive = onSwitchKeepAlive,
                 )
             }
         }

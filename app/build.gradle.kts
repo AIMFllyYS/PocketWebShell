@@ -30,8 +30,8 @@ android {
         minSdk = 29
         targetSdk = 36
         // 版本计数已重置，规则见 docs/VERSIONING.md
-        versionCode = 35
-        versionName = "0.1.34"
+        versionCode = 48
+        versionName = "0.1.47"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -81,6 +81,7 @@ dependencies {
     implementation(project(":feature:add"))
     implementation(project(":feature:browser"))
     implementation(project(":feature:me"))
+    implementation(project(":feature:viewer"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

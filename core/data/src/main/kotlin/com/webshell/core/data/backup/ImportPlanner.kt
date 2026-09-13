@@ -337,6 +337,8 @@ object ImportPlanner {
             textZoomPercent = app.textZoomPercent.coerceIn(80, 130),
             folderName = folderName,
             folderCellIndex = folderCellIndex,
+            siteShellNewWindowPolicy = app.siteShellNewWindowPolicy,
+            importSourceKey = app.importSourceKey,
         )
         return PlannedApp(
             entity = entity,

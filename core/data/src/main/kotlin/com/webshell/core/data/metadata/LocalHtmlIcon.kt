@@ -25,7 +25,7 @@ object LocalHtmlIcon {
 
     fun existingPath(dir: File, entryHtmlName: String): String? {
         val htmlFile = File(dir, entryHtmlName)
-        val declared = runCatching { relativePath(htmlFile.readText()) }.getOrNull()
+        val declared = runCatching { relativePath(readHead(htmlFile)) }.getOrNull()
         if (declared != null) {
             val file = File(dir, declared)
             if (file.isFile) return file.absolutePath
@@ -35,5 +35,16 @@ object LocalHtmlIcon {
             if (file.isFile) return file.absolutePath
         }
         return null
+    }
+
+    internal const val HEAD_BYTES = 256 * 1024
+
+    internal fun readHead(file: File, maxBytes: Int = HEAD_BYTES): String {
+        if (!file.isFile) return ""
+        return file.inputStream().use { stream ->
+            val buf = ByteArray(maxBytes)
+            val n = stream.read(buf)
+            if (n <= 0) "" else String(buf, 0, n, Charsets.UTF_8)
+        }
     }
 }

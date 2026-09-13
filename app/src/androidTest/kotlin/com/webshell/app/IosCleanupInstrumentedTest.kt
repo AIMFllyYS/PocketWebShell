@@ -200,7 +200,12 @@ class IosCleanupInstrumentedTest {
 
     private fun prepareProductionFixture() = runBlocking {
         database = Room.databaseBuilder(context, WebShellDatabase::class.java, WebShellDatabase.NAME)
-            .addMigrations(WebShellDatabase.MIGRATION_2_3, WebShellDatabase.MIGRATION_3_4).build()
+            .addMigrations(
+                WebShellDatabase.MIGRATION_2_3,
+                WebShellDatabase.MIGRATION_3_4,
+                WebShellDatabase.MIGRATION_4_5,
+                WebShellDatabase.MIGRATION_5_6,
+            ).build()
         val dao = requireNotNull(database).webAppDao()
         originalApps = dao.observeAll().first()
         originalSettings = readSettings()

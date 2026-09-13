@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.runtime.Composable
@@ -24,10 +25,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.webshell.core.data.HomeSettings
+import com.webshell.core.data.SCROLL_MODE_PAGER
 import com.webshell.core.designsystem.catalog.CatalogCategory
 import com.webshell.core.designsystem.catalog.CatalogEntry
 import com.webshell.core.designsystem.components.AppPrimaryButton
 import com.webshell.core.designsystem.components.AppToggleRow
+import com.webshell.core.designsystem.components.staticGlassSurface
 
 /** Every scene calls real launcher presentation; no business VM, persistence or metadata request. */
 fun homeCatalog(): List<CatalogEntry> = listOf(
@@ -123,9 +126,24 @@ private fun LauncherSamples(edit: Boolean) {
                 item { AddCell(size, true, 26, Modifier.fillMaxWidth().height(size + labelHeight + 5.dp)) }
             }
         }
-        if (edit) EditModeOverlay(
-            selectedCount = if (selected) 1 else 0, totalCount = 5,
-            onSelectAll = { selected = !selected }, onClearSelection = { selected = false },
+        if (edit) HomeEditToolbar(
+            state = HomeEditChromeState(
+                selectedCount = if (selected) 1 else 0,
+                totalCount = 5,
+                scrollMode = SCROLL_MODE_PAGER,
+                canRemoveFromFolder = selected,
+                canMoveToFolder = selected,
+                onDone = {},
+                onDelete = {},
+                onRemoveFromFolder = {},
+                onMoveToFolder = {},
+                onSelectAll = { selected = !selected },
+                onScrollModeChange = {},
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .staticGlassSurface(shape = RoundedCornerShape(34.dp), opacity = 0.88f),
         )
     }
 }

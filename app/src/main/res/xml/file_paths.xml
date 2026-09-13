@@ -6,4 +6,8 @@
     <cache-path name="backup" path="backup/" />
     <!-- Bounded Blob downloads are written to cache until the user shares them. -->
     <cache-path name="downloads" path="downloads/" />
+    <!-- Camera capture=file input writes a bounded JPEG/MP4 here, then FileProvider shares it. -->
+    <cache-path name="captures" path="captures/" />
+    <!-- Public DownloadManager files, only this app's folder. -->
+    <external-path name="public_downloads" path="Download/PocketWebShell/" />
 </paths>

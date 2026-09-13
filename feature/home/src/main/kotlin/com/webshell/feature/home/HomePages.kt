@@ -160,6 +160,132 @@ object HomePages {
     }
 
     /**
+     * 多选组落子：锚点占目标槽，其余按原相对顺序占后续空槽。
+     * 组内原槽先释放；溢出到下一页；被挤占的非组成员随后续空槽安置。
+     */
+    fun resolveGroupMove(
+        apps: List<WebAppEntity>,
+        groupKeys: Set<String>,
+        anchorKey: String,
+        toPage: Int,
+        toSlot: Int,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        if (toPage < 0 || toSlot !in 0 until capacity || groupKeys.isEmpty()) return emptyList()
+        val sparse = buildSparse(apps, capacity)
+        val cellsByKey = HashMap<String, HomeCell>()
+        val positions = HashMap<String, Pair<Int, Int>>()
+        sparse.forEachIndexed { page, slots ->
+            slots.forEachIndexed { slot, cell ->
+                if (cell != null) {
+                    cellsByKey[cell.key] = cell
+                    positions[cell.key] = page to slot
+                }
+            }
+        }
+        val group = groupKeys.mapNotNull { cellsByKey[it] }
+            .sortedWith(
+                compareBy<HomeCell> { positions[it.key]?.first ?: Int.MAX_VALUE }
+                    .thenBy { positions[it.key]?.second ?: Int.MAX_VALUE },
+            )
+        if (group.isEmpty()) return emptyList()
+        val anchor = cellsByKey[anchorKey] ?: group.first()
+        val occupied = HashSet<Pair<Int, Int>>()
+        cellsByKey.values.forEach { cell ->
+            if (cell.key !in groupKeys) occupied += positions.getValue(cell.key)
+        }
+        val occupant = cellsByKey.values.firstOrNull {
+            it.key !in groupKeys && positions[it.key] == toPage to toSlot
+        }
+        val placements = LinkedHashMap<String, Pair<Int, Int>>()
+        placements[anchor.key] = toPage to toSlot
+        occupied += toPage to toSlot
+        var cursor = toPage * capacity + toSlot + 1
+        group.forEach { cell ->
+            if (cell.key == anchor.key) return@forEach
+            while ((cursor / capacity to cursor % capacity) in occupied) cursor++
+            val dest = cursor / capacity to cursor % capacity
+            placements[cell.key] = dest
+            occupied += dest
+            cursor++
+        }
+        if (occupant != null) {
+            while ((cursor / capacity to cursor % capacity) in occupied) cursor++
+            placements[occupant.key] = cursor / capacity to cursor % capacity
+        }
+        val updates = ArrayList<WebAppEntity>()
+        placements.forEach { (key, dest) ->
+            val cell = cellsByKey.getValue(key)
+            val entities = if (cell.isFolder) cell.folderMembers else listOf(cell.app)
+            entities.mapTo(updates) { it.copy(homePage = dest.first, homeCellIndex = dest.second) }
+        }
+        return updates
+    }
+
+    /**
+     * 左侧临时屏组落子：非组成员页号 +1，组落到新首屏。
+     * 锚点占 [toSlot]，其余按原相对顺序占后续空槽，溢出到已后移的页。
+     */
+    fun resolvePrependGroupMove(
+        apps: List<WebAppEntity>,
+        groupKeys: Set<String>,
+        anchorKey: String,
+        toSlot: Int,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        if (toSlot !in 0 until capacity || groupKeys.isEmpty()) return emptyList()
+        val cells = aggregateCells(apps)
+        val group = cells.filter { it.key in groupKeys }
+            .sortedWith(
+                compareBy<HomeCell> { it.app.homePage }
+                    .thenBy { orderKey(it.app) }
+                    .thenBy { it.app.createdAt },
+            )
+        if (group.isEmpty()) return emptyList()
+        val anchor = group.firstOrNull { it.key == anchorKey } ?: group.first()
+        val groupEntityIds = HashSet<String>()
+        group.forEach { cell ->
+            if (cell.isFolder) cell.folderMembers.forEach { groupEntityIds += it.id }
+            else groupEntityIds += cell.app.id
+        }
+        val occupied = HashSet<Pair<Int, Int>>()
+        cells.forEach { cell ->
+            if (cell.key !in groupKeys) {
+                occupied += (cell.app.homePage.coerceAtLeast(0) + 1) to
+                    cell.app.homeCellIndex.coerceAtLeast(0)
+            }
+        }
+        val placements = LinkedHashMap<String, Pair<Int, Int>>()
+        placements[anchor.key] = 0 to toSlot
+        occupied += 0 to toSlot
+        var cursor = toSlot + 1
+        group.forEach { cell ->
+            if (cell.key == anchor.key) return@forEach
+            while ((cursor / capacity to cursor % capacity) in occupied) cursor++
+            val dest = cursor / capacity to cursor % capacity
+            placements[cell.key] = dest
+            occupied += dest
+            cursor++
+        }
+        val destById = HashMap<String, Pair<Int, Int>>()
+        placements.forEach { (key, dest) ->
+            val cell = group.first { it.key == key }
+            val members = if (cell.isFolder) cell.folderMembers else listOf(cell.app)
+            members.forEach { destById[it.id] = dest }
+        }
+        return apps.map { entity ->
+            val dest = destById[entity.id]
+            if (dest != null) {
+                entity.copy(homePage = dest.first, homeCellIndex = dest.second)
+            } else {
+                entity.copy(homePage = entity.homePage.coerceAtLeast(0) + 1)
+            }
+        }
+    }
+
+    /**
      * 自由摆放解散文件夹：首个成员占文件夹原槽位，其余成员从该槽位起顺序占空槽。
      * 返回需要落库的实体列表（folderId 已置空）。
      */
@@ -229,6 +355,136 @@ object HomePages {
             homePage = cursor / capacity,
             homeCellIndex = cursor % capacity,
         )
+    }
+
+    /**
+     * 批量删除：文件夹 key 展开为全部成员 id，普通 key 即应用 id。
+     * 返回需要从主屏与资源库一并删除的应用 id。
+     */
+    fun resolveDeleteMany(apps: List<WebAppEntity>, keys: Set<String>): Set<String> {
+        if (keys.isEmpty()) return emptySet()
+        val ids = HashSet<String>()
+        keys.forEach { key ->
+            if (key.startsWith("folder-")) {
+                val folderId = key.removePrefix("folder-")
+                apps.forEach { entity ->
+                    if (entity.folderId == folderId) ids += entity.id
+                }
+            } else {
+                if (apps.any { it.id == key }) ids += key
+            }
+        }
+        return ids
+    }
+
+    /**
+     * 批量移出文件夹：一次算完互不相同的空槽，避免循环调用
+     * [resolveRemoveFromFolder] 把多个图标写进同一空槽。
+     */
+    fun resolveRemoveManyFromFolder(
+        apps: List<WebAppEntity>,
+        appIds: Collection<String>,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        val idSet = appIds.toSet()
+        val removing = apps.filter { it.id in idSet && it.folderId != null }
+            .sortedWith(
+                compareBy<WebAppEntity> { it.homePage }
+                    .thenBy { it.homeCellIndex }
+                    .then(folderMemberOrder()),
+            )
+        if (removing.isEmpty()) return emptyList()
+        val sparse = buildSparse(apps, capacity)
+        val occupied = HashSet<Pair<Int, Int>>()
+        val folderSlot = HashMap<String, Int>()
+        sparse.forEachIndexed { page, slots ->
+            slots.forEachIndexed { slot, cell ->
+                if (cell != null) {
+                    occupied += page to slot
+                    if (cell.isFolder) {
+                        cell.app.folderId?.let { folderSlot[it] = page * capacity + slot }
+                    }
+                }
+            }
+        }
+        val updates = ArrayList<WebAppEntity>(removing.size)
+        val cursors = HashMap<String, Int>()
+        removing.forEach { app ->
+            val folderId = app.folderId!!
+            var cursor = cursors[folderId] ?: (folderSlot[folderId] ?: 0)
+            while ((cursor / capacity to cursor % capacity) in occupied) cursor++
+            occupied += cursor / capacity to cursor % capacity
+            updates += app.copy(
+                folderId = null,
+                folderName = null,
+                folderCellIndex = null,
+                homePage = cursor / capacity,
+                homeCellIndex = cursor % capacity,
+            )
+            cursors[folderId] = cursor + 1
+        }
+        val removedIds = removing.mapTo(HashSet()) { it.id }
+        val affectedFolders = removing.mapNotNullTo(HashSet()) { it.folderId }
+        apps.filter { it.folderId in affectedFolders && it.id !in removedIds }
+            .groupBy { it.folderId!! }
+            .forEach { (_, members) ->
+                members.sortedWith(folderMemberOrder()).forEachIndexed { index, entity ->
+                    updates += entity.copy(folderCellIndex = index)
+                }
+            }
+        return updates
+    }
+
+    /**
+     * 批量移入文件夹：目标文件夹成员的 folderCellIndex 重写为稠密 0..n-1，
+     * 全部成员共享 [anchorPage]/[anchorSlot]（选中集合的最小页/槽）。
+     */
+    fun resolveMoveManyToFolder(
+        apps: List<WebAppEntity>,
+        keys: Set<String>,
+        folderId: String,
+        anchorPage: Int,
+        anchorSlot: Int,
+        pageCapacity: Int,
+    ): List<WebAppEntity> {
+        val capacity = pageCapacity.coerceAtLeast(1)
+        if (folderId.isEmpty() || anchorPage < 0 || anchorSlot !in 0 until capacity) return emptyList()
+        val moving = keys.mapNotNull { key ->
+            if (key.startsWith("folder-")) null else apps.firstOrNull { it.id == key }
+        }
+        if (moving.isEmpty()) return emptyList()
+        val existing = apps.filter { it.folderId == folderId }
+            .sortedWith(folderMemberOrder())
+        val movingIds = moving.mapTo(HashSet()) { it.id }
+        val newcomers = moving
+            .filter { it.folderId != folderId }
+            .sortedWith(
+                compareBy<WebAppEntity> { it.homePage }
+                    .thenBy { orderKey(it) }
+                    .thenBy { it.createdAt },
+            )
+        val folderName = existing.firstNotNullOfOrNull { it.folderName }
+        val combined = existing + newcomers
+        val updates = combined.mapIndexed { index, entity ->
+            entity.copy(
+                folderId = folderId,
+                folderName = folderName ?: entity.folderName,
+                folderCellIndex = index,
+                homePage = anchorPage,
+                homeCellIndex = anchorSlot,
+            )
+        }.toMutableList()
+        val affectedFolders = moving.mapNotNullTo(HashSet()) { it.folderId }
+        affectedFolders.remove(folderId)
+        apps.filter { it.folderId in affectedFolders && it.id !in movingIds }
+            .groupBy { it.folderId!! }
+            .forEach { (_, members) ->
+                members.sortedWith(folderMemberOrder()).forEachIndexed { index, entity ->
+                    updates += entity.copy(folderCellIndex = index)
+                }
+            }
+        return updates
     }
 
     /**

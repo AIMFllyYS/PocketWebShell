@@ -90,8 +90,8 @@ object PageLoadProgress {
     const val TrickleCeiling = 0.86f
     const val CatchUpMs = 180
     const val TrickleMs = 8_000
-    const val CompleteMs = 160
-    const val HoldMs = 140
+    const val CompleteMs = 110
+    const val HoldMs = 80
 
     fun display(rawPercent: Int, loading: Boolean, trickle: Float): Float {
         if (!loading) return 1f

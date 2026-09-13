@@ -63,11 +63,12 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
                 }
                 check(resp.isSuccessful) { "HTTP ${resp.code}" }
                 val type = resp.header("Content-Type").orEmpty().lowercase()
-                check(type.isBlank() || type.contains("text/html") || type.contains("application/xhtml+xml")) {
-                    "Non-HTML response"
-                }
+                val typedHtml = type.isBlank() ||
+                    type.contains("text/html") ||
+                    type.contains("application/xhtml+xml")
                 val body = checkNotNull(resp.body) { "Empty response body" }
                 val bytes = readBounded(body.byteStream(), MAX_HTML_BYTES)
+                check(typedHtml || looksLikeHtml(bytes)) { "Non-HTML response" }
                 return Jsoup.parse(bytes.inputStream(), null, current) to current
             }
         }
@@ -115,7 +116,7 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
         linkCandidates(doc, "manifest", finalUrl).firstOrNull()?.let { (manifestUrl, _) ->
             manifestIconCandidates(manifestUrl)?.let { icons ->
                 chooseBestManifestIcon(icons)?.let { src ->
-                    declared.add(0, resolveUrl(finalUrl, src))
+                    declared.add(0, resolveUrl(manifestUrl, src))
                 }
             }
         }
@@ -217,6 +218,14 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
                 if (parts.size == 2) parts[0].toIntOrNull() else null
             }
             .maxOrNull() ?: 0
+
+    /** text/plain 等托管页只要正文像 HTML，仍继续解析，不整次放弃。 */
+    fun looksLikeHtml(bytes: ByteArray): Boolean {
+        if (bytes.isEmpty()) return false
+        val head = bytes.decodeToString(endIndex = minOf(bytes.size, 2048)).lowercase()
+        return "<html" in head || "<!doctype html" in head ||
+            "<head" in head || "<title" in head || "<link" in head
+    }
 
     private fun resolveUrl(base: String, spec: String): String = try {
         URI(base).resolve(spec.replace(" ", "%20")).toString()

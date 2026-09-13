@@ -2,6 +2,7 @@ package com.webshell.feature.home
 
 import com.webshell.core.data.WebAppEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomePagesTest {
@@ -330,6 +331,69 @@ class HomePagesTest {
     }
 
     @Test
+    fun `group move places anchor then following empties after releasing source slots`() {
+        val updates = HomePages.resolveGroupMove(
+            apps = listOf(
+                app("a", cell = 5),
+                app("b", cell = 6),
+                app("keep", cell = 1),
+            ),
+            groupKeys = setOf("a", "b"),
+            anchorKey = "a",
+            toPage = 0,
+            toSlot = 0,
+            pageCapacity = 12,
+        ).associateBy { it.id }
+        assertEquals(0, updates.getValue("a").homeCellIndex)
+        assertEquals(0, updates.getValue("a").homePage)
+        // 原槽 5/6 已释放，目标后第一个空槽是 2（1 被 keep 占用）
+        assertEquals(2, updates.getValue("b").homeCellIndex)
+        assertEquals(setOf(0, 2), setOf(updates.getValue("a").homeCellIndex, updates.getValue("b").homeCellIndex))
+    }
+
+    @Test
+    fun `group move overflows onto the next page`() {
+        val updates = HomePages.resolveGroupMove(
+            apps = listOf(app("a", cell = 0), app("b", cell = 1), app("c", cell = 2)),
+            groupKeys = setOf("a", "b", "c"),
+            anchorKey = "a",
+            toPage = 0,
+            toSlot = 3,
+            pageCapacity = 4,
+        ).associateBy { it.id }
+        assertEquals(0, updates.getValue("a").homePage)
+        assertEquals(3, updates.getValue("a").homeCellIndex)
+        assertEquals(1, updates.getValue("b").homePage)
+        assertEquals(0, updates.getValue("b").homeCellIndex)
+        assertEquals(1, updates.getValue("c").homePage)
+        assertEquals(1, updates.getValue("c").homeCellIndex)
+    }
+
+    @Test
+    fun `prepend group move shifts other pages and lands the group on the new first page`() {
+        val updates = HomePages.resolvePrependGroupMove(
+            apps = listOf(
+                app("a", page = 0, cell = 0),
+                app("b", page = 0, cell = 2),
+                app("keep", page = 0, cell = 3),
+                app("later", page = 1, cell = 1),
+            ),
+            groupKeys = setOf("a", "b"),
+            anchorKey = "a",
+            toSlot = 1,
+            pageCapacity = 4,
+        ).associateBy { it.id }
+        assertEquals(0, updates.getValue("a").homePage)
+        assertEquals(1, updates.getValue("a").homeCellIndex)
+        assertEquals(0, updates.getValue("b").homePage)
+        assertEquals(2, updates.getValue("b").homeCellIndex)
+        assertEquals(1, updates.getValue("keep").homePage)
+        assertEquals(3, updates.getValue("keep").homeCellIndex)
+        assertEquals(2, updates.getValue("later").homePage)
+        assertEquals(1, updates.getValue("later").homeCellIndex)
+    }
+
+    @Test
     fun `prepend move rejects invalid slot and unknown key`() {
         val apps = listOf(app("a", page = 0, cell = 0))
         assertEquals(
@@ -467,6 +531,58 @@ class HomePagesTest {
         assertEquals(null, updates.getValue("x").folderCellIndex)
         assertEquals(null, updates.getValue("y").folderName)
         assertEquals(null, updates.getValue("y").folderCellIndex)
+    }
+
+    @Test
+    fun `delete many expands folder keys and keeps app ids`() {
+        val apps = listOf(
+            app("a", cell = 0),
+            app("x", cell = 2, folder = "f1"),
+            app("y", cell = 2, folder = "f1"),
+        )
+        assertEquals(setOf("a", "x", "y"), HomePages.resolveDeleteMany(apps, setOf("a", "folder-f1")))
+        assertEquals(emptySet<String>(), HomePages.resolveDeleteMany(apps, setOf("missing")))
+    }
+
+    @Test
+    fun `remove many from folder lands on distinct empty slots`() {
+        val updates = HomePages.resolveRemoveManyFromFolder(
+            apps = listOf(
+                app("a", cell = 0),
+                app("x", cell = 5, folder = "f1", folderCellIndex = 0),
+                app("y", cell = 5, folder = "f1", folderCellIndex = 1),
+                app("z", cell = 5, folder = "f1", folderCellIndex = 2),
+            ),
+            appIds = listOf("x", "y", "z"),
+            pageCapacity = 12,
+        )
+        val placed = updates.filter { it.folderId == null }
+        val slots = placed.map { it.homePage to it.homeCellIndex }
+        assertEquals(3, placed.size)
+        assertEquals(3, slots.toSet().size)
+        assertTrue(placed.none { it.homeCellIndex == 5 && it.homePage == 0 })
+        assertTrue(placed.all { it.folderName == null && it.folderCellIndex == null })
+    }
+
+    @Test
+    fun `move many to folder rewrites dense folderCellIndex`() {
+        val updates = HomePages.resolveMoveManyToFolder(
+            apps = listOf(
+                app("a", page = 0, cell = 0),
+                app("b", page = 0, cell = 2),
+                app("x", page = 0, cell = 8, folder = "f1", folderCellIndex = 0),
+                app("y", page = 0, cell = 8, folder = "f1", folderCellIndex = 2),
+            ),
+            keys = setOf("a", "b"),
+            folderId = "f1",
+            anchorPage = 0,
+            anchorSlot = 0,
+            pageCapacity = 12,
+        )
+        val members = updates.filter { it.folderId == "f1" }.sortedBy { it.folderCellIndex }
+        assertEquals(listOf("x", "y", "a", "b"), members.map { it.id })
+        assertEquals(listOf(0, 1, 2, 3), members.map { it.folderCellIndex })
+        assertTrue(members.all { it.homePage == 0 && it.homeCellIndex == 0 })
     }
 
     @Test

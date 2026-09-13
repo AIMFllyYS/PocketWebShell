@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.webshell.core.data.WebAppEntity
 import com.webshell.core.designsystem.components.SiteIcon
+import com.webshell.core.designsystem.components.siteIconGlyph
 import com.webshell.core.designsystem.components.staticGlassSurface
 
 /**
@@ -77,7 +78,7 @@ fun AppIcon(
                 iconUrl = app.iconUrl,
                 size = size,
                 cornerRadiusPercent = cornerRadiusPercent,
-                localFallback = app.isLocal,
+                glyph = siteIconGlyph(app.isLocal, app.url),
             )
         }
     }
@@ -115,7 +116,7 @@ private fun FolderPreview(
                         iconUrl = app.iconUrl,
                         size = iconSize,
                         cornerRadiusPercent = cornerRadiusPercent,
-                        localFallback = app.isLocal,
+                        glyph = siteIconGlyph(app.isLocal, app.url),
                     )
                 }
             }

@@ -4,8 +4,8 @@
 
 ## 1. 模糊与玻璃效果
 
-- 全屏同时存在的实时模糊 backdrop **不超过 1 处**（当前为主页/详情页的底部导航条 LauncherDock）。
-- 浏览器页的底部 Dock/Orb **禁止**使用实时模糊：WebView 内容作为模糊源会在滚动时逐帧重采样并产生可见闪烁，浏览器浮层一律使用静态玻璃（`staticGlassSurface`）。
+- 全屏同时存在的实时模糊 backdrop **不超过 1 处**（当前为主页/详情页的底部导航条 LauncherDock；主屏编辑态换成同一位置的统一菜单栏，不同时存在两条 live blur）。
+- 浏览器页的底部 Dock/Orb **仅当 WebView 是模糊源时**禁止实时模糊：网页滚动会让 Haze 逐帧重采样并闪烁，此时浮层使用静态玻璃（`staticGlassSurface`）。纯 Compose 的新标签 / 空标签与添加、设置页相同，走 `LauncherDock` 的 `glassSurface`。
 - 模糊半径预算 ≤ 24dp 等效；禁止对整屏内容做实时模糊。
 - 玻璃层不得参与布局测量，不得改变任何组件的布局边界。
 

@@ -5,10 +5,14 @@
     <string name="site_shell_unavailable">无法打开网页应用</string>
     <string name="site_shell_unavailable_hint">此应用可能已被移除，或网址不受支持。可返回主页检查设置后重试。</string>
     <string name="site_shell_retry">重试</string>
+    <string name="site_shell_renderer_gone">网页渲染进程已停止</string>
+    <string name="site_shell_renderer_gone_hint">此页面占用了过多图形资源，已停止自动重开以免再次崩溃。可重试打开，或返回主屏。</string>
     <string name="site_shell_menu">页面选项</string>
     <string name="site_shell_refresh">刷新</string>
     <string name="site_shell_orb">站点壳辅助球</string>
     <string name="site_shell_orb_restore">展开辅助球</string>
     <string name="site_shell_orb_parked">辅助球已贴边</string>
+    <string name="site_shell_hide_orb">隐藏辅助球</string>
     <string name="site_shell_leave_home">返回主屏</string>
+    <string name="site_shell_switch_apps">已打开的应用</string>
 </resources>

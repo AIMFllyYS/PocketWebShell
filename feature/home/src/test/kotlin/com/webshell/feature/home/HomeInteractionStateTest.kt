@@ -54,6 +54,8 @@ class HomeInteractionStateTest {
     fun `drop or cancellation clears every transient drag field`() {
         val state = HomeInteractionState().apply {
             draggingKey = "app"
+            dragGroup = setOf("app", "other")
+            convergeProgress = 0.7f
             dragPosition = Offset(110f, 220f)
             dragRegistration = Offset(20f, 30f)
             dragHoverTarget = "other"
@@ -68,6 +70,8 @@ class HomeInteractionStateTest {
         }
         state.resetDrag()
         assertNull(state.draggingKey)
+        assertEquals(emptySet<String>(), state.dragGroup)
+        assertEquals(0f, state.convergeProgress, 0.001f)
         assertEquals(Offset.Zero, state.dragPosition)
         assertEquals(Offset.Zero, state.dragRegistration)
         assertNull(state.dragHoverTarget)
@@ -79,5 +83,38 @@ class HomeInteractionStateTest {
         assertEquals(0, state.verticalEdgeDirection)
         assertEquals(0, state.tempPageSide)
         assertNull(state.menuPressPoint)
+    }
+
+    @Test
+    fun `multi-select does not arm a new folder hotspot but can append to a folder`() {
+        assertNull(
+            folderCandidateForGroup(
+                targetKey = "c",
+                inFolderHotspot = true,
+                groupSize = 2,
+                sourceCanMerge = true,
+                targetIsFolder = false,
+            ),
+        )
+        assertEquals(
+            "folder-f1",
+            folderCandidateForGroup(
+                targetKey = "folder-f1",
+                inFolderHotspot = true,
+                groupSize = 2,
+                sourceCanMerge = true,
+                targetIsFolder = true,
+            ),
+        )
+        assertEquals(
+            "c",
+            folderCandidateForGroup(
+                targetKey = "c",
+                inFolderHotspot = true,
+                groupSize = 1,
+                sourceCanMerge = true,
+                targetIsFolder = false,
+            ),
+        )
     }
 }

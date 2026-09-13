@@ -1,6 +1,9 @@
 package com.webshell.feature.browser
 
 import android.graphics.Bitmap
+import com.webshell.core.data.IncomingSourceKey
+
+enum class BrowserTabKind { WEB, INCOMING_HTML, INCOMING_MARKDOWN }
 
 /** Immutable per-tab values; thumbnail snapshots remain memory-only, never persisted. */
 data class BrowserTab(
@@ -21,7 +24,29 @@ data class BrowserTab(
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val loadError: BrowserLoadError? = null,
-)
+    val kind: BrowserTabKind = BrowserTabKind.WEB,
+    /** Display-only local path for incoming files; never a WebView URL. */
+    val displayPath: String? = null,
+    val markdownContent: String? = null,
+    val localAppId: String? = null,
+    /** Normalized incoming identity; never a WebView URL. */
+    val sourceKey: String? = null,
+) {
+    fun addressChrome(): String = when (kind) {
+        BrowserTabKind.WEB -> url.takeUnless { it.isBlank() || it == "about:blank" }.orEmpty()
+        else -> IncomingSourceKey.addressLabel(displayPath, title, url)
+    }
+
+    fun secondaryLabel(): String = displayPath?.takeIf { it.isNotBlank() } ?: url.stripScheme()
+
+    fun canBookmark(): Boolean =
+        kind == BrowserTabKind.WEB &&
+            url.isNotBlank() &&
+            url != "about:blank" &&
+            !isIncomingAssetUrl(url)
+
+    fun canEditAddress(): Boolean = kind == BrowserTabKind.WEB
+}
 
 enum class BrowserLoadError { NETWORK, INSECURE_HTTP, RENDERER_RECOVERING }
 

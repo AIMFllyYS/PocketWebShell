@@ -30,6 +30,10 @@ data class BackupApp(
     val folderCellIndex: Int? = null,
     /** 原始应用映射键（localapps/ 与旧版 profiles/ 归档仍使用；共享 Profile 不新增此目录）。 */
     val sourceId: String? = null,
+    /** 站点壳新窗口策略覆盖；null = 跟随导入目标的全局设置。 */
+    val siteShellNewWindowPolicy: String? = null,
+    /** 本地应用的规范化源路径；跨机通常对不上，可带可丢。 */
+    val importSourceKey: String? = null,
 )
 
 @Serializable

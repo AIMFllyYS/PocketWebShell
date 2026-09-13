@@ -7,6 +7,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.pager.PagerState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -52,6 +54,9 @@ class HomeDropActions(
     val moveCellToSlot: (draggedKey: String, toPage: Int, toSlot: Int) -> Unit,
     val moveApp: (appId: String, toPage: Int, toCellIndex: Int) -> Unit,
     val moveCell: (from: String, target: String) -> Unit,
+    val prependGroupMove: (groupKeys: Set<String>, anchorKey: String, toSlot: Int) -> Unit,
+    val moveGroupToSlot: (groupKeys: Set<String>, anchorKey: String, toPage: Int, toSlot: Int) -> Unit,
+    val addGroupToFolder: (groupKeys: Set<String>, folderKey: String) -> Unit,
 )
 
 /**
@@ -180,6 +185,12 @@ fun Modifier.homeCellGesture(
                     if (accumulated.getDistance() > thresholdPx) {
                         val rect = state.cellBounds[cell.key] ?: break
                         state.menuFor = null
+                        val selectedKeys = state.editSelection.filterValues { it }.keys
+                        state.dragGroup = if (state.editMode && cell.key in selectedKeys && selectedKeys.size > 1) {
+                            selectedKeys.toSet()
+                        } else {
+                            setOf(cell.key)
+                        }
                         state.draggingKey = cell.key
                         // 拖拽注册点计算沿用 Launcher3 onDragStart 语义：
                         // 锚定在按下点，图标中心不在手指下跳变。
@@ -257,44 +268,42 @@ fun Modifier.homeBlankAreaMenu(
 }
 
 /**
- * 双指捏合（内划）进入编辑模式；外扩退出。仅在非拖拽时响应，
- * 与单指长按拖拽手势互不干扰（不同 pointerInput 通道）。
+ * 多指进/出编辑模式：Initial pass 持续监听，禁止 awaitEachGesture。
+ * 真实双指的第一帧只有 1 个 pointer，不足两指时 reset + continue，
+ * 这样第二指落下仍能建立 baseline。拖拽进行中同样 continue 而不是 break。
  */
 @Composable
-fun Modifier.homePinchEditMode(
+fun Modifier.homeMultiFingerEditMode(
     state: HomeInteractionState,
     haptics: HapticFeedback,
 ): Modifier = pointerInput(Unit) {
-    // 手动跟踪双指间距变化：比 detectTransformGestures 更可靠，
-    // 且不被 HorizontalPager 的单指拖动手势抢占。
-    awaitEachGesture {
-        var startDistance = 0f
-        var triggered = false
+    val detector = MultiFingerEditDetector(swipeSlopPx = viewConfiguration.touchSlop)
+    awaitPointerEventScope {
         while (true) {
-            val event = awaitPointerEvent()
-            val pressed = event.changes.filter { it.pressed }
-            if (pressed.size < 2) {
-                // 双指抬起，复位等待下一次捏合
-                startDistance = 0f
-                triggered = false
-                break
-            }
-            if (state.draggingKey != null) break
-            val d = (pressed[0].position - pressed[1].position).getDistance()
-            if (startDistance == 0f) {
-                startDistance = d
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (state.draggingKey != null) {
+                detector.reset()
                 continue
             }
-            val ratio = d / startDistance
-            if (!triggered && ratio < PINCH_IN_THRESHOLD && !state.editMode) {
-                triggered = true
-                state.editMode = true
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            } else if (!triggered && ratio > PINCH_OUT_THRESHOLD && state.editMode) {
-                triggered = true
-                state.exitEditMode()
+            val pressed = event.changes.filter { it.pressed }
+            val points = pressed.map { it.position }
+            if (points.size < 2) {
+                detector.reset()
+                continue
             }
-            if (triggered) {
+            when (detector.onFrame(points, state.editMode)) {
+                MultiFingerEditDetector.Signal.ENTER -> {
+                    state.menuFor = null
+                    state.blankMenuPoint = null
+                    state.editMode = true
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                }
+                MultiFingerEditDetector.Signal.EXIT -> {
+                    state.exitEditMode()
+                }
+                MultiFingerEditDetector.Signal.NONE -> Unit
+            }
+            if (detector.armed) {
                 pressed.forEach { it.consume() }
             }
         }
@@ -364,24 +373,33 @@ fun Modifier.homeDragSession(
                     } else {
                         pagerPage - state.tempLeftOffset
                     }
+                    val group = state.dragGroup.ifEmpty { setOfNotNull(from) }
+                    val grouped = group.size > 1 && from != null
                     when {
                         from != null && target != null && state.folderArmed ->
-                            currentDropActions.createFolder(from, target)
+                            if (grouped) currentDropActions.addGroupToFolder(group, target)
+                            else currentDropActions.createFolder(from, target)
                         // 左侧临时屏落子：自由摆放下新开首屏，其余页后移。
                         from != null && slotIndex >= 0 && pagerPage >= 0 &&
                             dataPage < 0 && !currentAutoArrange ->
-                            currentDropActions.prependPageMove(from, slotIndex)
+                            if (grouped) currentDropActions.prependGroupMove(group, from, slotIndex)
+                            else currentDropActions.prependPageMove(from, slotIndex)
                         // 自由摆放：落在最近网格槽（空槽直落，占用则交换）。
                         from != null && slotIndex >= 0 && dataPage >= 0 &&
                             !currentAutoArrange ->
-                            currentDropActions.moveCellToSlot(from, dataPage, slotIndex)
+                            if (grouped) currentDropActions.moveGroupToSlot(group, from, dataPage, slotIndex)
+                            else currentDropActions.moveCellToSlot(from, dataPage, slotIndex)
                         // 自动整理：保持压实重排语义。
                         from != null && slotIndex >= 0 && dataPage >= 0 -> {
-                            val dragged = currentPages.flatten().firstOrNull { it?.key == from }
-                            if (dragged != null && !dragged.isFolder) {
-                                currentDropActions.moveApp(dragged.app.id, dataPage, slotIndex)
-                            } else if (target != null) {
-                                currentDropActions.moveCell(from, target)
+                            if (grouped) {
+                                currentDropActions.moveGroupToSlot(group, from, dataPage, slotIndex)
+                            } else {
+                                val dragged = currentPages.flatten().firstOrNull { it?.key == from }
+                                if (dragged != null && !dragged.isFolder) {
+                                    currentDropActions.moveApp(dragged.app.id, dataPage, slotIndex)
+                                } else if (target != null) {
+                                    currentDropActions.moveCell(from, target)
+                                }
                             }
                         }
                     }
@@ -422,6 +440,18 @@ fun HomeDragEffects(
 ) {
     val currentPages by rememberUpdatedState(pages)
     val currentOnDragMoved by rememberUpdatedState(onDragMoved)
+
+    LaunchedEffect(state.draggingKey) {
+        if (state.draggingKey == null || state.dragGroup.size <= 1) {
+            state.convergeProgress = 0f
+            return@LaunchedEffect
+        }
+        val animatable = Animatable(0f)
+        state.convergeProgress = 0f
+        animatable.animateTo(1f, animationSpec = tween(durationMillis = 180)) {
+            state.convergeProgress = value
+        }
+    }
 
     // 文件夹合并：悬停热点内静置 500ms 后武装（松手即合并）。
     LaunchedEffect(state.draggingKey, state.folderCandidate) {

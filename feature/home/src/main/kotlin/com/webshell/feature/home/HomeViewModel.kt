@@ -76,6 +76,79 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun moveGroupToSlot(
+        groupKeys: Set<String>,
+        anchorKey: String,
+        toPage: Int,
+        toSlot: Int,
+        pageCapacity: Int,
+    ) {
+        viewModelScope.launch {
+            val updates = HomePages.resolveGroupMove(
+                apps = apps.value,
+                groupKeys = groupKeys,
+                anchorKey = anchorKey,
+                toPage = toPage,
+                toSlot = toSlot,
+                pageCapacity = pageCapacity,
+            )
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            AppLog.log("home", "组移动 ${groupKeys.size} 项到第 ${toPage + 1} 页第 ${toSlot + 1} 格")
+        }
+    }
+
+    fun prependGroupMove(
+        groupKeys: Set<String>,
+        anchorKey: String,
+        toSlot: Int,
+        pageCapacity: Int,
+    ) {
+        viewModelScope.launch {
+            val updates = HomePages.resolvePrependGroupMove(
+                apps = apps.value,
+                groupKeys = groupKeys,
+                anchorKey = anchorKey,
+                toSlot = toSlot,
+                pageCapacity = pageCapacity,
+            )
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            AppLog.log("home", "组移动 ${groupKeys.size} 项到新的首屏第 ${toSlot + 1} 格")
+        }
+    }
+
+    fun addGroupToFolder(groupKeys: Set<String>, folderKey: String) {
+        viewModelScope.launch {
+            val folderId = folderKey.removePrefix("folder-")
+            if (folderId.isEmpty()) return@launch
+            val settings = settingsRepository.settings.first()
+            val capacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1)
+            val all = apps.value
+            var anchorPage = 0
+            var anchorSlot = 0
+            HomePages.buildSparse(all, capacity).forEachIndexed { page, slots ->
+                slots.forEachIndexed { slot, cell ->
+                    if (cell?.key == folderKey) {
+                        anchorPage = page
+                        anchorSlot = slot
+                    }
+                }
+            }
+            val updates = HomePages.resolveMoveManyToFolder(
+                apps = all,
+                keys = groupKeys,
+                folderId = folderId,
+                anchorPage = anchorPage,
+                anchorSlot = anchorSlot,
+                pageCapacity = capacity,
+            )
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            AppLog.log("home", "整组追加到文件夹（${groupKeys.size} 项）")
+        }
+    }
+
     /** 首屏左缘开新屏：被拖 cell 落到新首屏 (0, toSlot)，其余所有应用页号 +1。 */
     fun prependPageMove(draggedKey: String, toSlot: Int, pageCapacity: Int) {
         viewModelScope.launch {
@@ -331,6 +404,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun setHomeScrollMode(mode: String) {
+        viewModelScope.launch { settingsRepository.setHomeScrollMode(mode) }
+    }
+
     /** 「全部应用」浮动入口显隐（空白处长按菜单/设置页共用）。 */
     fun setAllAppsEntryVisible(value: Boolean) {
         viewModelScope.launch { settingsRepository.setAllAppsEntryVisible(value) }
@@ -339,6 +416,72 @@ class HomeViewModel @Inject constructor(
     /** 「全部应用」浮动入口拖动落点：归一化 0..1 中心坐标。 */
     fun setAllAppsEntryPosition(x: Float, y: Float) {
         viewModelScope.launch { settingsRepository.setAllAppsEntryPosition(x, y) }
+    }
+
+    /** 批量删除选中单元格：文件夹 key 展开成员，一次删完主屏与资源库中的站点记录。 */
+    fun deleteSelected(keys: Set<String>) {
+        if (keys.isEmpty()) return
+        viewModelScope.launch {
+            val ids = HomePages.resolveDeleteMany(apps.value, keys)
+            if (ids.isEmpty()) return@launch
+            ids.forEach { dao.deleteById(it) }
+            AppLog.log("home", "批量删除 ${ids.size} 个应用")
+        }
+    }
+
+    /** 批量移出文件夹：一次计算互不相同空槽后 upsertAll，避免叠进同一槽。 */
+    fun removeSelectedFromFolder(keys: Set<String>) {
+        if (keys.isEmpty()) return
+        viewModelScope.launch {
+            val settings = settingsRepository.settings.first()
+            val capacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1)
+            val appIds = expandSelectedAppIds(apps.value, keys)
+            if (appIds.isEmpty()) return@launch
+            val updates = if (!settings.autoArrangeHome) {
+                HomePages.resolveRemoveManyFromFolder(apps.value, appIds, capacity)
+            } else {
+                appIds.mapIndexedNotNull { index, id ->
+                    apps.value.firstOrNull { it.id == id && it.folderId != null }?.copy(
+                        folderId = null,
+                        folderName = null,
+                        folderCellIndex = null,
+                        homeCellIndex = -1 - index,
+                    )
+                }
+            }
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            AppLog.log("home", "批量移出文件夹（${appIds.size} 个应用）")
+        }
+    }
+
+    /**
+     * 批量移入文件夹：[folderId] 为 null 时新建。
+     * 锚点取选中集合最小 (page, slot)；一次 upsertAll。
+     */
+    fun moveSelectedToFolder(keys: Set<String>, folderId: String?) {
+        if (keys.isEmpty() || keys.any { it.startsWith("folder-") }) return
+        viewModelScope.launch {
+            val settings = settingsRepository.settings.first()
+            val capacity = (settings.gridColumns * settings.gridRows).coerceAtLeast(1)
+            val all = apps.value
+            val (anchorPage, anchorSlot) = selectedAnchor(all, keys, capacity) ?: return@launch
+            val targetId = folderId ?: run {
+                val seed = keys.toList().sorted().joinToString("") { it.takeLast(3) }.take(16)
+                "f-$seed"
+            }
+            val updates = HomePages.resolveMoveManyToFolder(
+                apps = all,
+                keys = keys,
+                folderId = targetId,
+                anchorPage = anchorPage,
+                anchorSlot = anchorSlot,
+                pageCapacity = capacity,
+            )
+            if (updates.isEmpty()) return@launch
+            dao.upsertAll(updates)
+            AppLog.log("home", "批量移入文件夹（${keys.size} 项）")
+        }
     }
 
     fun delete(appId: String) {
@@ -356,6 +499,41 @@ class HomeViewModel @Inject constructor(
             members.forEach { dao.deleteById(it.id) }
             AppLog.log("home", "删除文件夹（${members.size} 个成员）")
         }
+    }
+
+    private fun expandSelectedAppIds(apps: List<WebAppEntity>, keys: Set<String>): List<String> {
+        val ids = LinkedHashSet<String>()
+        keys.forEach { key ->
+            if (key.startsWith("folder-")) {
+                val folderId = key.removePrefix("folder-")
+                apps.forEach { entity ->
+                    if (entity.folderId == folderId) ids += entity.id
+                }
+            } else {
+                apps.firstOrNull { it.id == key && it.folderId != null }?.let { ids += it.id }
+            }
+        }
+        return ids.toList()
+    }
+
+    private fun selectedAnchor(
+        apps: List<WebAppEntity>,
+        keys: Set<String>,
+        pageCapacity: Int,
+    ): Pair<Int, Int>? {
+        var best: Pair<Int, Int>? = null
+        HomePages.buildSparse(apps, pageCapacity).forEachIndexed { page, slots ->
+            slots.forEachIndexed { slot, cell ->
+                if (cell != null && cell.key in keys) {
+                    val current = page to slot
+                    val seen = best
+                    if (seen == null || page < seen.first || (page == seen.first && slot < seen.second)) {
+                        best = current
+                    }
+                }
+            }
+        }
+        return best
     }
 
     private suspend fun persistCellOrder(cells: List<HomeCell>, pageCapacity: Int) {

@@ -36,6 +36,7 @@ import com.webshell.core.designsystem.theme.LocalOverlayClearance
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.WebViewPool
 import com.webshell.core.webengine.compose.ShellWebViewHost
+import com.webshell.core.webengine.resolveForceEnableZoom
 
 /**
  * Route/state collection only. Presentation, platform prompts, chrome transitions and native
@@ -50,6 +51,8 @@ fun BrowserScreen(
     autoCollapse: Boolean = true,
     pullToRefresh: Boolean = false,
     onOpenDownloads: () -> Unit = {},
+    onLeaveToHome: () -> Unit = {},
+    documentContent: @Composable (BrowserTab) -> Unit = {},
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -60,11 +63,18 @@ fun BrowserScreen(
     val bookmarkPages by viewModel.bookmarks.collectAsStateWithLifecycle()
     val recentPages by viewModel.history.collectAsStateWithLifecycle()
     val desktopModes by viewModel.desktopModes.collectAsStateWithLifecycle()
+    val forceEnableZoomUser by viewModel.forceEnableZoomEnabled.collectAsStateWithLifecycle()
     val activeTab = tabs.firstOrNull { it.tabId == activeTabId }
     val sessionId = activeTab?.sessionId ?: activeTabId?.let { "browser-$it" }
     val currentUrl = activeTab?.url.orEmpty()
-    val hasPage = currentUrl.isNotBlank() && currentUrl != "about:blank"
-    val hasRenderer = sessionId != null && WebViewPool.get(sessionId) != null
+    val addressChrome = activeTab?.addressChrome().orEmpty()
+    val addressReadOnly = activeTab?.canEditAddress() == false
+    val hasPage = activeTab?.canBookmark() == true ||
+        (activeTab?.kind == BrowserTabKind.INCOMING_HTML && currentUrl.isNotBlank())
+    val askAddToHomeTabId by viewModel.askAddToHomeTabId.collectAsStateWithLifecycle()
+    val incomingHomeNotice by viewModel.incomingHomeNotice.collectAsStateWithLifecycle()
+    val askAddTab = tabs.firstOrNull { it.tabId == askAddToHomeTabId }
+    val showsWebView by viewModel.showsWebView.collectAsStateWithLifecycle()
     val desktopOn = desktopModes[sessionId] == true
     var urlInput by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
     var editing by remember { mutableStateOf(false) }
@@ -86,7 +96,7 @@ fun BrowserScreen(
     SideEffect {
         viewModel.setVisible(isVisible)
         chrome.dispatch(BrowserChromeEvent.Environment(
-            visible = isVisible, activeSessionId = sessionId.takeIf { hasPage || hasRenderer },
+            visible = isVisible, activeSessionId = sessionId.takeIf { showsWebView },
             activeUrl = currentUrl.takeIf { hasPage },
             autoCollapse = autoCollapse,
             interactionBlocked = editing || imeVisible || findState.visible || requests.busy,
@@ -103,10 +113,15 @@ fun BrowserScreen(
     LaunchedEffect(activeTabId) {
         focusManager.clearFocus()
         editing = false
-        urlInput = TextFieldValue(currentUrl.takeUnless { it == "about:blank" }.orEmpty())
+        urlInput = TextFieldValue(addressChrome)
     }
-    LaunchedEffect(currentUrl) {
-        if (!editing) urlInput = TextFieldValue(currentUrl.takeUnless { it == "about:blank" }.orEmpty())
+    LaunchedEffect(addressChrome) {
+        if (!editing) urlInput = TextFieldValue(addressChrome)
+    }
+    LaunchedEffect(incomingHomeNotice) {
+        val res = incomingHomeNotice ?: return@LaunchedEffect
+        notice = BrowserNotice(context.getString(res), "")
+        viewModel.consumeIncomingHomeNotice()
     }
     LaunchedEffect(message) {
         if (message != null) { kotlinx.coroutines.delay(2500); message = null }
@@ -165,7 +180,7 @@ fun BrowserScreen(
             BrowserMenuAction.Back -> viewModel.goBack()
             BrowserMenuAction.Forward -> viewModel.goForward()
             BrowserMenuAction.RefreshOrStop -> viewModel.refreshOrStop(activeTab?.loading == true)
-            BrowserMenuAction.Bookmark -> notice = if (!hasPage) {
+            BrowserMenuAction.Bookmark -> notice = if (activeTab?.canBookmark() != true) {
                 BrowserNotice(
                     context.getString(R.string.browser_bookmark_need_page_title),
                     context.getString(R.string.browser_bookmark_need_page_message),
@@ -213,6 +228,7 @@ fun BrowserScreen(
             BrowserMenuAction.HideToolbar -> { focusManager.clearFocus(); chrome.dispatch(BrowserChromeEvent.HideToolbar) }
             BrowserMenuAction.Collapse -> chrome.dispatch(BrowserChromeEvent.Collapse)
             BrowserMenuAction.CloseAll -> chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.CloseAll))
+            BrowserMenuAction.AddToHome -> viewModel.addIncomingToHome(activeTab?.tabId)
         }
     }
 
@@ -222,11 +238,11 @@ fun BrowserScreen(
             chrome.state.overlay != null -> dismissOverlay()
             editing -> {
                 focusManager.clearFocus()
-                urlInput = TextFieldValue(currentUrl.takeUnless { it == "about:blank" }.orEmpty())
+                urlInput = TextFieldValue(addressChrome)
             }
             findState.visible -> viewModel.hideFindBar()
             activeTab?.canGoBack == true -> viewModel.goBack()
-            else -> closeActive()
+            else -> onLeaveToHome()
         }
     }
 
@@ -237,6 +253,8 @@ fun BrowserScreen(
             onEditingChanged = { editing = it }, onGo = { navigate(urlInput.text) },
             loading = activeTab?.loading == true, tabCount = tabs.size, progress = activeTab?.progress ?: 0,
             sessionKey = sessionId,
+            readOnly = addressReadOnly,
+            stripScheme = !addressReadOnly,
             onTabSwitcher = {
                 focusManager.clearFocus()
                 viewModel.captureActiveThumbnail()
@@ -247,15 +265,39 @@ fun BrowserScreen(
         if (findState.visible) FindBar(findState.query, findState.active, findState.total,
             viewModel::updateFindQuery, { viewModel.findNext(false) }, { viewModel.findNext(true) }, viewModel::hideFindBar)
         Box(Modifier.weight(1f)) {
-            if (activeTab != null && sessionId != null && (hasPage || hasRenderer)) {
+            if (activeTab?.kind == BrowserTabKind.INCOMING_MARKDOWN) {
+                documentContent(activeTab)
+            } else if (activeTab != null && sessionId != null && showsWebView) {
+                DisposableEffect(sessionId) {
+                    viewModel.markRendererMounted(sessionId)
+                    onDispose { viewModel.onHostDisposed(sessionId) }
+                }
                 ShellWebViewHost(
                     sessionId = sessionId,
                     configFactory = {
                         val existing = WebViewPool.get(sessionId)?.config
-                        (existing ?: ShellConfig(sessionId = sessionId, startUrl = activeTab.url)).copy(
+                        val incomingLocal = activeTab.localAppId.takeIf {
+                            activeTab.kind == BrowserTabKind.INCOMING_HTML
+                        }
+                        (existing ?: ShellConfig(
+                            sessionId = sessionId,
+                            startUrl = activeTab.url,
+                            localAppId = incomingLocal,
+                        )).copy(
                             pullToRefresh = pullToRefresh,
                             externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
                             desktopMode = desktopOn,
+                            forceEnableZoom = forceEnableZoomUser?.let {
+                                resolveForceEnableZoom(
+                                    desktopMode = desktopOn,
+                                    localApp = incomingLocal != null,
+                                    userEnabled = it,
+                                )
+                            } ?: existing?.forceEnableZoom ?: resolveForceEnableZoom(
+                                desktopMode = desktopOn,
+                                localApp = incomingLocal != null,
+                                userEnabled = false,
+                            ),
                         )
                     },
                     listener = requests.listener,
@@ -266,16 +308,15 @@ fun BrowserScreen(
                     onReady = { viewModel.onHostReady(sessionId) },
                 )
             } else if (activeTab != null) {
-                // Ordinary scrolling content, unlike a real page: it has no
-                // ShellWebViewHost/parentHandlesInsets mechanism of its own,
-                // so it must reserve the same Dock clearance every other tab
-                // reserves or the permanently-revealed BrowserDockHost covers
-                // its bottom edge.
-                BrowserStartPage(
-                    bookmarkPages, recentPages, ::navigate,
+                BrowserStartPage(bookmarkPages, recentPages, ::navigate, Modifier.fillMaxSize())
+            } else {
+                Box(
                     Modifier.fillMaxSize().padding(bottom = LocalOverlayClearance.current),
-                )
-            } else EmptyTabsPrompt(Modifier.fillMaxSize().padding(bottom = LocalOverlayClearance.current), ::newTab)
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyTabsPrompt(onNewTab = ::newTab)
+                }
+            }
             message?.let {
                 WebSessionStatusMessage(it, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp, vertical = 24.dp))
             }
@@ -285,8 +326,16 @@ fun BrowserScreen(
     if (isVisible) {
         when (chrome.state.overlay) {
             BrowserOverlay.Menu -> BrowserMenuSheet(
-                BrowserMenuState(hasPage, tabs.isNotEmpty(), activeTab?.canGoBack == true,
-                    activeTab?.canGoForward == true, activeTab?.loading == true, currentUrl in bookmarkedUrls, desktopOn),
+                BrowserMenuState(
+                    hasPage = hasPage,
+                    hasTabs = tabs.isNotEmpty(),
+                    canGoBack = activeTab?.canGoBack == true,
+                    canGoForward = activeTab?.canGoForward == true,
+                    loading = activeTab?.loading == true,
+                    bookmarked = currentUrl in bookmarkedUrls,
+                    desktopMode = desktopOn,
+                    canAddToHome = activeTab?.kind != BrowserTabKind.WEB && activeTab?.localAppId != null,
+                ),
                 ::menuAction, ::dismissOverlay,
             )
             BrowserOverlay.Tabs -> TabSwitcherSheet(tabs, activeTabId,
@@ -315,10 +364,20 @@ fun BrowserScreen(
         notice?.let { current ->
             AppConfirmDialog(
                 title = current.title,
-                text = current.text,
+                text = current.text.takeIf { it.isNotBlank() } ?: current.title,
                 confirmText = stringResource(R.string.browser_js_ok),
                 onConfirm = { notice = null },
                 onDismiss = { notice = null },
+            )
+        }
+        askAddTab?.let { tab ->
+            AppConfirmDialog(
+                title = stringResource(R.string.browser_add_home_title),
+                text = stringResource(R.string.browser_add_home_message, tab.title),
+                confirmText = stringResource(R.string.browser_add_home_confirm),
+                dismissText = stringResource(R.string.browser_add_home_dismiss),
+                onConfirm = viewModel::addIncomingToHome,
+                onDismiss = viewModel::dismissAddToHome,
             )
         }
         WebSessionDialogs(requests, onRetry = { viewModel.refreshOrStop(false) }, onLeave = ::closeActive)
