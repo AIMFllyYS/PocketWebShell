@@ -73,15 +73,28 @@
 - **刻意偏离**：本规则冻结高位、第三位不进位，不符合 SemVer 第 6/7/8 条的进位要求——这是有意为之的产品姿态。业界先例充分：TeX 版本号渐近 π（小数位无限延伸）、Linux 2.6.x 八年数字管理、微信 8.0.x 五年、Office 16.0 十一年、ZeroVer 运动。
 - **适用前提**：本项目是独立应用而非被依赖的库，没有公共 API 消费者，SemVer 的兼容性承诺前提不成立。若未来对外发布 SDK / API，**必须**重审本规则。
 
-## 7. 历史记录与已知风险
+## 7. 应用内检查更新
+
+应用**必须**以 GitHub Releases 作为唯一的正式版来源，**禁止**为此引入自建后端、数据库或其它云端存储。
+
+- **R7（来源）**：检查更新**必须**请求公开接口 `GET https://api.github.com/repos/AIMFllyYS/PocketWebShell/releases/latest`。该接口跳过 draft 与 prerelease，与 §5 W1（debug 先行、非正式发布不上 Release）一致。
+- **R8（比较）**：用已安装 `versionName` 与 Release `tag_name`（去掉可选前缀 `v`）做三段数值比较，规则同 R1/R2。**禁止**用字符串比较（`0.1.9` 必须小于 `0.1.10`）。GitHub 不提供 `versionCode`，因此不把它当作远程依据。
+- **R9（结果）**：远程大于已安装 → 建议下载，下载地址优先取名为 `PocketWebShell-v<version>.apk` 的资产，否则打开该 Release 页面；远程小于或等于已安装（含尚未打 tag 的更新 debug 包）→ 视为已是最新。检查失败时可以打开官网，但官网不是权威版本源。
+- **R10（交互）**：检查**必须**由用户点按触发，**禁止**在启动或进入「我的」时自动请求。下载前**必须**弹出确认框。**禁止**静默安装或绕过系统包安装器。
+- **R11（资产）**：只接受 `https` 且主机为 `github.com` / `githubusercontent.com` 及其子域的下载或发布页链接。**禁止**选用文件名含 `debug` 的 APK。
+
+未认证 GitHub API 有每 IP 约 60 次/小时的限额；手动检查足够。部分网络可能无法访问 GitHub，此时提示失败并允许改开官网。
+
+## 8. 历史记录与已知风险
 
 - **计数重置（2026-08-30）**：版本计数从旧线（止于 `0.2.0` / `versionCode=2`）重置，新线自 `0.1.0` / `versionCode=1` 起，`CHANGELOG.md` 有明确记录。
 - **覆盖安装风险**：新线 `versionCode` 低于旧线，已安装旧版 `0.2.0` 的设备**无法覆盖安装**，必须先卸载再安装。
 - **规则误用记录（2026-08-30）**：曾将第二位误升至 `0.2.0`（新线），已回退为 `0.1.1` 并同步修订本文档与 `AGENTS.md` 的规则表述。教训：除用户点名外，任何情况下不得触碰第一、二位。
 
-## 8. 参考
+## 9. 参考
 
 - Semantic Versioning 2.0.0 — https://semver.org/lang/zh-CN/
 - ZeroVer — https://0ver.org/
 - Keep a Changelog 1.1.0 — https://keepachangelog.com/zh-CN/1.1.0/
 - Android 应用版本控制 — https://developer.android.com/tools/publishing/versioning
+- GitHub REST API: Get the latest release — https://docs.github.com/en/rest/releases/releases#get-the-latest-release

@@ -24,7 +24,7 @@ Protect these product properties in every change:
 - `feature/home/`: launcher pages, folders, fixed grid, DragLayer and persisted ordering. Interaction layer split: `HomeInteractionState.kt` (centralized drag/menu/edit session state holder) and `HomeGestures.kt` (cell gesture detection, root drag session, blank-area long-press, pinch edit mode, edge-hover page-turn state machine); `HomeScreen.kt` keeps composition root, grid containers, menus/dialogs and overlays. Instrumented gesture tests: `app/src/androidTest/.../HomeGestureInstrumentedTest.kt`（`:app:connectedDebugAndroidTest`，真机/模拟器回归主页手势验收路径）。
 - `feature/add/`: URL normalization, metadata parsing, icon discovery and app editing.
 - `feature/browser/`: browser chrome, tabs and tab switcher.
-- `feature/me/`: settings, Android permission/status surfaces and running-session presentation.
+- `feature/me/`: settings, Android permission/status surfaces, running-session presentation, and GitHub Release check-for-update.
 - `feature/viewer/`: VIEW/SEND 解析、临时文件拷贝、Markdown 消毒。外部 Markdown 走站点壳全屏（悬浮球、无顶栏、原生长按选中）；外部 HTML 仍复用浏览标签。同一源路径复用已打开的 HTML 标签或已保存的本地应用；可选「制作应用」才会写入 Room。
 - `docs/`: maintained technical and release documentation.
 

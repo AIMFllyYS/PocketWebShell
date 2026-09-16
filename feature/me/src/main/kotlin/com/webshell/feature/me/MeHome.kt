@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.components.AppListDivider
 import com.webshell.core.designsystem.components.AppListRow
@@ -40,6 +42,7 @@ internal fun MeHome(
     state: MeUiState,
     onRequestStop: (String) -> Unit,
     onOpenSection: (MeSection) -> Unit,
+    onCheckUpdate: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -113,6 +116,15 @@ internal fun MeHome(
         }
         item(key = "about-settings") {
             AppSettingsSection(stringResource(R.string.me_about_section)) {
+                SettingsMenuEntry(
+                    icon = Icons.Rounded.SystemUpdate,
+                    title = stringResource(R.string.me_check_update),
+                    color = Color(0xFF007AFF),
+                    trailingText = updateStatusText(state.updateCheck),
+                    showChevron = false,
+                    onClick = onCheckUpdate,
+                )
+                AppListDivider()
                 SettingsMenuEntry(Icons.Rounded.NewReleases, stringResource(R.string.me_updates), Color(0xFF8E8E93)) { onOpenSection(MeSection.UPDATE_LOG) }
                 AppListDivider()
                 SettingsMenuEntry(Icons.Rounded.DeveloperMode, stringResource(R.string.me_developer), Color(0xFF8E8E93)) { onOpenSection(MeSection.DEVELOPER) }
@@ -122,13 +134,45 @@ internal fun MeHome(
 }
 
 @Composable
-private fun SettingsMenuEntry(icon: ImageVector, title: String, color: Color, onClick: () -> Unit) {
+private fun updateStatusText(state: UpdateCheckState): String? = when (state) {
+    UpdateCheckState.Idle -> null
+    UpdateCheckState.Checking -> stringResource(R.string.me_check_update_checking)
+    UpdateCheckState.UpToDate -> stringResource(R.string.me_check_update_latest)
+    is UpdateCheckState.Available -> stringResource(R.string.me_check_update_available)
+    UpdateCheckState.Failed -> stringResource(R.string.me_check_update_failed)
+}
+
+@Composable
+private fun SettingsMenuEntry(
+    icon: ImageVector,
+    title: String,
+    color: Color,
+    onClick: () -> Unit,
+    trailingText: String? = null,
+    showChevron: Boolean = true,
+) {
     AppListRow(
         title = title,
         leadingIcon = icon,
         leadingIconBackground = color,
         onClick = onClick,
-        trailing = { SettingsChevron() },
+        trailing = when {
+            trailingText != null -> {
+                {
+                    Text(
+                        trailingText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            showChevron -> {
+                { SettingsChevron() }
+            }
+            else -> null
+        },
     )
 }
 

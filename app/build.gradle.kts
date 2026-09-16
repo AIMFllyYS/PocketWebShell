@@ -30,8 +30,8 @@ android {
         minSdk = 29
         targetSdk = 36
         // 版本计数已重置，规则见 docs/VERSIONING.md
-        versionCode = 53
-        versionName = "0.1.52"
+        versionCode = 54
+        versionName = "0.1.53"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
