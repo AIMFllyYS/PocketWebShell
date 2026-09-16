@@ -12,6 +12,7 @@
   D:\projects\Dev-Android\Android-Web\PocketWebShell-site\
   ```
 
+- **官方正式域名**：`https://xuanlan.1037solo.com`（1037SOLO 生态挂载站点）。
 - 技术栈：React 19 + vinext（Next.js App Router 兼容层）+ Vite 8 + Tailwind v4 + Shadcn/Base UI，纯静态导出（`next.config.ts` 中 `output: 'export'`）。
 - 构建产物为 `dist/client/`（`index.html`、`changelog.html`、`404.html`、`_next/static/`、`screens/`、`icons/` 等），**无服务端函数、无数据库**，可部署到任意静态托管。
 - 运行环境要求：Node 22.13+，依赖以仓库内 `package-lock.json` 为准（`npm ci` 安装）。
@@ -65,6 +66,9 @@ node scripts/sync-changelog.mjs
 - `components/release-archive.tsx`：最新版本判断逻辑（多处）；
 - `components/product-experience.tsx`：下载区 version-object 展示块。
 
+> [!NOTE]
+> `app/layout.tsx` 中的 `metadataBase` 必须始终保持为官方正式域名 `https://xuanlan.1037solo.com`，严禁配置或残留为开发/脚手架临时域名。
+
 兜底检查（在官网项目根目录执行）：全局搜索旧版本号，确认除历史版本档案内容外无遗漏：
 
 ```bash
@@ -108,8 +112,9 @@ Compress-Archive -Path dist\client\* -DestinationPath outputs\xuanlan-website-ht
 ### 部署
 
 - zip 解压后即为完整静态站点，上传到托管方（静态托管 / 对象存储 / Pages 类服务）的网站根目录即可。
+- **官方正式域名**：`https://xuanlan.1037solo.com`。
 - **部署约束**：HTML 内部使用根相对路径，站点**必须**部署在域名根路径下，不能挂在子路径。
-- 上传后**必须**做线上冒烟：访问 `/` 与 `/changelog/`，核对下载区版本号、SHA-256 与 GitHub Release 资产完全一致，并实际点击一次 APK 下载链接确认可下载。
+- 上传后**必须**做线上冒烟：访问 `https://xuanlan.1037solo.com/` 与 `https://xuanlan.1037solo.com/changelog/`，核对下载区版本号、SHA-256 与 GitHub Release 资产完全一致，并实际点击一次 APK 下载链接确认可下载。
 
 ## 6. 内容与信任红线
 

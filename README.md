@@ -7,8 +7,9 @@
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4)](https://developer.android.com/compose)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/AIMFllyYS/PocketWebShell)](https://github.com/AIMFllyYS/PocketWebShell/releases/latest)
+[![Website](https://img.shields.io/badge/Website-xuanlan.1037solo.com-0066CC)](https://xuanlan.1037solo.com)
 
-PocketWebShell（应用内名称为 **WebShell**）是一款面向手机的多站点 Web Shell。输入网址后，它会解析站点标题和图标，生成类似桌面 App 的入口；入口可以固定容量分页、重排或组成文件夹，并以独立 WebView 会话运行。项目同时提供多标签浏览、站点显示策略、通知、电池优化和后台服务设置。
+PocketWebShell（应用内名称为 **WebShell**，官网：[xuanlan.1037solo.com](https://xuanlan.1037solo.com)）是一款面向手机的多站点 Web Shell。输入网址后，它会解析站点标题和图标，生成类似桌面 App 的入口；入口可以固定容量分页、重排或组成文件夹，并以独立 WebView 会话运行。项目同时提供多标签浏览、站点显示策略、通知、电池优化和后台服务设置。
 
 English summary: PocketWebShell turns websites into organized, launcher-style Android entries with metadata discovery, fixed-grid pages, folders, multi-tab browsing, and isolated WebView sessions.
 
