@@ -122,7 +122,7 @@ Download the published APK into a clean directory and verify it again with the s
 
 ## Sync the product website
 
-Once the GitHub Release is live, synchronize the product website (changelog archive, download links, checksum and screenshots where applicable) and deploy the updated static build by following `docs/WEBSITE.md` exactly. Only published releases trigger a website sync; debug iterations do not.
+Once the GitHub Release is live, synchronize the product website (`https://xuanlan.1037solo.com`, changelog archive, download links, checksum and screenshots where applicable) and deploy the updated static build by following `docs/WEBSITE.md` exactly. Only published releases trigger a website sync; debug iterations do not.
 
 ## Return to dev
 
