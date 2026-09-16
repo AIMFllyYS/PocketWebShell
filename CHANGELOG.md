@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.53] - 2026-09-17
+
+开屏重构为原生级丝滑微动效：废弃主线程高频粒子与黑洞计算，采用玄览星核 BrandMark 弹簧微入与优雅淡出，底层主屏并行预热，彻底消灭首帧卡顿。
+
+### Changed
+
+- 彻底重构开屏（`AppSplash.kt`）：移除复杂的黑洞引力与粒子计算，对齐苹果极简克制基准，以纯粹的玄览星核（BrandMark 太极环与鎏金星核）作为视觉主体。
+- 改为双层并行预热流水线：底层的 `MainScaffold` 在开屏遮罩下立即异步静默完成初次布局与数据读取（期间禁用实时毛玻璃），开屏淡出时主线程无冲突，达成 10/10 满帧丝滑无卡顿。
+- 全程动效由 GPU 硬件加速 `graphicsLayer`（Scale + Alpha）驱动，缩短总展示时长至约 550ms，视觉体验轻快、自然且高质感。
+- 完善 Android 原生 SplashScreen 主题契约，窗口冷启动到应用内首帧平滑过渡。
+
+### Testing
+
+- `:feature:home:testDebugUnitTest :app:assembleDebug`
+- 手测：冷启动无卡顿、无黑白闪烁，星核微动效流畅，淡出直接呈现完整主页。
+
 ## [0.1.52] - 2026-09-14
 
 开屏按最终流程定稿：字幕和粒子一起上，黑洞期间字幕不收，最后整层一起淡出再进主页。

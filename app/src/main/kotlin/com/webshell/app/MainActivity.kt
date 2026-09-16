@@ -54,27 +54,22 @@ class MainActivity : ComponentActivity() {
             ) {
                 Box(Modifier.fillMaxSize()) {
                     var splashVisible by remember { mutableStateOf(!skipSplash) }
-                    var mountShell by remember { mutableStateOf(skipSplash) }
                     LaunchedEffect(incomingFile) {
                         if (incomingFile != null) {
-                            mountShell = true
                             splashVisible = false
                         }
                     }
-                    if (mountShell) {
-                        MainScaffold(
-                            launchUrl = launchUrl,
-                            incoming = incomingFile,
-                            onIncomingLeave = {
-                                IncomingIntentParser.markConsumed(intent)
-                                incoming = null
-                            },
-                            suppressLiveGlass = splashVisible,
-                        )
-                    }
+                    MainScaffold(
+                        launchUrl = launchUrl,
+                        incoming = incomingFile,
+                        onIncomingLeave = {
+                            IncomingIntentParser.markConsumed(intent)
+                            incoming = null
+                        },
+                        suppressLiveGlass = splashVisible,
+                    )
                     if (splashVisible) {
                         AppSplash(
-                            onReadyForShell = { mountShell = true },
                             onFinished = { splashVisible = false },
                         )
                     }

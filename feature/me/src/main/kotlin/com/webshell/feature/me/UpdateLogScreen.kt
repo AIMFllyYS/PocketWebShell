@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.53",
+        date = "2026-09-17",
+        highlights = listOf(
+            "开屏重构为原生级丝滑微动效：废弃主线程黑洞粒子运算，采用玄览星核 BrandMark 弹簧微动效与优雅淡出",
+            "底层主屏并行静默预热，开屏淡出时主线程无冲突，彻底消灭首帧卡顿",
+            "完善原生启动屏主题契约，窗口冷启动到应用内无缝咬合",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.52",
         date = "2026-09-14",
         highlights = listOf(
