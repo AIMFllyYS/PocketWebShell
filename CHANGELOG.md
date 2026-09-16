@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.54] - 2026-09-17
+
+设置页可检查 GitHub 最新正式版；已是最新会说明，有新版本则弹出确认后再打开下载链接。不引入自建后端或云端存储。
+
+### Added
+
+- 我的 → 关于：新增「检查新版本」。对照 GitHub `releases/latest` 的 tag（`v<versionName>`）判断是否有正式版可更新。
+- 已是最新：行尾显示「已是最新」，并弹出确认框。
+- 发现新版本：复用 `AppConfirmDialog` 询问是否下载；确认后打开 APK 的 GitHub 下载地址（没有 APK 资产则打开 Release 页面）。
+- 检查失败：可改开官网 `https://xuanlan.1037solo.com`。
+
+### Testing
+
+- `:core:data:testDebugUnitTest :feature:home:testDebugUnitTest :app:assembleDebug`
+- 手测：点检查新版本（当前若已发布同号则为最新；人为改低本地 versionName 可验证下载弹窗）。GitHub 不可达时的失败弹窗。
+
 ## [0.1.53] - 2026-09-17
 
 开屏重构为原生级丝滑微动效：废弃主线程高频粒子与黑洞计算，采用玄览星核 BrandMark 弹簧微入与优雅淡出，底层主屏并行预热，彻底消灭首帧卡顿。

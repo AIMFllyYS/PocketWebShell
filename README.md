@@ -35,6 +35,7 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 - **站点壳**：从主屏打开的网站带可拖动辅助球；新窗口可跳到浏览页或覆盖当前应用。
 - **多会话 WebView**：站点配置、WebView 池、Profile 兼容和本地资源加载。
 - **系统状态联动**：通知运行时权限、电池优化白名单状态和前台服务开关。
+- **检查更新**：设置页对照 GitHub 最新正式 Release 判断版本；有更新时确认后再打开 APK 下载链接。不自建更新服务器。
 
 ## 界面
 
@@ -62,7 +63,7 @@ feature/home/        固定桌面、分页、文件夹与 DragLayer
 feature/add/         URL、元数据、图标候选、本地 HTML 选择
 feature/browser/     多标签浏览器与标签切换器
 feature/viewer/      外部 VIEW/SEND 的 HTML/Markdown 解析与策略
-feature/me/          桌面、通知、电池、后台运行和会话设置
+feature/me/          桌面、通知、电池、后台运行、会话设置和检查更新
 ```
 
 状态和持久化遵循单向数据流：Composable 负责呈现与事件，ViewModel 暴露 `StateFlow`，Repository 负责 Room/DataStore，平台对象和 WebView 生命周期留在专用宿主与控制器中。

@@ -1,5 +1,7 @@
 package com.webshell.feature.me
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
@@ -11,11 +13,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.webshell.core.data.update.AppUpdateChecker
+import com.webshell.core.designsystem.components.AppConfirmDialog
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
 
@@ -80,6 +86,7 @@ fun MeScreen(
                 state = state,
                 onRequestStop = { pendingStopIds = listOf(it) },
                 onOpenSection = { section = it },
+                onCheckUpdate = viewModel::checkForUpdate,
             )
             MeSection.APPEARANCE -> AppearanceSettingsPage(
                 settings = settings,
@@ -145,4 +152,56 @@ fun MeScreen(
             onDismiss = { pendingStopIds = emptyList() },
         )
     }
+    val context = LocalContext.current
+    when (val prompt = state.updatePrompt) {
+        is UpdatePrompt.UpToDate -> AppConfirmDialog(
+            title = stringResource(R.string.me_update_latest_title),
+            text = stringResource(R.string.me_update_latest_text, prompt.version),
+            confirmText = stringResource(R.string.me_ok),
+            onConfirm = viewModel::dismissUpdatePrompt,
+            onDismiss = viewModel::dismissUpdatePrompt,
+        )
+        is UpdatePrompt.Available -> {
+            val offer = prompt.offer
+            val text = buildString {
+                append(stringResource(R.string.me_update_available_text, offer.installed))
+                if (offer.notes.isNotBlank()) {
+                    append("\n\n")
+                    append(offer.notes)
+                }
+            }
+            AppConfirmDialog(
+                title = stringResource(R.string.me_update_available_title, offer.latest),
+                text = text,
+                confirmText = stringResource(R.string.me_update_download),
+                dismissText = stringResource(R.string.me_update_later),
+                onConfirm = {
+                    viewModel.dismissUpdatePrompt()
+                    openHttps(context, offer.downloadUrl)
+                },
+                onDismiss = viewModel::dismissUpdatePrompt,
+            )
+        }
+        UpdatePrompt.Failed -> AppConfirmDialog(
+            title = stringResource(R.string.me_update_failed_title),
+            text = stringResource(R.string.me_update_failed_text),
+            confirmText = stringResource(R.string.me_update_open_website),
+            dismissText = stringResource(R.string.me_cancel),
+            onConfirm = {
+                viewModel.dismissUpdatePrompt()
+                openHttps(context, AppUpdateChecker.WEBSITE_URL)
+            },
+            onDismiss = viewModel::dismissUpdatePrompt,
+        )
+        null -> Unit
+    }
+}
+
+private fun openHttps(context: android.content.Context, url: String) {
+    val uri = Uri.parse(url)
+    if (!uri.scheme.equals("https", ignoreCase = true)) return
+    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+        addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+    runCatching { context.startActivity(intent) }
 }

@@ -31,6 +31,14 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.54",
+        date = "2026-09-17",
+        highlights = listOf(
+            "我的页可以检查 GitHub 最新正式版：已是最新会说明，有新版本会弹出是否下载",
+            "更新判断只读公开的 GitHub Release，不另做云端存储或自建后端",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.53",
         date = "2026-09-17",
         highlights = listOf(

@@ -7,6 +7,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SettingsRepository
+import com.webshell.core.data.update.AppUpdateChecker
+import com.webshell.core.data.update.AppUpdateResult
 import com.webshell.core.model.AppLog
 import com.webshell.core.webengine.KeepAliveRegistry
 import com.webshell.core.webengine.WebViewCapabilities
@@ -24,11 +26,34 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+sealed class UpdateCheckState {
+    data object Idle : UpdateCheckState()
+    data object Checking : UpdateCheckState()
+    data object UpToDate : UpdateCheckState()
+    data class Available(val version: String) : UpdateCheckState()
+    data object Failed : UpdateCheckState()
+}
+
+data class UpdateOffer(
+    val installed: String,
+    val latest: String,
+    val notes: String,
+    val downloadUrl: String,
+)
+
+sealed class UpdatePrompt {
+    data class UpToDate(val version: String) : UpdatePrompt()
+    data class Available(val offer: UpdateOffer) : UpdatePrompt()
+    data object Failed : UpdatePrompt()
+}
+
 data class MeUiState(
     val batteryWhitelisted: Boolean = false,
     val runningSessions: List<KeepAliveRegistry.Entry> = emptyList(),
     val capabilities: WebViewCapabilities.Snapshot = WebViewCapabilities.snapshot(),
     val oemHint: String = oemHintFor(Build.MANUFACTURER),
+    val updateCheck: UpdateCheckState = UpdateCheckState.Idle,
+    val updatePrompt: UpdatePrompt? = null,
 )
 
 private fun oemHintFor(manufacturer: String): String {
@@ -51,6 +76,7 @@ private fun oemHintFor(manufacturer: String): String {
 @HiltViewModel
 class MeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
+    private val updateChecker: AppUpdateChecker,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -63,7 +89,63 @@ class MeViewModel @Inject constructor(
     private val _fontSaveState = MutableStateFlow(FontSaveState.Idle)
     val fontSaveState: StateFlow<FontSaveState> = _fontSaveState.asStateFlow()
 
+    private val installedVersion: String =
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+            .getOrNull()
+            .orEmpty()
+
+    private var lastOffer: UpdateOffer? = null
+
     fun resetFontSaveState() { _fontSaveState.value = FontSaveState.Idle }
+
+    fun checkForUpdate() {
+        val current = _uiState.value
+        if (current.updateCheck == UpdateCheckState.Checking) return
+        val offer = lastOffer
+        if (current.updateCheck is UpdateCheckState.Available && offer != null) {
+            _uiState.value = current.copy(updatePrompt = UpdatePrompt.Available(offer))
+            return
+        }
+        _uiState.value = current.copy(updateCheck = UpdateCheckState.Checking, updatePrompt = null)
+        viewModelScope.launch {
+            when (val result = updateChecker.check(installedVersion)) {
+                is AppUpdateResult.UpToDate -> {
+                    lastOffer = null
+                    _uiState.value = _uiState.value.copy(
+                        updateCheck = UpdateCheckState.UpToDate,
+                        updatePrompt = UpdatePrompt.UpToDate(result.installed),
+                    )
+                    AppLog.log("me", "检查更新：已是最新版本")
+                }
+                is AppUpdateResult.Available -> {
+                    val offer = UpdateOffer(
+                        installed = result.installed,
+                        latest = result.release.versionName,
+                        notes = result.release.notesExcerpt,
+                        downloadUrl = result.release.downloadUrl,
+                    )
+                    lastOffer = offer
+                    _uiState.value = _uiState.value.copy(
+                        updateCheck = UpdateCheckState.Available(offer.latest),
+                        updatePrompt = UpdatePrompt.Available(offer),
+                    )
+                    AppLog.log("me", "检查更新：发现新版本")
+                }
+                AppUpdateResult.Failed -> {
+                    lastOffer = null
+                    _uiState.value = _uiState.value.copy(
+                        updateCheck = UpdateCheckState.Failed,
+                        updatePrompt = UpdatePrompt.Failed,
+                    )
+                    AppLog.warn("me", "检查更新失败")
+                }
+            }
+        }
+    }
+
+    fun dismissUpdatePrompt() {
+        _uiState.value = _uiState.value.copy(updatePrompt = null)
+    }
 
     fun setAppTypography(fontFamily: String, scalePercent: Int) {
         if (_fontSaveState.value == FontSaveState.Saving) return
