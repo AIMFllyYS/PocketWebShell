@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.55",
+        date = "2026-09-17",
+        highlights = listOf(
+            "开屏全面升级为浅色白洞与深色黑洞天体动效，配以唯美艺术字与光引过渡，120fps 全程硬件加速",
+            "本地 HTML 扫描深度覆盖 Download 及其所有下级子目录与公共目录，兼备并发协程与超时保护",
+            "桌面多选编辑交互升级为 iOS 级操作栏与二级抽屉，彻底杜绝文字截断",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.54",
         date = "2026-09-17",
         highlights = listOf(

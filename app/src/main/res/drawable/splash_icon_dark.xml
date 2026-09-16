@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色模式开屏矢量标：神秘深邃黑洞星核与冷月金环（透明底，完美融入深色夜空） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.66"
+        android:scaleY="0.66"
+        android:pivotX="54"
+        android:pivotY="54">
+        <!-- 黑洞光子层引力环（月白冰环） -->
+        <path
+            android:pathData="M54,24 a30,30 0 1,0 0.002,0 Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#F2EEE3"
+            android:strokeWidth="5"
+            android:strokeLineCap="round" />
+        <!-- 核心视界微金点（奇点余晖） -->
+        <path
+            android:fillColor="#E9D9AE"
+            android:pathData="M54,47 a7,7 0 1,0 0.002,0 Z" />
+        <!-- 倾斜吸积盘轨道与伴星（金流） -->
+        <group
+            android:rotation="-28"
+            android:pivotX="54"
+            android:pivotY="54">
+            <path
+                android:pathData="M10,54 a44,15 0 1,0 88,0 a44,15 0 1,0 -88,0"
+                android:fillColor="#00000000"
+                android:strokeColor="#C9A86A"
+                android:strokeWidth="3.5"
+                android:strokeLineCap="round" />
+            <path
+                android:fillColor="#E9D9AE"
+                android:pathData="M98,54 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+        </group>
+    </group>
+</vector>

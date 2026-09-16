@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 浅色模式开屏矢量标：金色的白洞引力环与炽金星核（透明底，无突兀深色色块） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.66"
+        android:scaleY="0.66"
+        android:pivotX="54"
+        android:pivotY="54">
+        <!-- 白洞主引力环（耀金） -->
+        <path
+            android:pathData="M54,24 a30,30 0 1,0 0.002,0 Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#C9983A"
+            android:strokeWidth="5"
+            android:strokeLineCap="round" />
+        <!-- 炽热光核（暖金微核） -->
+        <path
+            android:fillColor="#B8860B"
+            android:pathData="M54,47 a7,7 0 1,0 0.002,0 Z" />
+        <!-- 倾斜吸积轨道与伴星（金珀） -->
+        <group
+            android:rotation="-28"
+            android:pivotX="54"
+            android:pivotY="54">
+            <path
+                android:pathData="M10,54 a44,15 0 1,0 88,0 a44,15 0 1,0 -88,0"
+                android:fillColor="#00000000"
+                android:strokeColor="#D4AF37"
+                android:strokeWidth="3.5"
+                android:strokeLineCap="round" />
+            <path
+                android:fillColor="#C9983A"
+                android:pathData="M98,54 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" />
+        </group>
+    </group>
+</vector>

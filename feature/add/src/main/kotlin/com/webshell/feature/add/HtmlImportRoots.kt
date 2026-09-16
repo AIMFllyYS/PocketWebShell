@@ -85,12 +85,16 @@ object HtmlImportRoots {
 
     private fun primaryVolume(context: Context, sdk: Int): File? {
         if (sdk >= Build.VERSION_CODES.R) {
-            val manager = context.getSystemService(StorageManager::class.java) ?: return null
-            val primary = manager.storageVolumes.firstOrNull { it.isPrimary } ?: return null
-            return primary.directory
+            val manager = context.getSystemService(StorageManager::class.java)
+            val primaryDir = manager?.storageVolumes?.firstOrNull { it.isPrimary }?.directory
+            if (primaryDir != null && primaryDir.exists()) return primaryDir
         }
         @Suppress("DEPRECATION")
-        return Environment.getExternalStorageDirectory()
+        val external = runCatching { Environment.getExternalStorageDirectory() }.getOrNull()
+        if (external != null && external.exists()) return external
+        val emulated = File("/storage/emulated/0")
+        if (emulated.exists()) return emulated
+        return null
     }
 
     private fun isPresentAndListable(dir: File): Boolean = dir.isDirectory && dir.listFiles() != null
