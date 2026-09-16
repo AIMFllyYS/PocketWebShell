@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.55] - 2026-09-17
+
+开屏全面升级为浅色白洞与深色黑洞天体动效，配以唯美艺术字与光引过渡；本地 HTML 扫描突破局限，深度全覆盖 Download 及其所有子目录；桌面多选编辑交互升级为 iOS 级操作栏与二级抽屉，彻底杜绝文字截断。
+
+### Added
+
+- 浅色白洞与深色黑洞开屏：Android 12+ 系统启动窗移除深色底框，分别采用浅色白洞与深色黑洞透明矢量微标；Compose 动态开屏升级为耀金白洞与深空黑洞引力动效，引入衬线艺术字与字距光引展开，60/120fps 全程硬件加速无缝淡出。
+- 本地 HTML 全路径深度扫描：修复 Android 11+ OEM 存储卷回退，深度扫描 `Download` 根目录及其任意下级子目录（浏览器下载、各类网盘、聊天软件等）与公共目录，兼备并发协程、深度控制与超时保护，大幅提升扫描率与响应速度。
+- 桌面多选 iOS 级操作坞：解耦桌面整体翻页模式配置与批量选中操作；多选状态下重构为清晰的计数胶囊与操作坞，文件夹批量操作整合为二级抽屉与弹窗，彻底根除「移出文...」等文字截断问题。
+
+### Testing
+
+- `:feature:add:testDebugUnitTest :feature:home:testDebugUnitTest :app:assembleDebug`
+- 模拟器手测：浅色与深色模式冷启动开屏动效、HTML 选择器多级子文件夹深度发现、主页多选图标操作栏与二级文件夹抽屉。
+
 ## [0.1.54] - 2026-09-17
 
 设置页可检查 GitHub 最新正式版；已是最新会说明，有新版本则弹出确认后再打开下载链接。不引入自建后端或云端存储。

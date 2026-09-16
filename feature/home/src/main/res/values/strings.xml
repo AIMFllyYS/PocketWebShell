@@ -18,6 +18,8 @@
     <string name="home_scroll_vertical">上下</string>
     <string name="home_scroll_pager_cd">左右翻页</string>
     <string name="home_scroll_vertical_cd">上下滚动</string>
+    <string name="home_edit_desktop_title">桌面排版</string>
+    <string name="home_folder_actions">文件夹</string>
     <string name="home_drag_group_overflow">+%1$d</string>
     <string name="home_empty_title">把喜欢的网站放在主屏幕</string>
     <string name="home_empty_description">点按添加，轻触图标即可打开</string>

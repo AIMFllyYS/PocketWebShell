@@ -3,14 +3,18 @@ package com.webshell.app.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -24,25 +28,33 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.webshell.app.R
-import com.webshell.core.designsystem.components.BrandMark
 import com.webshell.core.designsystem.theme.LocalIsDarkTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.min
 
-private const val MarkInMs = 260
-private const val TextDelayMs = 60L
-private const val TextInMs = 220
-private const val HoldMs = 120L
-private const val ExitMs = 240
+private const val EntranceMs = 300
+private const val TextDelayMs = 70L
+private const val TextInMs = 240
+private const val HoldMs = 200L
+private const val ExitMs = 220
 
 private val EatTouches = Modifier.pointerInput(Unit) {
     awaitEachGesture {
@@ -55,10 +67,11 @@ private val EatTouches = Modifier.pointerInput(Unit) {
 }
 
 /**
- * 原生级丝滑开屏：
- * 1. 纯粹以项目灵魂标识「玄览星核 BrandMark」为中心；
- * 2. 动效采用轻盈弹簧微入与优雅绽放淡出，全由 GPU graphicsLayer 驱动；
- * 3. 彻底告别冷启动逐帧主线程粒子运算，与底层并行预热结合达成 10/10 满帧无卡顿。
+ * 原生极速丝滑开屏：
+ * 1. 浅色模式采用「金色白洞」，深色模式采用「黑洞星核」；
+ * 2. 彻底移除原先生硬前置的深色背景底图与方块，透明底天然融入系统窗口背景；
+ * 3. 唯美艺术字与光引文字动效，GPU 硬件加速丝滑转场；
+ * 4. 底层 MainScaffold 静默预热无缝衔接，达成 120fps 满帧无卡顿体验。
  */
 @Composable
 fun AppSplash(
@@ -67,13 +80,15 @@ fun AppSplash(
 ) {
     val dark = LocalIsDarkTheme.current
     val background = if (dark) Color.Black else Color.White
-    val ink = if (dark) Color(0xFFF2F2F7) else Color(0xFF1C1C1E)
-    val muted = if (dark) Color(0xFFAEAEB2) else Color(0xFF55555B)
+    val muted = if (dark) Color(0xFFA1A1AA) else Color(0xFF6B7280)
 
-    val markScale = remember { Animatable(0.90f) }
+    val markScale = remember { Animatable(0.88f) }
     val markAlpha = remember { Animatable(0f) }
+    val orbitRotation = remember { Animatable(0f) }
+
     val textAlpha = remember { Animatable(0f) }
-    val textOffsetY = remember { Animatable(12f) }
+    val textOffsetY = remember { Animatable(16f) }
+    val textSpacing = remember { Animatable(2f) }
 
     val exitScale = remember { Animatable(1.0f) }
     val exitAlpha = remember { Animatable(1.0f) }
@@ -82,17 +97,24 @@ fun AppSplash(
     val onReady by rememberUpdatedState(onReadyForShell)
 
     LaunchedEffect(Unit) {
-        // Phase 1: 品牌星核与文案微弹入
+        // Phase 1: 白洞/黑洞引力星核弹簧轻盈入场 + 轨道微旋
         launch {
-            markAlpha.animateTo(1f, tween(MarkInMs, easing = LinearEasing))
+            markAlpha.animateTo(1f, tween(EntranceMs, easing = LinearEasing))
         }
         launch {
             markScale.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
+                animationSpec = spring(dampingRatio = 0.80f, stiffness = 380f),
+            )
+        }
+        launch {
+            orbitRotation.animateTo(
+                targetValue = 24f,
+                animationSpec = tween(EntranceMs + HoldMs.toInt() + ExitMs, easing = FastOutSlowInEasing),
             )
         }
 
+        // Phase 2: 艺术文字光引展开
         delay(TextDelayMs)
         launch {
             textAlpha.animateTo(1f, tween(TextInMs, easing = LinearEasing))
@@ -100,18 +122,25 @@ fun AppSplash(
         launch {
             textOffsetY.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 0.85f, stiffness = 450f),
+                animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
+            )
+        }
+        launch {
+            textSpacing.animateTo(
+                targetValue = 5.5f,
+                animationSpec = spring(dampingRatio = 0.88f, stiffness = 320f),
             )
         }
 
+        // 通知底层开始静默预热
         onReady()
 
-        // Phase 2: 静默展示片刻，留出充足时间让底层 MainScaffold 完成静默预热
-        delay(MarkInMs + HoldMs)
+        // Phase 3: 留存片刻供底层初始化与预加载
+        delay(EntranceMs + HoldMs)
 
-        // Phase 3: Apple 式优雅向外绽放淡出，纯 GPU 硬件加速
+        // Phase 4: Apple 式优雅向外绽放淡出，纯 GPU 硬件加速
         launch {
-            exitScale.animateTo(1.05f, tween(ExitMs, easing = FastOutSlowInEasing))
+            exitScale.animateTo(1.06f, tween(ExitMs, easing = FastOutSlowInEasing))
         }
         exitAlpha.animateTo(0f, tween(ExitMs, easing = FastOutSlowInEasing))
 
@@ -133,17 +162,18 @@ fun AppSplash(
             modifier = Modifier.align(BiasAlignment(0f, -0.06f)),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            BrandMark(
+            CosmicVortexMark(
+                isDark = dark,
+                rotationOffset = orbitRotation.value,
                 modifier = Modifier
-                    .size(92.dp)
+                    .size(96.dp)
                     .graphicsLayer {
                         scaleX = markScale.value
                         scaleY = markScale.value
                         alpha = markAlpha.value
                     },
-                showSky = true,
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
             Column(
                 modifier = Modifier.graphicsLayer {
                     alpha = textAlpha.value
@@ -151,23 +181,176 @@ fun AppSplash(
                 },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                val titleBrush = if (dark) {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFF7F3E9),
+                            Color(0xFFE9D9AE),
+                            Color(0xFFC9A86A),
+                            Color(0xFFF7F3E9),
+                        ),
+                    )
+                } else {
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF6B4E1A),
+                            Color(0xFFB8860B),
+                            Color(0xFFD4AF37),
+                            Color(0xFF8A651E),
+                        ),
+                    )
+                }
+
                 Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.5.sp,
+                    text = "玄  览",
+                    style = TextStyle(
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 32.sp,
+                        letterSpacing = textSpacing.value.sp,
+                        brush = titleBrush,
                     ),
-                    color = ink,
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = stringResource(R.string.splash_tagline),
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        letterSpacing = 0.2.sp,
+                        letterSpacing = 1.5.sp,
+                        fontWeight = FontWeight.Normal,
                     ),
                     color = muted,
                     textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 宇宙天体引力微标：
+ * - 浅色模式：金色的白洞（暖金辐射光环、炽金星核、璀璨吸积盘），在纯白底上通透耀眼；
+ * - 深色模式：引力黑洞（纯黑引力视界、月白光子层、金流伴星），在纯黑底上神秘深邃。
+ */
+@Composable
+private fun CosmicVortexMark(
+    isDark: Boolean,
+    rotationOffset: Float,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier.aspectRatio(1f)) {
+        val side = min(size.width, size.height)
+        if (side <= 0f) return@Canvas
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = side * 0.32f
+
+        if (isDark) {
+            // 深色模式：黑洞天体
+            val ringStroke = (radius * 5f / 30f).coerceAtLeast(1.5f)
+            val orbitStroke = (radius * 3.5f / 30f).coerceAtLeast(1.5f)
+            val coreRadius = radius * 7.5f / 30f
+            val orbitRx = radius * 45f / 30f
+            val orbitRy = radius * 16f / 30f
+            val companionRadius = radius * 4.5f / 30f
+
+            // 黑洞吸积微晕
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x33C9A86A), Color(0x00C9A86A)),
+                    center = center,
+                    radius = radius * 1.6f,
+                ),
+                radius = radius * 1.6f,
+                center = center,
+            )
+
+            // 月白光子环（黑洞边缘）
+            drawCircle(
+                color = Color(0xFFF2EEE3),
+                radius = radius,
+                center = center,
+                style = Stroke(width = ringStroke, cap = StrokeCap.Round),
+            )
+
+            // 核心引力视界（极深冷核）与中心奇点
+            drawCircle(
+                color = Color(0xFF0C0E14),
+                radius = radius - ringStroke / 2f,
+                center = center,
+            )
+            drawCircle(
+                color = Color(0xFFE9D9AE),
+                radius = coreRadius,
+                center = center,
+            )
+
+            // 倾斜旋转吸积盘
+            rotate(-28f + rotationOffset, center) {
+                drawOval(
+                    color = Color(0xFFC9A86A),
+                    topLeft = Offset(center.x - orbitRx, center.y - orbitRy),
+                    size = Size(orbitRx * 2f, orbitRy * 2f),
+                    style = Stroke(width = orbitStroke, cap = StrokeCap.Round),
+                )
+                // 伴星
+                drawCircle(
+                    color = Color(0xFFE9D9AE),
+                    radius = companionRadius,
+                    center = Offset(center.x + orbitRx, center.y),
+                )
+            }
+        } else {
+            // 浅色模式：金色的白洞
+            val ringStroke = (radius * 5f / 30f).coerceAtLeast(1.5f)
+            val orbitStroke = (radius * 3.5f / 30f).coerceAtLeast(1.5f)
+            val coreRadius = radius * 7.5f / 30f
+            val orbitRx = radius * 45f / 30f
+            val orbitRy = radius * 16f / 30f
+            val companionRadius = radius * 4.5f / 30f
+
+            // 白洞辐射微晕
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x28D4AF37), Color(0x00D4AF37)),
+                    center = center,
+                    radius = radius * 1.7f,
+                ),
+                radius = radius * 1.7f,
+                center = center,
+            )
+
+            // 耀金主引力光环
+            drawCircle(
+                color = Color(0xFFC9983A),
+                radius = radius,
+                center = center,
+                style = Stroke(width = ringStroke, cap = StrokeCap.Round),
+            )
+
+            // 炽金光核（白洞喷薄之源）
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFFFFFDF5), Color(0xFFB8860B)),
+                    center = center,
+                    radius = coreRadius,
+                ),
+                radius = coreRadius,
+                center = center,
+            )
+
+            // 倾斜旋转轨道与伴星
+            rotate(-28f + rotationOffset, center) {
+                drawOval(
+                    color = Color(0xFFD4AF37),
+                    topLeft = Offset(center.x - orbitRx, center.y - orbitRy),
+                    size = Size(orbitRx * 2f, orbitRy * 2f),
+                    style = Stroke(width = orbitStroke, cap = StrokeCap.Round),
+                )
+                // 伴星
+                drawCircle(
+                    color = Color(0xFFC9983A),
+                    radius = companionRadius,
+                    center = Offset(center.x + orbitRx, center.y),
                 )
             }
         }

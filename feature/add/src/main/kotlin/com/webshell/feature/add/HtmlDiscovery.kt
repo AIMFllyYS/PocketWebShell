@@ -23,13 +23,13 @@ data class DiscoveredHtml(
  * enters Android/data or Android/obb. I/O belongs on a background thread.
  */
 object HtmlDiscovery {
-    const val MAX_FILES: Int = 200
+    const val MAX_FILES: Int = 300
     const val MAX_DISPLAY_RECENTS: Int = 30
-    const val MAX_DIRS: Int = 80
-    const val MAX_DEPTH: Int = 3
-    const val MAX_MILLIS: Long = 1_600L
-    const val MAX_ENQUEUED_SUBDIRS_PER_DIR: Int = 80
-    const val MEDIASTORE_LIMIT: Int = 150
+    const val MAX_DIRS: Int = 300
+    const val MAX_DEPTH: Int = 5
+    const val MAX_MILLIS: Long = 3_500L
+    const val MAX_ENQUEUED_SUBDIRS_PER_DIR: Int = 120
+    const val MEDIASTORE_LIMIT: Int = 200
 
     private val skipDirectoryNames = setOf(
         "cache", "caches", "tmp", "temp", "thumbnail", "thumbnails", ".thumbnails",
@@ -89,6 +89,17 @@ object HtmlDiscovery {
         "vivo/Download",
         "DingTalk",
         "Download/EmailAttachments",
+        "Download/BaiduNetdisk",
+        "Download/Baidu",
+        "Download/Via",
+        "Download/Edge",
+        "Download/Firefox",
+        "Download/XBrowser",
+        "Download/夸克",
+        "Download/迅雷",
+        "Download/百度网盘",
+        "BaiduNetdisk",
+        "Quark",
     )
 
     fun shouldSkipDirectory(name: String): Boolean {
@@ -185,17 +196,28 @@ object HtmlDiscovery {
         ownedRoots: List<File>,
         publicListingAllowed: Boolean,
     ): List<DiscoveredHtml> {
-        val indexed = if (publicListingAllowed) queryIndexedHtml(context, volume, ownedRoots) else emptyList()
+        val effectiveVolume = volume ?: HtmlImportRoots.volumeRoot(context)
+        val indexed = if (publicListingAllowed) queryIndexedHtml(context, effectiveVolume, ownedRoots) else emptyList()
         val seeds = buildList {
-            if (publicListingAllowed && volume != null) {
+            if (publicListingAllowed && effectiveVolume != null) {
+                val downloadDir = File(effectiveVolume, "Download")
+                if (downloadDir.isDirectory) add(downloadDir)
+                val downloadsDir = File(effectiveVolume, "Downloads")
+                if (downloadsDir.isDirectory) add(downloadsDir)
+                val docsDir = File(effectiveVolume, "Documents")
+                if (docsDir.isDirectory) add(docsDir)
+
                 seedRelativePaths.forEach { relative ->
-                    add(File(volume, relative.replace('/', File.separatorChar)))
+                    val seedFile = File(effectiveVolume, relative.replace('/', File.separatorChar))
+                    if (seedFile.isDirectory && seedFile != downloadDir && seedFile != downloadsDir && seedFile != docsDir) {
+                        add(seedFile)
+                    }
                 }
             }
             if (publicListingAllowed) addAll(extraSeeds)
             addAll(ownedRoots)
         }
-        val walked = walk(seeds, volume, ownedRoots)
+        val walked = walk(seeds, effectiveVolume, ownedRoots)
         return merge(indexed + walked)
     }
 
@@ -331,6 +353,10 @@ object HtmlDiscovery {
         if (volume != null && !relative.isNullOrBlank() && !name.isNullOrBlank()) {
             val fromRelative = File(File(volume, relative), name)
             if (fromRelative.isFile) return fromRelative
+        }
+        if (!relative.isNullOrBlank() && !name.isNullOrBlank()) {
+            val fallback = File(File("/storage/emulated/0", relative), name)
+            if (fallback.isFile) return fallback
         }
         return null
     }
