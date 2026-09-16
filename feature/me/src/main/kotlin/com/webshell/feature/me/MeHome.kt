@@ -147,9 +147,9 @@ private fun SettingsMenuEntry(
     icon: ImageVector,
     title: String,
     color: Color,
-    onClick: () -> Unit,
     trailingText: String? = null,
     showChevron: Boolean = true,
+    onClick: () -> Unit,
 ) {
     AppListRow(
         title = title,
