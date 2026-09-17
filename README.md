@@ -45,7 +45,7 @@ English summary: PocketWebShell turns websites into organized, launcher-style An
 
 桌面、玻璃 Dock、文件夹、菜单和功能页为 iOS 风格的原生 Compose 呈现。上图为 0.1.47 在 Android 15 模拟器中添加 GitHub、Wikipedia、YouTube 后的真实界面。设计边界见 [docs/DESIGN.md](docs/DESIGN.md)。
 
-下方是拖拽机制的历史验收截图，仅展示交互行为，不代表当前视觉：
+下方为桌面拖拽机制与文件夹合并的真实交互界面（独立 DragLayer 浮层跟随手指，原位置保留占位，底部为 iOS 风格悬浮毛玻璃 Dock）：
 
 | 独立拖动浮层 | 文件夹合并结果 |
 |---|---|
