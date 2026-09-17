@@ -9,6 +9,7 @@ data class GitHubRelease(
     val versionName: String,
     val tagName: String,
     val notesExcerpt: String,
+    val notesMarkdown: String = "",
     val htmlUrl: String,
     val apkUrl: String?,
 ) {
@@ -38,10 +39,12 @@ object GitHubReleaseParser {
         val versionName = AppVersion.parse(dto.tagName)?.toString()
             ?: error("Unsupported release tag")
         val htmlUrl = httpsGitHubUrl(dto.htmlUrl) ?: error("Invalid release page URL")
+        val rawBody = dto.body.orEmpty().trim()
         return GitHubRelease(
             versionName = versionName,
             tagName = dto.tagName.trim(),
             notesExcerpt = excerptNotes(dto.body),
+            notesMarkdown = rawBody.ifBlank { excerptNotes(dto.body) },
             htmlUrl = htmlUrl,
             apkUrl = pickApkUrl(versionName, dto.assets),
         )

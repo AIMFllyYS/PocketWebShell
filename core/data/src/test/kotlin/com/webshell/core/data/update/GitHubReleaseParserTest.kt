@@ -33,6 +33,7 @@ class GitHubReleaseParserTest {
             release.apkUrl,
         )
         assertTrue(release.notesExcerpt.contains("开屏定稿"))
+        assertEquals("# 玄览 0.1.52\n\n- 开屏定稿\n- 历史分组", release.notesMarkdown)
     }
 
     @Test
