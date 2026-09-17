@@ -98,6 +98,35 @@ class MeViewModel @Inject constructor(
 
     fun resetFontSaveState() { _fontSaveState.value = FontSaveState.Idle }
 
+    fun previewUpdatePrompt(offer: UpdateOffer? = null) {
+        val sampleOffer = offer ?: UpdateOffer(
+            installed = installedVersion.ifBlank { "0.1.56" },
+            latest = "0.1.57",
+            notes = """
+                # 玄览 PocketWebShell 0.1.57
+
+                本次更新针对版本更新弹窗体验进行了系统性重构，全面支持 Markdown 富文本原生排版与卡片内自适应安全平滑滚动。
+
+                ### 核心改进
+
+                - **Markdown 富文本原生渲染**：多级标题、粗体强调、行内代码与项目清单层级分明，视觉表现精美。
+                - **卡片自适应上下安全滚动**：顶部标头与底部双按钮固定，中间内容区随屏幕自适应约束宽度，支持流畅上下滚动不越界。
+                - **完整 Release 说明提取**：解除 400 字符限制，完整呈现版本更新公告。
+
+                ### 渲染与性能
+
+                - 开屏零重组绘制管线（`drawWithCache`）与 GPU 硬件加速；
+                - 120fps 全程丝滑无感淡入主界面。
+
+                欢迎在 GitHub Releases 下载体验！
+            """.trimIndent(),
+            downloadUrl = "https://github.com/AIMFllyYS/PocketWebShell/releases/tag/v0.1.57",
+        )
+        _uiState.value = _uiState.value.copy(
+            updatePrompt = UpdatePrompt.Available(sampleOffer),
+        )
+    }
+
     fun checkForUpdate() {
         val current = _uiState.value
         if (current.updateCheck == UpdateCheckState.Checking) return
@@ -121,7 +150,7 @@ class MeViewModel @Inject constructor(
                     val offer = UpdateOffer(
                         installed = result.installed,
                         latest = result.release.versionName,
-                        notes = result.release.notesExcerpt,
+                        notes = result.release.notesMarkdown.ifBlank { result.release.notesExcerpt },
                         downloadUrl = result.release.downloadUrl,
                     )
                     lastOffer = offer
