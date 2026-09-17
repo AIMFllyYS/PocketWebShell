@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.57",
+        date = "2026-09-17",
+        highlights = listOf(
+            "版本更新弹窗重构：全面支持 GitHub Release 日志 Markdown 富文本原生渲染",
+            "卡片自适应容器与上下安全滚动：顶部标头与底部操作区固定，中间日志内容区平滑滚动不越界",
+            "完整 Release 说明提取：保留 Markdown 原文多级标题与清单排版，移除 400 字符限制",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.56",
         date = "2026-09-17",
         highlights = listOf(

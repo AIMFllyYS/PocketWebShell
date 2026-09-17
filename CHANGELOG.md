@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.57] - 2026-09-17
+
+版本更新弹窗体验重构：全面支持 GitHub Release 正文 Markdown 富文本原生渲染；弹窗卡片内部自适应屏幕宽度，提供固定标头与底部动作坞，中间内容区支持上下平滑安全滚动，完整呈现版本更新日志。
+
+### Changed
+
+- 版本更新弹窗重构（`UpdateAvailableDialog.kt`）：打造符合 iOS 毛玻璃质感的专用更新弹窗，顶排固定呈现主副标题，底排固定「稍后 / 立即下载」动作按键，中间内容区依据卡片宽度自适应约束并支持上下流畅安全滚动，长篇更新日志绝不越界或挤压操作区。
+- Markdown 富文本原生渲染：引入 `multiplatform-markdown-renderer-m3`，版本更新日志全面采用 Markdown 原生排版渲染，多级标题、项目清单、粗体强调与行内代码块层级分明，并提供安全 URL 协议过滤。
+- 完整 Release 说明提取（`GitHubRelease.kt`）：扩展数据模型新增 `notesMarkdown` 字段，完整接收并保留 GitHub Release 的 Markdown 全文，消除 400 字符限制与暴力剥离标题符号的缺陷。
+
+### Testing
+
+- `:core:data:testDebugUnitTest :feature:me:testDebugUnitTest testDebugUnitTest`
+- 模拟器端测：验证「检查新版本」触发 `UpdateAvailableDialog`，卡片内 Markdown 排版美观且上下平滑滚动。
+
 ## [0.1.56] - 2026-09-17
 
 开屏动画极致流畅优化：实现零重组（Zero-Recomposition）绘制管线与文本免测量 GPU 变换，消除首帧卡顿；全面验证应用内 GitHub Release 自动更新检查闭环。

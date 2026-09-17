@@ -29,11 +29,14 @@ import com.webshell.core.designsystem.components.AppSettingsSection
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
 
+import androidx.compose.material.icons.rounded.SystemUpdate
+
 /** App owns the Playbook route; this feature owns only settings and logs. */
 @Composable
 internal fun DeveloperCenterPage(
     onBack: () -> Unit,
     onOpenPlaybook: () -> Unit,
+    onPreviewUpdate: (() -> Unit)? = null,
     viewModel: DeveloperCenterViewModel = hiltViewModel(),
 ) {
     var showLogs by rememberSaveable { mutableStateOf(false) }
@@ -47,7 +50,7 @@ internal fun DeveloperCenterPage(
     ) { logs ->
         if (logs) LogViewerPage(onBack = { showLogs = false })
         else DetailPage(stringResource(R.string.me_developer), onBack) {
-            DeveloperHomeContent(state, onOpenPlaybook, { showLogs = true }, viewModel::clearIconCache)
+            DeveloperHomeContent(state, onOpenPlaybook, { showLogs = true }, viewModel::clearIconCache, onPreviewUpdate)
         }
     }
 }
@@ -58,6 +61,7 @@ internal fun DeveloperHomeContent(
     onOpenPlaybook: () -> Unit,
     onOpenLogs: () -> Unit,
     onClearCache: () -> Unit,
+    onPreviewUpdate: (() -> Unit)? = null,
 ) {
     AppSettingsSection(stringResource(R.string.me_dev_design)) {
         AppListRow(
@@ -99,6 +103,15 @@ internal fun DeveloperHomeContent(
             leadingIcon = Icons.Rounded.DeleteSweep,
             onClick = onClearCache.takeIf { state.cacheState != CacheClearState.Clearing },
         )
+        if (onPreviewUpdate != null) {
+            AppListDivider()
+            AppListRow(
+                title = "预览版本更新弹窗",
+                subtitle = "查看 Markdown 富文本排版与上下安全滚动",
+                leadingIcon = Icons.Rounded.SystemUpdate,
+                onClick = onPreviewUpdate,
+            )
+        }
     }
     Spacer(Modifier.height(32.dp))
 }

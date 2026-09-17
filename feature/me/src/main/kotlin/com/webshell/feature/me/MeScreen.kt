@@ -133,7 +133,11 @@ fun MeScreen(
             MeSection.STORAGE -> StorageManagementPage(onBack = ::goBack)
             MeSection.DATA -> DataManagementPage(onBack = ::goBack)
             MeSection.UPDATE_LOG -> UpdateLogPage(onBack = ::goBack)
-            MeSection.DEVELOPER -> DeveloperCenterPage(onBack = ::goBack, onOpenPlaybook = onOpenPlaybook)
+            MeSection.DEVELOPER -> DeveloperCenterPage(
+                onBack = ::goBack,
+                onOpenPlaybook = onOpenPlaybook,
+                onPreviewUpdate = viewModel::previewUpdatePrompt,
+            )
             MeSection.SESSIONS -> SessionsPage(
                 sessions = state.runningSessions,
                 onStopSessions = { ids -> viewModel.stopSessions(ids); onStopSessions(ids) },
@@ -163,18 +167,8 @@ fun MeScreen(
         )
         is UpdatePrompt.Available -> {
             val offer = prompt.offer
-            val text = buildString {
-                append(stringResource(R.string.me_update_available_text, offer.installed))
-                if (offer.notes.isNotBlank()) {
-                    append("\n\n")
-                    append(offer.notes)
-                }
-            }
-            AppConfirmDialog(
-                title = stringResource(R.string.me_update_available_title, offer.latest),
-                text = text,
-                confirmText = stringResource(R.string.me_update_download),
-                dismissText = stringResource(R.string.me_update_later),
+            UpdateAvailableDialog(
+                offer = offer,
                 onConfirm = {
                     viewModel.dismissUpdatePrompt()
                     openHttps(context, offer.downloadUrl)
