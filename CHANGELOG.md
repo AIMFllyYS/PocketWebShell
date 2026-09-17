@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.56] - 2026-09-17
+
+开屏动画极致流畅优化：实现零重组（Zero-Recomposition）绘制管线与文本免测量 GPU 变换，消除首帧卡顿；全面验证应用内 GitHub Release 自动更新检查闭环。
+
+### Performance
+
+- 开屏零重组架构重构（`AppSplash.kt`）：天体微标迁移至 `drawWithCache` 绘制管线，画笔、渐变与几何尺寸一次性静态缓存，旋转动画偏移通过绘制闭包捕获，完全消除 Compose 重组开销。
+- 文本排版免重新计算：固定衬线艺术字字距，展开动效改由 GPU 硬件加速的 `graphicsLayer`（缩放、透明度与垂直平移）统一驱动，彻底消除每帧 CPU 文本测量（TextLayoutResult）造成的微卡顿。
+- 全量闭环验证应用内「检查新版本」端到端升级流程。
+
+### Testing
+
+- `:app:compileDebugKotlin :app:assembleDebug testDebugUnitTest`
+- 模拟器手测：开屏 120fps 满帧无重组转场，应用内检查更新识别 `0.1.56` 并弹出升级下载。
+
 ## [0.1.55] - 2026-09-17
 
 开屏全面升级为浅色白洞与深色黑洞天体动效，配以唯美艺术字与光引过渡；本地 HTML 扫描突破局限，深度全覆盖 Download 及其所有子目录；桌面多选编辑交互升级为 iOS 级操作栏与二级抽屉，彻底杜绝文字截断。
