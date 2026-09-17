@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.56",
+        date = "2026-09-17",
+        highlights = listOf(
+            "开屏零重组绘制管线重构：采用 drawWithCache 缓存几何尺寸与画笔渐变，消除每帧重组",
+            "艺术文字排版免 CPU 重算：展开动效全面迁移至 GPU 硬件加速缩放与透明度，消除首帧卡顿",
+            "应用内「检查新版本」端到端升级闭环实测验证",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.55",
         date = "2026-09-17",
         highlights = listOf(
