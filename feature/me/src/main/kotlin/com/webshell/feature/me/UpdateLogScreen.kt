@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.60",
+        date = "2026-09-19",
+        highlights = listOf(
+            "修复桌面模式缩放被钳在 100% 的问题：宽屏手机上 980 桌面布局现在能铺满屏宽",
+            "页面加载完成后强制重断桌面视口，防止站点脚本把宽度改回手机布局",
+            "新增桌面模式运行时探针：真实布局宽度写入应用日志，问题定位不再靠猜",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.59",
         date = "2026-09-19",
         highlights = listOf(

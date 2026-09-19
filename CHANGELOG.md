@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.60] - 2026-09-19
+
+修复桌面模式缩放与布局断言问题：初始缩放被钳制在 100% 导致宽屏设备 980 布局铺不满屏宽；页面完成后缺少对站点脚本改回 viewport 的重断言；新增桌面模式运行时探针（布局宽 / DPR / viewport 状态写入应用日志）。
+
+### Fixed
+
+- 初始缩放公式移除 100% 上限（`desktopInitialScalePercent`，范围改为 25–250）：宽屏手机桌面布局现在能铺满屏宽，不再呈现为"缩小的窄条手机布局"。
+- 桌面页面在 `onPageFinished` 强制重断 viewport（`window.__wsForceZoom` 暴露给宿主调用）：覆盖站点脚本在加载后把 meta 改回 `device-width` 的情况；老 WebView 分支保留全量注入兜底。
+- 新增桌面模式运行时探针：页面完成后把 `innerWidth`、`clientWidth`、DPR、viewport 是否 980、bootstrap 是否存活写入应用日志（我的 → 开发者选项 → 日志查看），只记录数值与布尔。
+
 ## [0.1.59] - 2026-09-19
 
 修复「桌面版」对自带 viewport meta 的响应式网站始终不生效的根因：改写脚本只处理第一个 viewport meta，而 Blink 对多个 viewport meta 按后解析者覆盖先前者，站点自带的 `width=device-width` 始终胜出。本轮以模拟 DOM 行为测试验证修复（document-start / pre-DOM / DOM 就绪 / 幂等 / 无 meta 五场景）。
