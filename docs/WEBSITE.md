@@ -6,11 +6,7 @@
 
 ## 1. 官网项目位置与性质
 
-- 官网是**独立项目**，不随本仓库提交，位于本仓库的兄弟目录：
-
-  ```text
-  D:\projects\Dev-Android\Android-Web\PocketWebShell-site\
-  ```
+- 官网是**独立项目**，不随本仓库提交，位于本仓库的兄弟目录 `../PocketWebShell-site/`（不要把维护者本机的绝对路径写进仓库）。
 
 - **官方正式域名**：`https://xuanlan.1037solo.com`（1037SOLO 生态挂载站点）。
 - 技术栈：React 19 + vinext（Next.js App Router 兼容层）+ Vite 8 + Tailwind v4 + Shadcn/Base UI，纯静态导出（`next.config.ts` 中 `output: 'export'`）。
@@ -101,20 +97,22 @@ npm audit               # 依赖安全审计，已知漏洞必须为 0
 
 ## 5. 打包与部署
 
+打包命令、上传到生产机、解压覆盖、删除 zip、属主恢复、Nginx 更新日志路径和冒烟命令的权威步骤在 `docs/OPS.md` 第 6–9 节。本节只规定产物形态与约束。
+
 ### 打包
 
-验证通过后，将 `dist/client/` 的全部内容打成 zip，输出到官网项目 `outputs/` 目录（该目录已被 gitignore，仅作交付暂存）。文件名**必须**带版本号：
+验证通过后，将 `dist/client/` 的全部内容打成 zip，输出到官网项目 `outputs/` 目录（该目录已被 gitignore，仅作交付暂存）。文件名**必须**带版本号。**必须**用 Python 打 zip，**禁止**用 PowerShell `Compress-Archive`（Linux `unzip` 会因反斜杠警告以退出码 1 结束，远程 `set -e` 会中断删 zip / 改属主）：
 
 ```powershell
-Compress-Archive -Path dist\client\* -DestinationPath outputs\xuanlan-website-html-v<version>.zip -Force
+python -c "import shutil; shutil.make_archive(r'outputs\xuanlan-website-html-v<version>', 'zip', r'dist\client')"
 ```
 
 ### 部署
 
-- zip 解压后即为完整静态站点，上传到托管方（静态托管 / 对象存储 / Pages 类服务）的网站根目录即可。
+- zip 解压后即为完整静态站点。官方生产部署：`scp` 到 Host 别名 `MainECS` 上该域名的文档根，`unzip -o` 覆盖，然后**必须**删除 zip。逐步命令见 `docs/OPS.md`。
 - **官方正式域名**：`https://xuanlan.1037solo.com`。
 - **部署约束**：HTML 内部使用根相对路径，站点**必须**部署在域名根路径下，不能挂在子路径。
-- 上传后**必须**做线上冒烟：访问 `https://xuanlan.1037solo.com/` 与 `https://xuanlan.1037solo.com/changelog/`，核对下载区版本号、SHA-256 与 GitHub Release 资产完全一致，并实际点击一次 APK 下载链接确认可下载。
+- 上传后**必须**做线上冒烟：`https://xuanlan.1037solo.com/`、`https://xuanlan.1037solo.com/changelog`、`https://xuanlan.1037solo.com/changelog.html`；核对下载区版本号、SHA-256 与 GitHub Release 资产完全一致，并实际点击一次 APK 下载链接确认可下载。文档根上的 zip、`.env` **必须** 404。
 
 ## 6. 内容与信任红线
 
@@ -127,5 +125,6 @@ Compress-Archive -Path dist\client\* -DestinationPath outputs\xuanlan-website-ht
 
 - 发布主流程：`docs/RELEASE.md`
 - 版本号规则：`docs/VERSIONING.md`
-- 官网项目自述与本地开发说明：`PocketWebShell-site/README.md`
-- 素材来源记录：`PocketWebShell-site/content/ASSETS.md`
+- 上传、解压、Nginx 与冒烟：`docs/OPS.md`
+- 官网项目自述与本地开发说明：`../PocketWebShell-site/README.md`
+- 素材来源记录：`../PocketWebShell-site/content/ASSETS.md`
