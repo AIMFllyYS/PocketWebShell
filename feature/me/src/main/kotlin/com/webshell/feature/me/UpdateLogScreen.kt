@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.63",
+        date = "2026-09-20",
+        highlights = listOf(
+            "允许打开 HTTP 网站：加载前说明连接未加密，可选退出或继续访问",
+            "继续后页面正常打开，地址栏/站点壳显示「不安全」，不会再被系统直接禁止明文",
+            "HTTPS 页面里的 HTTP 脚本和证书错误策略不变",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.62",
         date = "2026-09-19",
         highlights = listOf(
