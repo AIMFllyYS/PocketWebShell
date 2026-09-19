@@ -215,8 +215,9 @@ grep -o '0\.1\.63' index.html | head
 rm -f xuanlan-website-html-v0.1.63.zip
 
 chown -R "$OWNER" \
-  404.html changelog.html changelog.txt _headers icon.svg \
-  index.html index.txt vinext-client-entry-manifest.json \
+  404.html changelog.html changelog.txt \
+  privacy.html terms.html license.html contribute.html \
+  _headers icon.svg index.html index.txt vinext-client-entry-manifest.json \
   .assetsignore icons screens _next .vite
 
 # 文档根里不得留下 zip
@@ -234,7 +235,7 @@ ls ./*.zip 2>/dev/null && echo 'ERROR: zip leftover' && exit 1
 一次性退出远程会话：
 
 ```powershell
-ssh MainECS "cd /www/wwwroot/xuanlan.1037solo.com && OWNER=\$(stat -c %U:%G index.html) && unzip -o xuanlan-website-html-v0.1.63.zip && rm -f xuanlan-website-html-v0.1.63.zip && chown -R \"\$OWNER\" 404.html changelog.html changelog.txt _headers icon.svg index.html index.txt vinext-client-entry-manifest.json .assetsignore icons screens _next .vite"
+ssh MainECS "cd /www/wwwroot/xuanlan.1037solo.com && OWNER=\$(stat -c %U:%G index.html) && unzip -o xuanlan-website-html-v0.1.63.zip && rm -f xuanlan-website-html-v0.1.63.zip && chown -R \"\$OWNER\" 404.html changelog.html changelog.txt privacy.html terms.html license.html contribute.html _headers icon.svg index.html index.txt vinext-client-entry-manifest.json .assetsignore icons screens _next .vite"
 ```
 
 在 Windows PowerShell 里嵌套远程引号容易把 `stat -c %U:%G` 拆坏。**应当**优先用交互式 `ssh MainECS` 再贴第 7.2 节命令。
@@ -245,7 +246,7 @@ ssh MainECS "cd /www/wwwroot/xuanlan.1037solo.com && OWNER=\$(stat -c %U:%G inde
 
 **必须**用精确匹配（`location =`），**禁止**写成 `location / { try_files $uri $uri.html ... }`：后者会与现有的 HTTP→HTTPS 跳转打架，首页会 301 到自己。
 
-在该站点 Nginx 的自定义/伪静态配置中加入（只需做一次，以后发版不用改）：
+在该站点 Nginx 的自定义/伪静态配置中加入（只需做一次，以后发版不用改）。更新日志、隐私、使用说明、许可、贡献都是静态导出的 `*.html`，站内链是不带扩展名的路径；其中「URI 以 changelog 结尾则 404」那条默认规则还会误伤 `/changelog`：
 
 ```nginx
 location = /changelog {
@@ -253,6 +254,30 @@ location = /changelog {
 }
 location = /changelog/ {
     try_files /changelog.html =404;
+}
+location = /privacy {
+    try_files /privacy.html =404;
+}
+location = /privacy/ {
+    try_files /privacy.html =404;
+}
+location = /terms {
+    try_files /terms.html =404;
+}
+location = /terms/ {
+    try_files /terms.html =404;
+}
+location = /license {
+    try_files /license.html =404;
+}
+location = /license/ {
+    try_files /license.html =404;
+}
+location = /contribute {
+    try_files /contribute.html =404;
+}
+location = /contribute/ {
+    try_files /contribute.html =404;
 }
 ```
 
@@ -273,6 +298,10 @@ curl.exe -sS -o NUL -w "home %{http_code}`n" https://xuanlan.1037solo.com/
 curl.exe -sS -o NUL -w "changelog %{http_code}`n" https://xuanlan.1037solo.com/changelog
 curl.exe -sS -o NUL -w "changelog_slash %{http_code}`n" https://xuanlan.1037solo.com/changelog/
 curl.exe -sS -o NUL -w "changelog_html %{http_code}`n" https://xuanlan.1037solo.com/changelog.html
+curl.exe -sS -o NUL -w "privacy %{http_code}`n" https://xuanlan.1037solo.com/privacy
+curl.exe -sS -o NUL -w "terms %{http_code}`n" https://xuanlan.1037solo.com/terms
+curl.exe -sS -o NUL -w "license %{http_code}`n" https://xuanlan.1037solo.com/license
+curl.exe -sS -o NUL -w "contribute %{http_code}`n" https://xuanlan.1037solo.com/contribute
 curl.exe -sS -o NUL -w "zip %{http_code}`n" https://xuanlan.1037solo.com/xuanlan-website-html-v0.1.63.zip
 curl.exe -sS -o NUL -w "env %{http_code}`n" https://xuanlan.1037solo.com/.env
 curl.exe -sS -I -o NUL -w "apk %{http_code}`n" https://github.com/AIMFllyYS/PocketWebShell/releases/download/v0.1.63/PocketWebShell-v0.1.63.apk

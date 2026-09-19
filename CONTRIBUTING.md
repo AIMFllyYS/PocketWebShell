@@ -2,6 +2,14 @@
 
 感谢你改进 PocketWebShell。项目以稳定桌面几何、正确 WebView 会话归属和可验证发布为首要原则。
 
+校园同学、课程作业和第一次来仓库的人，可先读 [docs/OPEN-SOURCE.md](docs/OPEN-SOURCE.md)。许可正文是根目录 [LICENSE](LICENSE)（GPL-3.0-or-later）。
+
+## 许可（inbound = outbound）
+
+向本仓库提交代码、文档或其它材料，即表示你有权提交，并同意按仓库当前许可 **GNU GPL 3.0 或后续版本**（`GPL-3.0-or-later`）授权给项目与接收方。我们不使用 CLA，也不要求转让版权。
+
+建议使用 `git commit -s` 附上 Developer Certificate of Origin 1.1 的 `Signed-off-by` 行。
+
 ## 开发流程
 
 1. 从 `dev` 创建分支：`feat/<topic>`、`fix/<topic>`、`refactor/<topic>`、`test/<topic>` 或 `docs/<topic>`。

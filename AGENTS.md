@@ -24,7 +24,7 @@ Protect these product properties in every change:
 - `feature/home/`: launcher pages, folders, fixed grid, DragLayer and persisted ordering. Interaction layer split: `HomeInteractionState.kt` (centralized drag/menu/edit session state holder) and `HomeGestures.kt` (cell gesture detection, root drag session, blank-area long-press, pinch edit mode, edge-hover page-turn state machine); `HomeScreen.kt` keeps composition root, grid containers, menus/dialogs and overlays. Instrumented gesture tests: `app/src/androidTest/.../HomeGestureInstrumentedTest.kt`（`:app:connectedDebugAndroidTest`，真机/模拟器回归主页手势验收路径）。
 - `feature/add/`: URL normalization, metadata parsing, icon discovery and app editing.
 - `feature/browser/`: browser chrome, tabs and tab switcher.
-- `feature/me/`: settings, Android permission/status surfaces, running-session presentation, and GitHub Release check-for-update.
+- `feature/me/`: settings, Android permission/status surfaces, running-session presentation, GitHub Release check-for-update, and in-app privacy / terms / license / contribute pages (bundled from `docs/legal/`).
 - `feature/viewer/`: VIEW/SEND 解析、临时文件拷贝、Markdown 消毒。外部 Markdown 走站点壳全屏（悬浮球、无顶栏、原生长按选中）；外部 HTML 仍复用浏览标签。同一源路径复用已打开的 HTML 标签或已保存的本地应用；可选「制作应用」才会写入 Room。
 - `docs/`: maintained technical and release documentation.
 
@@ -208,6 +208,7 @@ The following documents are authoritative and apply to every change in their dom
 - `docs/PERFORMANCE.md`: performance budgets — at most one live blur backdrop (the bottom bar), blur radius ≤ 24dp equivalent, glass/wallpaper layers never affect measurement, background-thread image decoding and palette extraction, graceful degradation on API 29–32.
 - `docs/WEBSITE.md`: product-website content checklist — after every published GitHub Release, the separate website project (`../PocketWebShell-site/`, `https://xuanlan.1037solo.com`) must be updated (changelog snapshot, generated release data, `lib/product.ts`, scattered version strings, verification assertions) and pass all checks. Debug iterations never trigger a website sync.
 - `docs/OPS.md`: maintainer runbook for signing, GitHub Release, zipping `dist/client/`, uploading via `ssh MainECS`, unzip-overwrite, deleting the zip, and smoke tests. Public text must not include SSH keys, server IPs, panel credentials, or keystore filenames.
+- `docs/OPEN-SOURCE.md` and `docs/legal/`: campus contribution notes plus in-app/website privacy, terms, and license summaries. Product SPDX is `GPL-3.0-or-later` from 0.1.64; do not claim ICP/APP filing, Play listing, or first-party analytics that do not exist.
 
 ## Normative references
 

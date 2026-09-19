@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.ImportExport
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Policy
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Storage
@@ -127,6 +128,13 @@ internal fun MeHome(
                 AppListDivider()
                 SettingsMenuEntry(Icons.Rounded.NewReleases, stringResource(R.string.me_updates), Color(0xFF8E8E93)) { onOpenSection(MeSection.UPDATE_LOG) }
                 AppListDivider()
+                SettingsMenuEntry(
+                    icon = Icons.Rounded.Policy,
+                    title = stringResource(R.string.me_legal_section),
+                    color = Color(0xFF34C759),
+                    subtitle = stringResource(R.string.me_legal_section_hint),
+                ) { onOpenSection(MeSection.LEGAL) }
+                AppListDivider()
                 SettingsMenuEntry(Icons.Rounded.DeveloperMode, stringResource(R.string.me_developer), Color(0xFF8E8E93)) { onOpenSection(MeSection.DEVELOPER) }
             }
         }
@@ -149,10 +157,12 @@ private fun SettingsMenuEntry(
     color: Color,
     trailingText: String? = null,
     showChevron: Boolean = true,
+    subtitle: String? = null,
     onClick: () -> Unit,
 ) {
     AppListRow(
         title = title,
+        subtitle = subtitle,
         leadingIcon = icon,
         leadingIconBackground = color,
         onClick = onClick,

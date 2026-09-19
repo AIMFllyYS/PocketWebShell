@@ -183,6 +183,26 @@
     <string name="me_catalog_log_error">此为较长的错误消息示例：大字号下按完整行宽换行，不让时间和标签挤占消息的阅读空间。</string>
     <string name="me_log_failed">日志操作未完成，请从右上角菜单刷新后重试。</string>
     <string name="me_ok">好</string>
+    <string name="me_legal_section">政策与开源</string>
+    <string name="me_legal_section_hint">隐私、许可与参与贡献</string>
+    <string name="me_privacy">隐私说明</string>
+    <string name="me_privacy_hint">本机处理与第三方网站的边界</string>
+    <string name="me_terms">使用说明</string>
+    <string name="me_terms_hint">玄览能做什么、不能做什么</string>
+    <string name="me_oss_license">开源许可</string>
+    <string name="me_oss_license_hint">GNU GPL-3.0-or-later</string>
+    <string name="me_source_repo">源码仓库</string>
+    <string name="me_source_repo_hint">在 GitHub 查看完整源码</string>
+    <string name="me_contribute">参与贡献</string>
+    <string name="me_contribute_hint">Issue、贡献指南与校园开源说明</string>
+    <string name="me_contribute_intro">欢迎改进玄览。向本仓库提交即按 GPL-3.0-or-later 授权（inbound = outbound）。我们不使用 CLA，也不要求转让版权。</string>
+    <string name="me_contribute_links">仓库与文档</string>
+    <string name="me_legal_read_gpl">阅读 GPL 全文</string>
+    <string name="me_legal_open_contributing">贡献指南</string>
+    <string name="me_legal_open_issues">GitHub Issues</string>
+    <string name="me_legal_open_security">安全报告</string>
+    <string name="me_legal_open_campus">校园开源说明</string>
+    <string name="me_legal_loading">正在加载…</string>
     <string name="me_data_storage_section">数据与存储</string>
     <string name="me_storage_title">存储管理</string>
     <string name="me_data_title">数据管理</string>

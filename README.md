@@ -5,7 +5,7 @@
 [![Android](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4)](https://developer.android.com/compose)
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/AIMFllyYS/PocketWebShell)](https://github.com/AIMFllyYS/PocketWebShell/releases/latest)
 [![Website](https://img.shields.io/badge/Website-xuanlan.1037solo.com-0066CC)](https://xuanlan.1037solo.com)
 
@@ -98,7 +98,7 @@ dist/PocketWebShell-<versionName>-debug.apk
 dist/PocketWebShell-<versionName>-debug.apk.sha256
 ```
 
-例如 `0.1.63` → `dist/PocketWebShell-0.1.63-debug.apk`。正式签名包仍是 `dist/PocketWebShell-v<versionName>.apk`（带 `v`、无 `-debug`），二者不要混名。debug 包禁止作为 GitHub Release 资产。
+例如 `0.1.64` → `dist/PocketWebShell-0.1.64-debug.apk`。正式签名包仍是 `dist/PocketWebShell-v<versionName>.apk`（带 `v`、无 `-debug`），二者不要混名。debug 包禁止作为 GitHub Release 资产。
 
 ## 测试
 
@@ -147,7 +147,9 @@ dist/PocketWebShell-<versionName>-debug.apk.sha256
 - [docs/RELEASE.md](docs/RELEASE.md)：签名、验签和 GitHub Release 流程。
 - [docs/WEBSITE.md](docs/WEBSITE.md)：官网内容同步清单。
 - [docs/OPS.md](docs/OPS.md)：正式发布后的打包、GitHub Release、官网 zip 上传与冒烟。
+- [docs/OPEN-SOURCE.md](docs/OPEN-SOURCE.md)：校园开源说明、copyleft 含义与贡献入口。
+- [docs/legal/PRIVACY.md](docs/legal/PRIVACY.md) / [docs/legal/TERMS.md](docs/legal/TERMS.md)：个人信息处理规则与使用说明。
 
 ## License
 
-Apache License 2.0。详见 [LICENSE](LICENSE)。
+自 0.1.64 起为 [GNU GPL 3.0 或后续版本](LICENSE)（SPDX：`GPL-3.0-or-later`）。分发修改版时必须按同样条件提供对应源码。0.1.63 及更早的正式版曾以 Apache-2.0 发布。
