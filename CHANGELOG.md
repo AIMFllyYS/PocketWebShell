@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.62] - 2026-09-19
+
+依据 0.1.61 真机探针日志（华为 HwWebview 114 / Android 12）定位并修复「桌面版仍显示手机布局」：布局链（980 改写、overview 缩放、多 meta 覆盖）实测全部正常，但 `(min-width:980px)` 媒体查询在布局宽已达 980 时仍不命中，且现代响应式站点的桌面断点普遍高于 980（Bootstrap lg=992、Tailwind lg=1024、GitHub≈1012）——980 永远拿不到桌面布局。同机证据：`navigator.userAgentData` 被该定制 WebView 摘除、`USER_AGENT_METADATA` 特性不受支持，UA-CH 身份链在此类设备上不可用。
+
+### Fixed
+
+- 桌面布局宽 980 → 1280（`DESKTOP_VIEWPORT_WIDTH`）：越过全部主流桌面断点并为引擎的媒体查询评估削减留余量；缩放公式与 overview 行为不变，整页仍缩到屏宽、可捏合放大。
+- UA-CH 不受当前 WebView 支持时记录一条明确日志（此前静默跳过，读探针 `uad:"none"` 无法区分「没设置」与「不支持」）。
+- 桌面探针新增 `outerWidth` 与根元素矩形宽：媒体查询的真实评估宽度可从日志直接读出，不再靠推测。
+
+### Testing
+
+- `testDebugUnitTest :app:assembleDebug`；新增「布局宽越过 1280」结构断言并更新缩放公式用例。
+- 真机验收：切换桌面版后日志应见 `iw:1280`、`mq` 前四项全 1；`uad:"none"` 在老 WebView 上属预期（身份链仅 UA 字符串）。
+
 ## [0.1.61] - 2026-09-19
 
 修复「桌面版」身份信号从未生效的根因：0.1.58 引入的 UA-CH metadata 构造为 GREASE 品牌（`Not_A Brand`）漏填 fullVersion，`BrandVersion.Builder.build()` 对空字段必抛 `IllegalStateException`（异常发生在参数求值阶段，`setUserAgentMetadata` 从未被调用），失败被 `runCatching` 静默吞掉——三个版本以来 `Sec-CH-UA-*` 请求头与 `navigator.userAgentData` 从未真正设置，按 Client Hints 判定身份的网站始终收到「Android 手机」信号（表现为切换后只是缩小的手机布局）。经 androidx.webkit 1.17.0 源码与独立构造实验双重确认。

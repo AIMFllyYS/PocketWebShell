@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.62",
+        date = "2026-09-19",
+        highlights = listOf(
+            "桌面布局宽从 980 提到 1280：现代网站的桌面断点（992/1024/1200）全部越过，真机实测 980 时连 980 断点都不命中",
+            "老内核/定制 WebView 不支持 Client Hints 时明确记日志，桌面身份退化路径可观测",
+            "桌面探针补充 outerWidth 与根元素宽度，媒体查询的真实评估宽度可直接读出",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.61",
         date = "2026-09-19",
         highlights = listOf(
