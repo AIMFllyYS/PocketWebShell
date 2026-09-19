@@ -1,6 +1,5 @@
 package com.webshell.feature.me
 
-import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,11 +24,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.stringResource
@@ -38,7 +37,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.net.toUri
 import com.mikepenz.markdown.m3.Markdown
 import com.webshell.core.designsystem.components.RevealFromPoint
 import com.webshell.core.designsystem.components.staticGlassSurface
@@ -52,22 +50,15 @@ import com.webshell.core.designsystem.components.staticGlassSurface
 @Composable
 fun UpdateAvailableDialog(
     offer: UpdateOffer,
+    onOpenHttps: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val uriHandler = remember(context) {
+    val openHttps = rememberUpdatedState(onOpenHttps)
+    val uriHandler = remember {
         object : UriHandler {
             override fun openUri(uri: String) {
-                val parsed = runCatching { uri.toUri() }.getOrNull() ?: return
-                val scheme = parsed.scheme?.lowercase() ?: return
-                if (scheme != "http" && scheme != "https") return
-                if (parsed.host.isNullOrBlank() || parsed.userInfo != null) return
-                runCatching {
-                    context.startActivity(
-                        Intent(Intent.ACTION_VIEW, parsed).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
+                acceptedHttpsUrl(uri)?.let(openHttps.value)
             }
         }
     }

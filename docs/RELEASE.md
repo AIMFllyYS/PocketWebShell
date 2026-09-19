@@ -73,6 +73,12 @@ Wait for the `test-and-build` check to pass, then merge with rebase:
 gh pr merge --rebase
 ```
 
+If GitHub rejects the rebase because `dev` still contains merge commits (`This branch can't be rebased`), squash instead so `main` stays linear. Do not create a merge commit:
+
+```powershell
+gh pr merge <PR> --squash --subject "release: PocketWebShell 0.1.63 (#<PR>)"
+```
+
 After the merge, check out a clean `main` and verify it is linear and up to date:
 
 ```powershell
@@ -134,7 +140,7 @@ Download the published APK into a clean directory and verify it again with the s
 
 ## Sync the product website
 
-Once the GitHub Release is live, synchronize the product website (`https://xuanlan.1037solo.com`, changelog archive, download links, checksum and screenshots where applicable) and deploy the updated static build by following `docs/WEBSITE.md` exactly. Only published releases trigger a website sync; debug iterations do not.
+Once the GitHub Release is live, synchronize the product website (`https://xuanlan.1037solo.com`, changelog archive, download links, checksum and screenshots where applicable) by following `docs/WEBSITE.md`, then upload the zip, unzip-overwrite the document root, delete the zip, and smoke-test per `docs/OPS.md`. Only published releases trigger a website sync; debug iterations do not.
 
 ## Return to dev
 

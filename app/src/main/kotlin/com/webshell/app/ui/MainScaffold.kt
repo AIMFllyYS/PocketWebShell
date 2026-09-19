@@ -249,6 +249,12 @@ fun MainScaffold(
                                         onOpenPlaybook = { playbookOpen = true },
                                         onHideLauncherDock = { hideLauncherDock = it },
                                         onStopSessions = viewModel::closeSessions,
+                                        onOpenInBrowser = { url ->
+                                            browserViewModel.createTab(url, activate = true)
+                                            selectedTab = MainTab.BROWSE
+                                            hideLauncherDock = false
+                                            browserChrome.dispatch(BrowserChromeEvent.Reveal)
+                                        },
                                     )
                                 }
                             }

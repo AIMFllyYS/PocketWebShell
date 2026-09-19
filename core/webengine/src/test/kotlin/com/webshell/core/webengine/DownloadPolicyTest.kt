@@ -46,6 +46,16 @@ class DownloadPolicyTest {
     @Test fun `file extensions on http urls are treated as downloads`() {
         assertTrue(DownloadPolicy.looksLikeFileDownload("https://cdn.example.com/report.xlsx"))
         assertTrue(DownloadPolicy.looksLikeFileDownload("https://files.example.com/a.apk?sig=1"))
+        assertTrue(
+            DownloadPolicy.looksLikeFileDownload(
+                "https://github.com/AIMFllyYS/PocketWebShell/releases/download/v0.1.64/PocketWebShell-v0.1.64.apk",
+            ),
+        )
+        assertFalse(
+            DownloadPolicy.looksLikeFileDownload(
+                "https://github.com/AIMFllyYS/PocketWebShell/releases/tag/v0.1.64",
+            ),
+        )
         assertFalse(DownloadPolicy.looksLikeFileDownload("https://example.com/path/index.html"))
         assertFalse(DownloadPolicy.looksLikeFileDownload("https://example.com/photos/img.png"))
         assertFalse(DownloadPolicy.looksLikeFileDownload("data:application/zip,xxxx"))
