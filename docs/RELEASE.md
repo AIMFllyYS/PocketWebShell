@@ -31,6 +31,18 @@ If either file already exists, stop and verify ownership before proceeding. Neve
 
 This procedure is gated on explicit user approval of a debug build (see `docs/VERSIONING.md` §5, rules W1/W2). Do not start it until the user has tested the debug APK carrying this exact `versionCode`/`versionName` and approved it. Debug iterations that were rejected must already have consumed their own version numbers (W3).
 
+Local artifact archive (`dist/`, gitignored):
+
+```text
+dist/PocketWebShell-<versionName>-debug.apk          # debug 试装包（无 v 前缀，带 -debug）
+dist/PocketWebShell-<versionName>-debug.apk.sha256
+dist/PocketWebShell-v<versionName>.apk               # 正式签名包（有 v 前缀，无 -debug）
+dist/PocketWebShell-v<versionName>.apk.sha256
+dist/PocketWebShell-release-cert.pem
+```
+
+After `:app:assembleDebug`, copy `app/build/outputs/apk/debug/app-debug.apk` to the debug names above and write SHA-256 in the same `hash  filename` form as existing files. Gradle `build/` is a compile output, not the hand-off archive. Never attach `*-debug.apk` to a GitHub Release.
+
 1. Update `versionCode` and `versionName` in `app/build.gradle.kts`.
 2. Move the version section in `CHANGELOG.md` out of Unreleased and set the date.
 3. On `dev`, run:
