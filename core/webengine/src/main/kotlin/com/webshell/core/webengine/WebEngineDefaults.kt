@@ -37,10 +37,12 @@ object WebEngineDefaults {
      * Chrome-style overview scale: layout width stays [DESKTOP_VIEWPORT_WIDTH],
      * then the visual viewport shrinks to the current WebView width.
      * `0` means "leave the platform default" (used when width is not known yet).
+     * WebView 的 percent 以物理像素为口径（100 = 1 CSS px 对 1 物理 px），
+     * 因此宽屏设备需要 >100 才能铺满屏宽——不得钳在 100。
      */
     fun desktopInitialScalePercent(viewWidthPx: Int): Int {
         if (viewWidthPx <= 0) return 0
-        return ((viewWidthPx * 100) / DESKTOP_VIEWPORT_WIDTH).coerceIn(1, 100)
+        return ((viewWidthPx * 100) / DESKTOP_VIEWPORT_WIDTH).coerceIn(25, 250)
     }
 
     /**
@@ -120,6 +122,7 @@ object WebEngineDefaults {
             "head.appendChild(nm);}" +
             "}" +
             "}catch(e){}}" +
+            "window.__wsForceZoom=wsForceZoom;" +
             "wsForceZoom();" +
             "document.addEventListener('DOMContentLoaded',wsForceZoom);"
 
@@ -136,6 +139,7 @@ object WebEngineDefaults {
             "if(!/maximum-scale\\s*=/i.test(n))n=n?n.replace(/,?\\s*$/,'')+',maximum-scale=10':'maximum-scale=10';" +
             "if(n!==c)m.setAttribute('content',n);}" +
             "}catch(e){}}" +
+            "window.__wsForceZoom=wsForceZoom;" +
             "wsForceZoom();" +
             "document.addEventListener('DOMContentLoaded',wsForceZoom);"
 

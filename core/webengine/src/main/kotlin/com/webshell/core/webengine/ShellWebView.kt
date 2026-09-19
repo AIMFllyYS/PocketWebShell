@@ -403,17 +403,24 @@ class ShellWebView internal constructor(
         override fun onPageFinished(view: WebView, url: String) {
             if (!isCurrent(view)) return
             lastCommittedUrl = url
-            if (config.desktopMode && config.localAppId == null && !documentStartSupported) {
-                // 老 WebView 的最终兜底：onPageStarted 注入可能落在旧文档上，
-                // 这里在已提交的新文档上再补一次（__wsBoot 守卫保证幂等）。
-                webView.evaluateJavascript(
-                    WebEngineDefaults.documentStartBootstrap(
-                        forceEnableZoom = config.forceEnableZoom,
-                        localApp = false,
-                        desktopMode = true,
-                    ),
-                    null,
-                )
+            if (config.desktopMode && config.localAppId == null) {
+                if (documentStartSupported) {
+                    // document-start 已注入（__wsBoot 守卫保证幂等）；页面完成后
+                    // 强制重断一次 viewport，覆盖站点脚本把 meta 改回去的情况。
+                    webView.evaluateJavascript("try{window.__wsForceZoom&&window.__wsForceZoom()}catch(e){}", null)
+                } else {
+                    // 老 WebView 的最终兜底：onPageStarted 注入可能落在旧文档上，
+                    // 这里在已提交的新文档上补全量注入（__wsBoot 守卫保证幂等）。
+                    webView.evaluateJavascript(
+                        WebEngineDefaults.documentStartBootstrap(
+                            forceEnableZoom = config.forceEnableZoom,
+                            localApp = false,
+                            desktopMode = true,
+                        ),
+                        null,
+                    )
+                }
+                desktopViewportProbe()
             }
             AppLog.log("web", "加载完成 ${logHost(url)}")
             // A completed navigation proves that the replacement renderer is
@@ -1357,6 +1364,21 @@ class ShellWebView internal constructor(
             cacheBypassReloadPending = false
             webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         }
+    }
+
+    /**
+     * 桌面模式加载完成后的运行时探针：把真实布局宽、DPR、viewport 是否已是 980、
+     * bootstrap 是否存活写入日志（我的 → 开发者选项 → 日志查看）。
+     * 只记录数值与布尔，不记录页面内容。
+     */
+    private fun desktopViewportProbe() {
+        webView.evaluateJavascript(
+            "(function(){try{var m=document.querySelector('meta[name=\"viewport\"]');" +
+                "var vp=m?(m.getAttribute('content')||''):'';" +
+                "return JSON.stringify({iw:window.innerWidth,cw:document.documentElement.clientWidth," +
+                "dpr:window.devicePixelRatio,vp980:vp.indexOf('980')>=0,boot:!!window.__wsBoot});" +
+                "}catch(e){return 'probe-fail';}})()",
+        ) { raw -> AppLog.log("webengine", "桌面探针 sessionId=$sessionId $raw") }
     }
 
     /** Recreate a child WebView after the automatic recovery budget is spent.

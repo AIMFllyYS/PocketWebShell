@@ -113,9 +113,10 @@ class WebEngineDefaultsTest {
         // 无 meta 时补建，且只在 head/documentElement 已存在时挂接
         assertTrue(script.contains("if(!found)"))
         assertTrue(script.contains("if(head)"))
-        // 二次注入幂等守卫
+        // 二次注入幂等守卫；改写函数暴露给宿主在页面完成后强制重断
         assertTrue(script.contains("__wsBoot"))
         assertTrue(script.contains("v===2"))
+        assertTrue(script.contains("window.__wsForceZoom=wsForceZoom"))
     }
 }
 
@@ -128,8 +129,13 @@ class DesktopInitialScaleTest {
     @Test fun `known width is chrome overview percent of 980`() {
         assertEquals(100, WebEngineDefaults.desktopInitialScalePercent(980))
         assertEquals(50, WebEngineDefaults.desktopInitialScalePercent(490))
-        assertEquals(1, WebEngineDefaults.desktopInitialScalePercent(1))
-        assertEquals(100, WebEngineDefaults.desktopInitialScalePercent(2000))
+    }
+
+    @Test fun `wide screens zoom in beyond 100 instead of clamping`() {
+        // 钳在 100 会让宽屏手机的 980 布局铺不满屏宽（右侧留白带、形如缩小的窄条）。
+        assertEquals(204, WebEngineDefaults.desktopInitialScalePercent(2000))
+        assertEquals(250, WebEngineDefaults.desktopInitialScalePercent(9800))
+        assertEquals(25, WebEngineDefaults.desktopInitialScalePercent(1))
     }
 }
 
