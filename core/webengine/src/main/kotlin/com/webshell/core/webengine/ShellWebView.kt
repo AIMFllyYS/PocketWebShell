@@ -118,6 +118,8 @@ class ShellWebView internal constructor(
     private val documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
     /** Log the legacy-WebView fallback injection at most once per session. */
     private var desktopFallbackLogged = false
+    /** UA-CH 不受支持只记一次（老/定制 WebView 上身份链只有 UA 字符串）。 */
+    private var uaChUnsupportedLogged = false
     /** REPLACE_IN_SHELL just handed Chromium this same WebView; drop the opener history. */
     private var pendingClearHistory = false
 
@@ -220,6 +222,11 @@ class ShellWebView internal constructor(
                 // 历史上这里静默失败过三个版本；失败必须显眼。
                 AppLog.error("webengine", "UA-CH metadata 设置失败 desktop=$enabled : ${e.message}")
             }
+        } else if (!uaChUnsupportedLogged) {
+            // 老内核/定制 WebView（如 HwWebview 114）没有 UA-CH：navigator.userAgentData
+            // 不存在，身份链只能靠 UA 字符串。记一条日志，读探针 uad:"none" 时不用再猜。
+            uaChUnsupportedLogged = true
+            AppLog.log("webengine", "UA-CH 不受当前 WebView 支持，桌面/移动身份仅靠 UA 字符串")
         }
         applyDesktopScale()
         injectBootstrapOnce()
@@ -1376,11 +1383,13 @@ class ShellWebView internal constructor(
     /**
      * 桌面模式加载完成后的运行时探针（我的 → 开发者选项 → 日志查看）。
      * 验收桌面切换需要同时看到两条链路，缺一不可：
-     *  - 身份链：uad（navigator.userAgentData 的平台/移动标记，来自 UA-CH metadata）
-     *  - 布局链：iw/cw 布局宽、vps（全部 viewport meta 内容，不止第一个）、
-     *    mq（768/980/1024/1280 断点与触控能力查询）、vv/vs（visualViewport 宽与缩放）
-     * iw:980 而 mq 的 1024/1280 为 0 属正常（断点高于布局宽）；uad 显示 Android/mobile=true
-     * 则说明身份链断了。只记录数值与布尔，不记录页面内容。
+     *  - 身份链：uad（navigator.userAgentData 的平台/移动标记；"none"=当前 WebView
+     *    不支持 UA-CH，身份只能靠 UA 字符串）
+     *  - 布局链：iw/cw 布局宽、vps（全部 viewport meta 内容）、ow（outerWidth）与
+     *    rc（根元素矩形宽，用于钉死媒体查询的真实评估宽度）、mq（768/980/1024/1280
+     *    断点与触控能力查询）、vv/vs（visualViewport 宽与缩放）
+     * 断点高于布局宽时不命中属正常；iw 已达布局宽而同值断点不命中，则说明该引擎
+     * 的媒体查询评估宽有削减（HwWebview 114 实测如此）。只记录数值与布尔，不记内容。
      */
     private fun desktopViewportProbe() {
         webView.evaluateJavascript(
@@ -1394,6 +1403,8 @@ class ShellWebView internal constructor(
                 "function mq(q){try{return matchMedia(q).matches?1:0}catch(e){return -1}}" +
                 "return JSON.stringify({" +
                 "iw:window.innerWidth,cw:document.documentElement.clientWidth," +
+                "ow:window.outerWidth," +
+                "rc:Math.round(document.documentElement.getBoundingClientRect().width)," +
                 "dpr:window.devicePixelRatio,sw:window.screen.width," +
                 "vv:window.visualViewport?Math.round(window.visualViewport.width):0," +
                 "vs:window.visualViewport?+window.visualViewport.scale.toFixed(2):0," +

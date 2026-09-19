@@ -72,17 +72,22 @@ object WebEngineDefaults {
     const val ERROR_RENDERER_GONE: Int = -99
 
     /**
-     * Chrome「请求桌面网站」的默认布局宽。CSS 按此宽度走桌面 media query，
-     * 再由 WebView 的 overview 缩进手机屏，才能双指捏合放大。
+     * 桌面模式的固定布局宽。Chrome「请求桌面网站」在内核层用 980 虚拟视口并直接
+     * 禁用站点 viewport meta；注入式方案做不到后者，而现代响应式站点的桌面断点
+     * 普遍高于 980（Bootstrap lg=992、Tailwind lg=1024、GitHub≈1012）——980 只会
+     * 得到"平板/窄桌面"布局。真机证据（HwWebview 114，Android 12）：布局宽 980 时
+     * `(min-width:980px)` 媒体查询仍不命中（引擎评估宽比改写值略小），768 命中。
+     * 取 1280：越过全部主流桌面断点并给引擎的评估削减留余量，配合 overview 缩放
+     * 整页缩到屏宽，与 Chrome 桌面版的最终观感一致。
      */
-    const val DESKTOP_VIEWPORT_WIDTH: Int = 980
+    const val DESKTOP_VIEWPORT_WIDTH: Int = 1280
 
     /**
      * Chrome-style overview scale: layout width stays [DESKTOP_VIEWPORT_WIDTH],
      * then the visual viewport shrinks to the current WebView width.
      * `0` means "leave the platform default" (used when width is not known yet).
      * WebView 的 percent 以物理像素为口径（100 = 1 CSS px 对 1 物理 px），
-     * 因此宽屏设备需要 >100 才能铺满屏宽——不得钳在 100。
+     * 因此窄于布局宽的屏幕会小于 100、宽屏设备可能大于 100——不得钳在 100。
      */
     fun desktopInitialScalePercent(viewWidthPx: Int): Int {
         if (viewWidthPx <= 0) return 0

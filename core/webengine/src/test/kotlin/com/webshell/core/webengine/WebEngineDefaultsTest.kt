@@ -126,15 +126,20 @@ class DesktopInitialScaleTest {
         assertEquals(0, WebEngineDefaults.desktopInitialScalePercent(-10))
     }
 
-    @Test fun `known width is chrome overview percent of 980`() {
-        assertEquals(100, WebEngineDefaults.desktopInitialScalePercent(980))
-        assertEquals(50, WebEngineDefaults.desktopInitialScalePercent(490))
+    @Test fun `known width is overview percent of the desktop layout width`() {
+        assertEquals(100, WebEngineDefaults.desktopInitialScalePercent(WebEngineDefaults.DESKTOP_VIEWPORT_WIDTH))
+        assertEquals(50, WebEngineDefaults.desktopInitialScalePercent(WebEngineDefaults.DESKTOP_VIEWPORT_WIDTH / 2))
+    }
+
+    @Test fun `desktop layout width clears mainstream desktop breakpoints`() {
+        // 980 只到"平板/窄桌面"：Bootstrap lg=992、Tailwind lg=1024 都不会命中。
+        assertTrue(WebEngineDefaults.DESKTOP_VIEWPORT_WIDTH >= 1280)
     }
 
     @Test fun `wide screens zoom in beyond 100 instead of clamping`() {
-        // 钳在 100 会让宽屏手机的 980 布局铺不满屏宽（右侧留白带、形如缩小的窄条）。
-        assertEquals(204, WebEngineDefaults.desktopInitialScalePercent(2000))
-        assertEquals(250, WebEngineDefaults.desktopInitialScalePercent(9800))
+        // 钳在 100 会让物理像素宽于布局宽的屏幕铺不满（右侧留白带、形如缩小的窄条）。
+        assertEquals(156, WebEngineDefaults.desktopInitialScalePercent(2000))
+        assertEquals(250, WebEngineDefaults.desktopInitialScalePercent(12800))
         assertEquals(25, WebEngineDefaults.desktopInitialScalePercent(1))
     }
 }
