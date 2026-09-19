@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.webshell.core.designsystem.catalog.CatalogCategory
 import com.webshell.core.designsystem.catalog.CatalogEntry
 import com.webshell.core.designsystem.catalog.CatalogLayout
+import com.webshell.core.designsystem.components.AppConfirmDialog
 
 /** Production components with isolated fixtures; this never instantiates a WebView or ViewModel. */
 fun browserCatalog(): List<CatalogEntry> = listOf(
@@ -41,9 +42,19 @@ fun browserCatalog(): List<CatalogEntry> = listOf(
     },
     CatalogEntry("browser.security", CatalogCategory.BROWSER, R.string.browser_catalog_security_title,
         R.string.browser_catalog_security_description, layout = CatalogLayout.ScrollContent) {
-        var show by remember { mutableStateOf(false) }
-        TextButton(onClick = { show = true }) { Text(stringResource(R.string.browser_ssl_title)) }
-        if (show) BrowserCertificateDialog("-1", { show = false }, { show = false })
+        var showCert by remember { mutableStateOf(false) }
+        var showCleartext by remember { mutableStateOf(false) }
+        TextButton(onClick = { showCert = true }) { Text(stringResource(R.string.browser_ssl_title)) }
+        TextButton(onClick = { showCleartext = true }) { Text(stringResource(R.string.browser_cleartext_title)) }
+        if (showCert) BrowserCertificateDialog("-1", { showCert = false }, { showCert = false })
+        if (showCleartext) AppConfirmDialog(
+            title = stringResource(R.string.browser_cleartext_title),
+            text = stringResource(R.string.browser_cleartext_message, "example.com"),
+            confirmText = stringResource(R.string.browser_cleartext_continue),
+            dismissText = stringResource(R.string.browser_cleartext_exit),
+            onConfirm = { showCleartext = false },
+            onDismiss = { showCleartext = false },
+        )
     },
 )
 

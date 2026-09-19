@@ -7,6 +7,7 @@ import org.junit.Test
 class UrlRouterTest {
     @Test fun `web schemes are accepted and credentials are blocked`() {
         assertEquals(UrlRoute.WEB, UrlRouter.classify("https://example.com/a").route)
+        assertEquals(UrlRoute.WEB, UrlRouter.classify("http://hust.m.humanyun.com/").route)
         assertEquals(UrlRoute.BLOCKED, UrlRouter.classify("https://user:pass@example.com").route)
     }
 

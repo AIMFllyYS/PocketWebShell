@@ -65,6 +65,12 @@ interface ShellListener {
     fun onShowCustomView(view: View, exit: () -> Unit) {}
     fun onHideCustomView() {}
 
+    /**
+     * Main-frame `http://` navigation. Default cancels so a host without UI
+     * cannot silently load cleartext. Visible hosts must invoke one callback.
+     */
+    fun onCleartextPrompt(url: String, proceed: () -> Unit, cancel: () -> Unit) { cancel() }
+
     /** 证书错误：引擎已拒绝；宿主可展示拦截页并自行决定是否放行 */
     fun onSslError(url: String, error: String, proceed: () -> Unit) {}
     fun onSslError(url: String, error: String, proceed: () -> Unit, cancel: () -> Unit) =

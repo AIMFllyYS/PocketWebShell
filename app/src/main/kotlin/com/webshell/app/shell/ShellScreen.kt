@@ -14,6 +14,7 @@ import com.webshell.feature.browser.R as BrowserR
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +25,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -31,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.app.R
 import com.webshell.core.designsystem.components.AppNavigationBar
 import com.webshell.core.designsystem.components.PageLoadIndicator
+import com.webshell.core.webengine.CleartextGate
 import com.webshell.core.webengine.compose.ShellWebViewHost
 import com.webshell.core.webengine.resolveForceEnableZoom
 import com.webshell.feature.browser.WebSessionDialogs
@@ -58,6 +61,7 @@ fun ShellScreen(
     onSwitchKeepAlive: (sessionId: String, url: String) -> Unit = { _, _ -> },
     viewModel: SiteShellViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pullToRefresh by viewModel.pullToRefreshEnabled.collectAsStateWithLifecycle()
     val forceEnableZoom by viewModel.forceEnableZoomEnabled.collectAsStateWithLifecycle()
@@ -174,6 +178,14 @@ fun ShellScreen(
         }
         if (state is SiteShellState.Ready) {
             Column(Modifier.fillMaxWidth().statusBarsPadding()) {
+                if (CleartextGate.isCleartextHttp(ready?.pageUrl.orEmpty())) {
+                    Text(
+                        text = stringResource(BrowserR.string.browser_cleartext_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
                 PageLoadIndicator(loading = ready?.loading == true, rawProgress = ready?.progress ?: 0, sessionKey = sessionId)
             }
         }
@@ -219,7 +231,16 @@ fun ShellScreen(
             )
         }
     }
-    WebSessionDialogs(requests, onRetry = viewModel::reload, onLeave = onLeave)
+    WebSessionDialogs(
+        requests,
+        onRetry = viewModel::reload,
+        onLeave = onLeave,
+        onCleartextContinued = { message = context.getString(BrowserR.string.browser_cleartext_continued) },
+        onCleartextExit = {
+            val url = ready?.pageUrl.orEmpty()
+            if (url.isBlank() || url.equals("about:blank", ignoreCase = true)) onLeave()
+        },
+    )
     if (requests.fullScreenView != null) com.webshell.feature.browser.WebSessionFullScreen(requests)
     if (askAddToHome && markdown?.temporary == true) {
         AppConfirmDialog(

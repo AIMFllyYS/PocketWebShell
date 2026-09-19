@@ -33,6 +33,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.webshell.core.designsystem.components.AppConfirmDialog
 import com.webshell.core.designsystem.theme.LocalOverlayClearance
+import com.webshell.core.webengine.CleartextGate
 import com.webshell.core.webengine.ShellConfig
 import com.webshell.core.webengine.WebViewPool
 import com.webshell.core.webengine.compose.ShellWebViewHost
@@ -256,6 +257,7 @@ fun BrowserScreen(
             sessionKey = sessionId,
             readOnly = addressReadOnly,
             stripScheme = !addressReadOnly,
+            insecure = CleartextGate.isCleartextHttp(currentUrl),
             onTabSwitcher = {
                 focusManager.clearFocus()
                 viewModel.captureActiveThumbnail()
@@ -388,7 +390,12 @@ fun BrowserScreen(
                 onDismiss = viewModel::dismissAddToHome,
             )
         }
-        WebSessionDialogs(requests, onRetry = { viewModel.refreshOrStop(false) }, onLeave = ::closeActive)
+        WebSessionDialogs(
+            requests,
+            onRetry = { viewModel.refreshOrStop(false) },
+            onLeave = ::closeActive,
+            onCleartextContinued = { message = context.getString(R.string.browser_cleartext_continued) },
+        )
     }
     if (isVisible && requests.fullScreenView != null) WebSessionFullScreen(requests)
 }
