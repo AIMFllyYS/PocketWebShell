@@ -82,6 +82,7 @@ class ShellWebView internal constructor(
     internal var pendingRecoveryUrl: String? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingSsl: SslErrorHandler? = null
+    private var pendingCleartextCancel: (() -> Unit)? = null
     /** Safe-default resolver for a JS dialog awaiting a visible listener; see [deliverJsResult]. */
     private var pendingJsDialogFallback: (() -> Unit)? = null
     private var recoveryInProgress = false
@@ -393,6 +394,7 @@ class ShellWebView internal constructor(
             }
             pendingSsl?.let { runCatching { it.cancel() } }
             pendingSsl = null
+            finishPendingCleartext()
             if (pendingClearHistory) {
                 pendingClearHistory = false
                 view.post { if (isCurrent(view)) view.clearHistory() }
@@ -459,8 +461,9 @@ class ShellWebView internal constructor(
                     "加载失败 ${logHost(request.url?.toString())}: ${error.errorCode} ${error.description}",
                 )
                 val failedUrl = request.url?.toString().orEmpty()
-                val insecureHttp = failedUrl.startsWith("http://", ignoreCase = true)
-                notifyListeners { onPageError(failedUrl, error.errorCode, error.description?.toString().orEmpty(), insecureHttp) }
+                val description = error.description?.toString().orEmpty()
+                val insecureHttp = description.contains("CLEARTEXT", ignoreCase = true)
+                notifyListeners { onPageError(failedUrl, error.errorCode, description, insecureHttp) }
                 // Complete the navigation state even when Chromium gives us an error page.
                 notifyListeners { onPageFinished(failedUrl) }
             }
@@ -479,7 +482,7 @@ class ShellWebView internal constructor(
                         failedUrl,
                         errorResponse.statusCode,
                         errorResponse.reasonPhrase.orEmpty(),
-                        failedUrl.startsWith("http://", ignoreCase = true),
+                        false,
                     )
                 }
                 // Chromium may keep the progress stream open for an HTTP error
@@ -868,6 +871,8 @@ class ShellWebView internal constructor(
                     !LocalWebHost.isLocalUrl(url) && isForeignHost(url)
                 ) {
                     launchExternal(url)
+                    true
+                } else if (isMainFrame && maybePromptCleartext(url) { webView.loadUrl(url) }) {
                     true
                 } else false
             }
@@ -1316,16 +1321,14 @@ class ShellWebView internal constructor(
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
         restoreDefaultCacheModeIfNeeded()
-        pendingRecoveryUrl?.let { recovery ->
-            webView.loadUrl(recovery)
-            pendingRecoveryUrl = null
-        } ?: run { webView.loadUrl(url) }
+        val target = pendingRecoveryUrl?.also { pendingRecoveryUrl = null } ?: url
+        loadUrlOrPrompt(target)
     }
 
     fun reloadWithStateRestore() {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
-        webView.reload()
+        reload()
     }
 
     fun currentUrl(): String? = webView.url
@@ -1337,7 +1340,7 @@ class ShellWebView internal constructor(
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
         restoreDefaultCacheModeIfNeeded()
-        webView.loadUrl(url)
+        loadUrlOrPrompt(url)
     }
 
     fun goBack(): Boolean = if (webView.canGoBack()) {
@@ -1357,6 +1360,8 @@ class ShellWebView internal constructor(
     fun reload() {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
+        val url = webView.url
+        if (url != null && maybePromptCleartext(url) { webView.reload() }) return
         webView.reload()
     }
 
@@ -1368,9 +1373,73 @@ class ShellWebView internal constructor(
     fun reloadBypassingCache() {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
-        cacheBypassReloadPending = true
-        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webView.reload()
+        val go = {
+            cacheBypassReloadPending = true
+            webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+            webView.reload()
+        }
+        val url = webView.url
+        if (url != null && maybePromptCleartext(url, go)) return
+        go()
+    }
+
+    private fun loadUrlOrPrompt(url: String) {
+        if (maybePromptCleartext(url) { webView.loadUrl(url) }) return
+        webView.loadUrl(url)
+    }
+
+    /** @return true if navigation was deferred for a visible confirm. */
+    private fun maybePromptCleartext(url: String, onAllowed: () -> Unit): Boolean {
+        if (!CleartextGate.requiresPrompt(sessionId, url)) return false
+        requestCleartextConsent(url, onAllowed)
+        return true
+    }
+
+    private fun requestCleartextConsent(url: String, onAllowed: () -> Unit) {
+        val host = CleartextGate.hostOf(url)
+        if (host == null) {
+            onAllowed()
+            return
+        }
+        finishPendingCleartext()
+        val target = listener
+        if (target == null) {
+            AppLog.log("web", "明文导航等待可见宿主 host=$host")
+            mainHandler.post {
+                if (listener == null) {
+                    AppLog.log("web", "明文导航无可见宿主，已取消 host=$host")
+                } else {
+                    requestCleartextConsent(url, onAllowed)
+                }
+            }
+            return
+        }
+        var finished = false
+        val cancel = {
+            if (!finished) {
+                finished = true
+                pendingCleartextCancel = null
+                WebViewPool.unprotect(sessionId, WebViewPool.ProtectionReason.PENDING_CLEARTEXT)
+            }
+        }
+        val proceed = {
+            if (!finished) {
+                finished = true
+                pendingCleartextCancel = null
+                CleartextGate.allow(sessionId, host)
+                WebViewPool.unprotect(sessionId, WebViewPool.ProtectionReason.PENDING_CLEARTEXT)
+                onAllowed()
+            }
+        }
+        pendingCleartextCancel = cancel
+        WebViewPool.protect(sessionId, WebViewPool.ProtectionReason.PENDING_CLEARTEXT)
+        AppLog.log("web", "明文导航待确认 host=$host")
+        target.onCleartextPrompt(url, proceed, cancel)
+    }
+
+    private fun finishPendingCleartext() {
+        pendingCleartextCancel?.invoke()
+        pendingCleartextCancel = null
     }
 
     private fun restoreDefaultCacheModeIfNeeded() {
@@ -1470,6 +1539,7 @@ class ShellWebView internal constructor(
         if (activeBlobToken != null) endBlobDownload()
         pendingSsl?.let { runCatching { it.cancel() } }
         pendingSsl = null
+        finishPendingCleartext()
         hideCustomView()
         saveSessionState()
         runCatching {

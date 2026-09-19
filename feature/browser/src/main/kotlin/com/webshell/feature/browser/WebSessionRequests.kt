@@ -33,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.webshell.core.designsystem.components.AppConfirmDialog
 import com.webshell.core.designsystem.components.AppFormField
+import com.webshell.core.webengine.CleartextGate
 import com.webshell.core.webengine.ShellListener
 import com.webshell.core.webengine.NewWindowRequest
 import com.webshell.core.webengine.WebViewPool
@@ -61,8 +62,11 @@ class WebSessionRequests internal constructor() {
         internal set
     var exitFullScreen: () -> Unit = {}
     internal var sslCancel: () -> Unit = {}
+    internal var cleartextHost by mutableStateOf<String?>(null)
+    internal var cleartextProceed: () -> Unit = {}
+    internal var cleartextCancel: () -> Unit = {}
     internal var jsDialog by mutableStateOf<PendingJsDialog?>(null)
-    val busy: Boolean get() = permission != null || sslError != null || fileCallback != null || captureConsent != null || geolocationOrigin != null || fullScreenView != null || jsDialog != null
+    val busy: Boolean get() = permission != null || sslError != null || fileCallback != null || captureConsent != null || geolocationOrigin != null || fullScreenView != null || jsDialog != null || cleartextHost != null
 
     internal fun denyPermission() {
         permission?.deny()
@@ -104,9 +108,26 @@ class WebSessionRequests internal constructor() {
         sslError = null
         sslCancel()
         sslCancel = {}
+        dismissCleartext()
         denyGeolocation()
         completeJsDialog(accepted = false)
         if (fullScreenView != null) exitFullScreen()
+    }
+
+    internal fun confirmCleartext() {
+        val proceed = cleartextProceed
+        cleartextHost = null
+        cleartextProceed = {}
+        cleartextCancel = {}
+        proceed()
+    }
+
+    internal fun dismissCleartext() {
+        val cancel = cleartextCancel
+        cleartextHost = null
+        cleartextProceed = {}
+        cleartextCancel = {}
+        cancel()
     }
 
     internal fun completeJsDialog(accepted: Boolean, promptValue: String? = null) {
@@ -349,6 +370,12 @@ fun rememberWebSessionRequests(
             override fun onSslError(url: String, error: String, proceed: () -> Unit, cancel: () -> Unit) {
                 if (requests.available) { requests.sslError = error; requests.sslCancel = cancel } else cancel()
             }
+            override fun onCleartextPrompt(url: String, proceed: () -> Unit, cancel: () -> Unit) {
+                if (!requests.available) { cancel(); return }
+                requests.cleartextHost = CleartextGate.hostOf(url) ?: url
+                requests.cleartextProceed = proceed
+                requests.cleartextCancel = cancel
+            }
             override fun onPageError(url: String, errorCode: Int, description: String, insecureHttp: Boolean) {
                 if (requests.available) message.value(
                     if (insecureHttp) context.getString(R.string.browser_http_failed)
@@ -494,7 +521,13 @@ private fun startCaptureOrPicker(
 }
 
 @Composable
-fun WebSessionDialogs(requests: WebSessionRequests, onRetry: () -> Unit, onLeave: () -> Unit) {
+fun WebSessionDialogs(
+    requests: WebSessionRequests,
+    onRetry: () -> Unit,
+    onLeave: () -> Unit,
+    onCleartextContinued: () -> Unit = {},
+    onCleartextExit: () -> Unit = {},
+) {
     requests.permission?.let { request ->
         val capabilities = request.resources.mapNotNull { resource ->
             when (resource) {
@@ -542,6 +575,16 @@ fun WebSessionDialogs(requests: WebSessionRequests, onRetry: () -> Unit, onLeave
             error,
             onRetry = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {}; onRetry() },
             onDismiss = { requests.sslError = null; requests.sslCancel(); requests.sslCancel = {} },
+        )
+    }
+    requests.cleartextHost?.let { host ->
+        AppConfirmDialog(
+            title = stringResource(R.string.browser_cleartext_title),
+            text = stringResource(R.string.browser_cleartext_message, host),
+            confirmText = stringResource(R.string.browser_cleartext_continue),
+            dismissText = stringResource(R.string.browser_cleartext_exit),
+            onConfirm = { requests.confirmCleartext(); onCleartextContinued() },
+            onDismiss = { requests.dismissCleartext(); onCleartextExit() },
         )
     }
     requests.jsDialog?.let { dialog ->

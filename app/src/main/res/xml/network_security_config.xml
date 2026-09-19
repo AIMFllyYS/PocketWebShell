@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Top-level http:// navigations are allowed after an in-app confirm.
+         Mixed content remains MIXED_CONTENT_NEVER_ALLOW. User CAs are not trusted. -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
