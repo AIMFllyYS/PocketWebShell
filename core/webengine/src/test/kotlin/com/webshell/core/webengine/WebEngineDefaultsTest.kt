@@ -89,19 +89,33 @@ class WebEngineDefaultsTest {
     @Test fun `desktop rewrite tolerates early document-start DOM`() {
         val script = WebEngineDefaults.documentStartBootstrap(desktopMode = true)
         // document-start 时机下 documentElement/head 可能尚未创建：
-        // 追加目标必须有 document 兜底，改写函数必须 try 包裹，
-        // 观察器挂 document 根节点，并有 DOMContentLoaded 晚到兜底。
-        assertTrue(script.contains("document.head||document.documentElement||document"))
+        // 改写函数 try 包裹、观察器挂 document 根、DOMContentLoaded 晚到兜底。
         assertTrue(script.contains("try{"))
         assertTrue(script.contains("observe(document,"))
         assertTrue(script.contains("DOMContentLoaded"))
     }
 
-    @Test fun `bootstrap prefix tolerates missing documentElement`() {
-        val script = WebEngineDefaults.documentStartBootstrap(false)
-        assertTrue(script.contains("(document.head||document.documentElement||document).appendChild"))
-        assertTrue(script.contains("try{"))
-        assertFalse(script.contains("wsForceZoom"))
+    @Test fun `bootstrap never appends elements to the document root`() {
+        // 向 document 根节点追加元素会把其变成文档根、破坏整个解析——任何路径都不允许。
+        val desktop = WebEngineDefaults.documentStartBootstrap(desktopMode = true)
+        val plain = WebEngineDefaults.documentStartBootstrap(false)
+        assertFalse(desktop.contains("||document).appendChild"))
+        assertFalse(plain.contains("||document).appendChild"))
+        assertTrue(plain.contains("var r=document.head||document.documentElement;"))
+        assertFalse(plain.contains("wsForceZoom"))
+    }
+
+    @Test fun `desktop rewrite fixes every viewport meta instead of the first one`() {
+        val script = WebEngineDefaults.documentStartBootstrap(desktopMode = true)
+        // Blink 对多个 viewport meta 后解析者覆盖先前者：只改第一个等于没改。
+        assertFalse(script.contains("break"))
+        assertTrue(script.contains("found"))
+        // 无 meta 时补建，且只在 head/documentElement 已存在时挂接
+        assertTrue(script.contains("if(!found)"))
+        assertTrue(script.contains("if(head)"))
+        // 二次注入幂等守卫
+        assertTrue(script.contains("__wsBoot"))
+        assertTrue(script.contains("v===2"))
     }
 }
 

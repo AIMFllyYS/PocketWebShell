@@ -349,14 +349,14 @@ class ShellWebView internal constructor(
             if (!isCurrent(view)) return
             restoreDefaultCacheModeIfNeeded()
             lastCommittedUrl = url
-            if (config.desktopMode && config.localAppId == null && !documentStartSupported) {
-                // 老 WebView 无 document-start 注入：降级为页面开始时注入，
-                // 脚本自带的 MutationObserver 与 DOMContentLoaded 兜底会继续跟进。
-                if (!desktopFallbackLogged) {
+            if (config.desktopMode && config.localAppId == null) {
+                // document-start 注入是主路径；onPageStarted 再注入一次作为全
+                // WebView 版本兜底（脚本内 __wsBoot 幂等守卫，重复注入零副作用）。
+                if (!documentStartSupported && !desktopFallbackLogged) {
                     desktopFallbackLogged = true
                     AppLog.log(
                         "webengine",
-                        "DOCUMENT_START_SCRIPT 不可用，桌面 viewport 改写降级为 onPageStarted 注入 sessionId=$sessionId",
+                        "DOCUMENT_START_SCRIPT 不可用，桌面 viewport 改写降级为页面回调注入 sessionId=$sessionId",
                     )
                 }
                 webView.evaluateJavascript(
@@ -403,6 +403,18 @@ class ShellWebView internal constructor(
         override fun onPageFinished(view: WebView, url: String) {
             if (!isCurrent(view)) return
             lastCommittedUrl = url
+            if (config.desktopMode && config.localAppId == null && !documentStartSupported) {
+                // 老 WebView 的最终兜底：onPageStarted 注入可能落在旧文档上，
+                // 这里在已提交的新文档上再补一次（__wsBoot 守卫保证幂等）。
+                webView.evaluateJavascript(
+                    WebEngineDefaults.documentStartBootstrap(
+                        forceEnableZoom = config.forceEnableZoom,
+                        localApp = false,
+                        desktopMode = true,
+                    ),
+                    null,
+                )
+            }
             AppLog.log("web", "加载完成 ${logHost(url)}")
             // A completed navigation proves that the replacement renderer is
             // stable. The next crash may therefore receive one fresh automatic

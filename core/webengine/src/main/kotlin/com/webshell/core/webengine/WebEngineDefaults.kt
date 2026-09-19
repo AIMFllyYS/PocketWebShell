@@ -68,31 +68,38 @@ object WebEngineDefaults {
 
     private const val DOCUMENT_START_PREFIX =
         "(function(){" +
-            "window.__wsBoot={t:Date.now()};" +
+            "if(window.__wsBoot&&window.__wsBoot.v===2)return;" +
+            "window.__wsBoot={t:Date.now(),v:2};" +
             "try{" +
             "if(!document.getElementById('ws-safe-style')){" +
+            "var r=document.head||document.documentElement;" +
+            "if(r){" +
             "var s=document.createElement('style');s.id='ws-safe-style';" +
             "s.textContent=':root{--ws-safe-top:0px;--ws-safe-bottom:0px;" +
             "--ws-safe-left:0px;--ws-safe-right:0px;--ws-ime-height:0px;}';" +
-            "(document.head||document.documentElement||document).appendChild(s);}" +
+            "r.appendChild(s);}" +
+            "}" +
             "}catch(e){}"
 
     private const val DOCUMENT_START_SUFFIX = "})();"
 
     /**
-     * 桌面远程站：固定 width=980，去掉挡 overview 的 initial/minimum-scale，
-     * 没有 viewport 就新建。结果已正确则不再写入。
+     * 桌面远程站：固定 width=980，去掉挡 overview 的 initial/minimum-scale。
+     * 必须改写**所有** viewport meta——Blink 对多个 viewport meta 按后解析者覆盖先前者，
+     * 抢先注入的 meta 会被站点自己的 meta 盖掉；只改第一个等于没改。
+     * 无 meta 时才补建，且只在 head/documentElement 已存在时挂接
+     * （document 根节点不可追加元素，否则文档损坏）；其余时机由观察器与
+     * DOMContentLoaded 兜底重跑覆盖。
      */
     private const val DESKTOP_VIEWPORT_REWRITE =
         "function wsForceZoom(){try{" +
             "var W='" + DESKTOP_VIEWPORT_WIDTH + "';" +
-            "var head=document.head||document.documentElement||document;" +
             "var metas=document.getElementsByTagName('meta');" +
-            "var m=null;" +
+            "var found=false;" +
             "for(var i=0;i<metas.length;i++){" +
-            "if((metas[i].getAttribute('name')||'').toLowerCase()==='viewport'){m=metas[i];break;}" +
-            "}" +
-            "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');head.appendChild(m);}" +
+            "var m=metas[i];" +
+            "if((m.getAttribute('name')||'').toLowerCase()!=='viewport')continue;" +
+            "found=true;" +
             "var c=m.getAttribute('content')||'';" +
             "var parts=c.split(',').map(function(p){return p.trim();}).filter(function(p){" +
             "if(!p)return false;" +
@@ -105,6 +112,13 @@ object WebEngineDefaults {
             "parts.push('maximum-scale=10');" +
             "var n=parts.join(',');" +
             "if(n!==c)m.setAttribute('content',n);" +
+            "}" +
+            "if(!found){" +
+            "var head=document.head||document.documentElement;" +
+            "if(head){var nm=document.createElement('meta');nm.setAttribute('name','viewport');" +
+            "nm.setAttribute('content','width='+W+',user-scalable=yes,maximum-scale=10');" +
+            "head.appendChild(nm);}" +
+            "}" +
             "}catch(e){}}" +
             "wsForceZoom();" +
             "document.addEventListener('DOMContentLoaded',wsForceZoom);"
