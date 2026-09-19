@@ -85,6 +85,24 @@ class WebEngineDefaultsTest {
         assertTrue(on.contains("subtree:false"))
         assertFalse(on.contains("subtree:true"))
     }
+
+    @Test fun `desktop rewrite tolerates early document-start DOM`() {
+        val script = WebEngineDefaults.documentStartBootstrap(desktopMode = true)
+        // document-start 时机下 documentElement/head 可能尚未创建：
+        // 追加目标必须有 document 兜底，改写函数必须 try 包裹，
+        // 观察器挂 document 根节点，并有 DOMContentLoaded 晚到兜底。
+        assertTrue(script.contains("document.head||document.documentElement||document"))
+        assertTrue(script.contains("try{"))
+        assertTrue(script.contains("observe(document,"))
+        assertTrue(script.contains("DOMContentLoaded"))
+    }
+
+    @Test fun `bootstrap prefix tolerates missing documentElement`() {
+        val script = WebEngineDefaults.documentStartBootstrap(false)
+        assertTrue(script.contains("(document.head||document.documentElement||document).appendChild"))
+        assertTrue(script.contains("try{"))
+        assertFalse(script.contains("wsForceZoom"))
+    }
 }
 
 class DesktopInitialScaleTest {

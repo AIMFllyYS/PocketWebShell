@@ -108,6 +108,16 @@ class ShellWebView internal constructor(
     private var injectedBootstrapKey: Triple<Boolean, Boolean, Boolean>? = null
     /** setDesktopMode already flipped the flag; reconfigure must still reload once. */
     private var pendingDesktopReload = false
+    /**
+     * A desktop/mobile switch reloads with the HTTP cache bypassed so the server
+     * re-evaluates the new UA; the default cache mode is restored on the next
+     * page start (or when an explicit navigation supersedes the reload).
+     */
+    private var cacheBypassReloadPending = false
+    /** DOCUMENT_START_SCRIPT support is process-constant; cache it for the fallback path. */
+    private val documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+    /** Log the legacy-WebView fallback injection at most once per session. */
+    private var desktopFallbackLogged = false
     /** REPLACE_IN_SHELL just handed Chromium this same WebView; drop the opener history. */
     private var pendingClearHistory = false
 
@@ -174,10 +184,25 @@ class ShellWebView internal constructor(
         webView.settings.userAgentString =
             if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else WebEngineDefaults.MOBILE_USER_AGENT
         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+            // UA 字符串只覆盖 User-Agent 头；Sec-CH-UA-* Client Hints 来自 metadata。
+            // brand 列表必须与 UA 字符串版本对齐，否则按 UA-CH 判定的站点仍会收到移动信号。
             runCatching {
                 WebSettingsCompat.setUserAgentMetadata(
                     webView.settings,
                     androidx.webkit.UserAgentMetadata.Builder()
+                        .setBrandVersionList(
+                            listOf(
+                                androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
+                                    .setBrand("Chromium")
+                                    .setMajorVersion(WebEngineDefaults.UA_MAJOR_VERSION)
+                                    .setFullVersion(WebEngineDefaults.UA_FULL_VERSION)
+                                    .build(),
+                                androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
+                                    .setBrand("Not_A Brand")
+                                    .setMajorVersion("99")
+                                    .build(),
+                            ),
+                        )
                         .setPlatform(if (enabled) "Windows" else "Android")
                         .setPlatformVersion(if (enabled) "10.0.0" else Build.VERSION.RELEASE ?: "")
                         .setArchitecture(if (enabled) "x86" else "")
@@ -185,11 +210,14 @@ class ShellWebView internal constructor(
                         .setMobile(!enabled)
                         .build(),
                 )
+            }.onFailure { e ->
+                AppLog.warn("webengine", "UA-CH metadata 设置失败 desktop=$enabled : ${e.message}")
             }
         }
         applyDesktopScale()
         injectBootstrapOnce()
         if (changed) pendingDesktopReload = true
+        AppLog.log("webengine", "桌面模式 sessionId=$sessionId enabled=$enabled changed=$changed")
     }
 
     /**
@@ -234,8 +262,8 @@ class ShellWebView internal constructor(
         val merged = old.mergedWith(newConfig)
         if (merged == old && !pendingDesktopReload) return
         config = merged
-        val needsReload = pendingDesktopReload ||
-            old.desktopMode != config.desktopMode ||
+        val desktopChanged = pendingDesktopReload || old.desktopMode != config.desktopMode
+        val needsReload = desktopChanged ||
             old.textZoomPercent != config.textZoomPercent ||
             old.algorithmicDark != config.algorithmicDark ||
             old.thirdPartyCookies != config.thirdPartyCookies ||
@@ -245,7 +273,18 @@ class ShellWebView internal constructor(
         configureBaseSettings()
         applyPullToRefresh()
         injectBootstrapOnce()
-        if (needsReload && !webView.url.isNullOrBlank() && webView.url != "about:blank") reload()
+        if (needsReload) {
+            val url = webView.url
+            val canReload = !url.isNullOrBlank() && url != "about:blank"
+            AppLog.log(
+                "webengine",
+                "reconfigure 刷新 sessionId=$sessionId desktopChanged=$desktopChanged bypassCache=$desktopChanged reload=$canReload",
+            )
+            // 桌面切换必须让服务器看到新 UA：绕过 HTTP 缓存重新请求主文档。
+            if (canReload) {
+                if (desktopChanged) reloadBypassingCache() else reload()
+            }
+        }
     }
 
     private fun applyProfile() {
@@ -263,7 +302,7 @@ class ShellWebView internal constructor(
     }
 
     private fun injectBootstrapOnce() {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        if (!documentStartSupported) return
         val enableZoom = config.forceEnableZoom
         val desktop = config.desktopMode
         val local = config.localAppId != null
@@ -308,7 +347,27 @@ class ShellWebView internal constructor(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             if (!isCurrent(view)) return
+            restoreDefaultCacheModeIfNeeded()
             lastCommittedUrl = url
+            if (config.desktopMode && config.localAppId == null && !documentStartSupported) {
+                // 老 WebView 无 document-start 注入：降级为页面开始时注入，
+                // 脚本自带的 MutationObserver 与 DOMContentLoaded 兜底会继续跟进。
+                if (!desktopFallbackLogged) {
+                    desktopFallbackLogged = true
+                    AppLog.log(
+                        "webengine",
+                        "DOCUMENT_START_SCRIPT 不可用，桌面 viewport 改写降级为 onPageStarted 注入 sessionId=$sessionId",
+                    )
+                }
+                webView.evaluateJavascript(
+                    WebEngineDefaults.documentStartBootstrap(
+                        forceEnableZoom = config.forceEnableZoom,
+                        localApp = false,
+                        desktopMode = true,
+                    ),
+                    null,
+                )
+            }
             if (!url.startsWith("blob:", ignoreCase = true) &&
                 !url.startsWith("data:", ignoreCase = true)
             ) {
@@ -1223,6 +1282,7 @@ class ShellWebView internal constructor(
     fun loadWithStateRestore(url: String) {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
+        restoreDefaultCacheModeIfNeeded()
         pendingRecoveryUrl?.let { recovery ->
             webView.loadUrl(recovery)
             pendingRecoveryUrl = null
@@ -1243,6 +1303,7 @@ class ShellWebView internal constructor(
     fun load(url: String) {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
+        restoreDefaultCacheModeIfNeeded()
         webView.loadUrl(url)
     }
 
@@ -1264,6 +1325,26 @@ class ShellWebView internal constructor(
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
         webView.reload()
+    }
+
+    /**
+     * 绕过 HTTP 缓存的 reload：桌面/移动切换必须让服务器按新 UA 重新决策主文档，
+     * 普通 reload 可能直接复用缓存中的旧版本页面。主文档请求发出后，
+     * [restoreDefaultCacheModeIfNeeded] 在下一次 onPageStarted 恢复默认缓存策略。
+     */
+    fun reloadBypassingCache() {
+        if (retryRendererIfNeeded()) return
+        rendererRecoveryGate.resetForExplicitNavigation()
+        cacheBypassReloadPending = true
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        webView.reload()
+    }
+
+    private fun restoreDefaultCacheModeIfNeeded() {
+        if (cacheBypassReloadPending) {
+            cacheBypassReloadPending = false
+            webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        }
     }
 
     /** Recreate a child WebView after the automatic recovery budget is spent.

@@ -3,10 +3,14 @@ package com.webshell.core.webengine
 /** 壳引擎的全局常量与默认值。 */
 object WebEngineDefaults {
 
+    /** 伪装 Chrome 的版本号：UA 字符串与 UA-CH metadata 必须保持一致。 */
+    const val UA_MAJOR_VERSION: String = "151"
+    const val UA_FULL_VERSION: String = "151.0.0.0"
+
     /** 桌面模式 UA（Chrome 桌面版，自 Chrome 110 起 minor/build 固定为 .0.0） */
     const val DESKTOP_USER_AGENT: String =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/151.0.0.0 Safari/537.36"
+            "Chrome/" + UA_FULL_VERSION + " Safari/537.36"
 
     /**
      * 移动模式 UA（Chrome Android 移动版，主版本与 [DESKTOP_USER_AGENT] 保持一致）。
@@ -15,7 +19,7 @@ object WebEngineDefaults {
      */
     const val MOBILE_USER_AGENT: String =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Chrome/151.0.0.0 Mobile Safari/537.36"
+            "Chrome/" + UA_FULL_VERSION + " Mobile Safari/537.36"
 
     /** WebViewAssetLoader 的本地资源域名（本地 HTML 导入用真实 https 源提供） */
     const val ASSET_LOADER_HOST: String = "appassets.androidplatform.net"
@@ -65,11 +69,13 @@ object WebEngineDefaults {
     private const val DOCUMENT_START_PREFIX =
         "(function(){" +
             "window.__wsBoot={t:Date.now()};" +
+            "try{" +
             "if(!document.getElementById('ws-safe-style')){" +
             "var s=document.createElement('style');s.id='ws-safe-style';" +
             "s.textContent=':root{--ws-safe-top:0px;--ws-safe-bottom:0px;" +
             "--ws-safe-left:0px;--ws-safe-right:0px;--ws-ime-height:0px;}';" +
-            "document.documentElement.appendChild(s);}"
+            "(document.head||document.documentElement||document).appendChild(s);}" +
+            "}catch(e){}"
 
     private const val DOCUMENT_START_SUFFIX = "})();"
 
@@ -78,9 +84,9 @@ object WebEngineDefaults {
      * 没有 viewport 就新建。结果已正确则不再写入。
      */
     private const val DESKTOP_VIEWPORT_REWRITE =
-        "function wsForceZoom(){" +
+        "function wsForceZoom(){try{" +
             "var W='" + DESKTOP_VIEWPORT_WIDTH + "';" +
-            "var head=document.head||document.documentElement;" +
+            "var head=document.head||document.documentElement||document;" +
             "var metas=document.getElementsByTagName('meta');" +
             "var m=null;" +
             "for(var i=0;i<metas.length;i++){" +
@@ -99,11 +105,12 @@ object WebEngineDefaults {
             "parts.push('maximum-scale=10');" +
             "var n=parts.join(',');" +
             "if(n!==c)m.setAttribute('content',n);" +
-            "}" +
-            "wsForceZoom();"
+            "}catch(e){}}" +
+            "wsForceZoom();" +
+            "document.addEventListener('DOMContentLoaded',wsForceZoom);"
 
     private const val FORCE_ENABLE_ZOOM_REWRITE =
-        "function wsForceZoom(){" +
+        "function wsForceZoom(){try{" +
             "var metas=document.getElementsByTagName('meta');" +
             "for(var i=0;i<metas.length;i++){" +
             "var m=metas[i];" +
@@ -114,15 +121,16 @@ object WebEngineDefaults {
             "if(!/user-scalable\\s*=/i.test(n))n=n?n.replace(/,?\\s*$/,'')+',user-scalable=yes':'user-scalable=yes';" +
             "if(!/maximum-scale\\s*=/i.test(n))n=n?n.replace(/,?\\s*$/,'')+',maximum-scale=10':'maximum-scale=10';" +
             "if(n!==c)m.setAttribute('content',n);}" +
-            "}" +
-            "wsForceZoom();"
+            "}catch(e){}}" +
+            "wsForceZoom();" +
+            "document.addEventListener('DOMContentLoaded',wsForceZoom);"
 
     private const val FORCE_ENABLE_ZOOM_OBSERVE_SUBTREE =
-        "try{new MutationObserver(wsForceZoom).observe(document.documentElement," +
+        "try{new MutationObserver(wsForceZoom).observe(document," +
             "{childList:true,subtree:true,attributes:true,attributeFilter:['content','name']});}catch(e){}"
 
     private const val FORCE_ENABLE_ZOOM_OBSERVE_VIEWPORT =
-        "try{var r=document.head||document.documentElement;" +
+        "try{var r=document.head||document.documentElement||document;" +
             "new MutationObserver(wsForceZoom).observe(r," +
             "{childList:true,subtree:false,attributes:true,attributeFilter:['content','name']});" +
             "var metas=r.getElementsByTagName('meta');" +
