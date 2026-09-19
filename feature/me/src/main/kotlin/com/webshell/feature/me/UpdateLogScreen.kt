@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.61",
+        date = "2026-09-19",
+        highlights = listOf(
+            "修复「桌面版」切换后网站仍按手机处理的根因：浏览器身份信号（Client Hints）构造缺字段必抛异常，此前版本从未真正生效，现已补齐并在设置后回读校验",
+            "支持新特性的 WebView 同步声明桌面形态信号（Form-Factors），与现代 Chrome 桌面模式对齐",
+            "桌面探针升级：平台身份、媒体查询断点、可视缩放全部写入日志，切换是否生效打开日志即可确认",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.60",
         date = "2026-09-19",
         highlights = listOf(

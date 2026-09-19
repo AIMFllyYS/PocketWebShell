@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.61] - 2026-09-19
+
+修复「桌面版」身份信号从未生效的根因：0.1.58 引入的 UA-CH metadata 构造为 GREASE 品牌（`Not_A Brand`）漏填 fullVersion，`BrandVersion.Builder.build()` 对空字段必抛 `IllegalStateException`（异常发生在参数求值阶段，`setUserAgentMetadata` 从未被调用），失败被 `runCatching` 静默吞掉——三个版本以来 `Sec-CH-UA-*` 请求头与 `navigator.userAgentData` 从未真正设置，按 Client Hints 判定身份的网站始终收到「Android 手机」信号（表现为切换后只是缩小的手机布局）。经 androidx.webkit 1.17.0 源码与独立构造实验双重确认。
+
+### Fixed
+
+- UA-CH metadata 构造抽为可测试纯函数 `WebEngineDefaults.userAgentMetadata`：所有品牌补齐 fullVersion；桌面身份对齐 Windows / x86 / 64 位，移动身份携带 Android 平台版本与机型；新增单元测试直接构造验证双模式身份，杜绝同类回归。
+- 设置后回读 `WebSettingsCompat.getUserAgentMetadata` 校验并写入日志；构造或设置失败升级为 ERROR 级日志，不再静默吞掉。
+- 支持 `USER_AGENT_METADATA_FORM_FACTORS` 的 WebView 上同步声明 `Sec-CH-UA-Form-Factors`（Desktop / Mobile），对齐 Chrome 140+ 桌面模式的身份信号。
+- 桌面探针升级：除布局宽度外，同时记录 `navigator.userAgentData`（平台与移动标记）、全部 viewport meta 内容、CSS 媒体查询断点（768/980/1024/1280 与触控能力）、`visualViewport` 宽与缩放——「桌面身份 + 桌面布局」两条链路在应用日志里都有据可查。
+
 ## [0.1.60] - 2026-09-19
 
 修复桌面模式缩放与布局断言问题：初始缩放被钳制在 100% 导致宽屏设备 980 布局铺不满屏宽；页面完成后缺少对站点脚本改回 viewport 的重断言；新增桌面模式运行时探针（布局宽 / DPR / viewport 状态写入应用日志）。
@@ -24,7 +35,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.1.58] - 2026-09-19
 
-修复浏览板块「桌面版」切换对部分网页不生效的问题：切换后缓存复用移动版页面、注入脚本在文档起始时机下脆弱、UA 与 Client Hints 信号不一致、老 WebView 缺少降级路径，以及本地导入页面的桌面入口误导。（该版本经真机验证仍存在 viewport 改写首个命中即跳出的缺陷，由 0.1.59 补齐。）
+修复浏览板块「桌面版」切换对部分网页不生效的问题：切换后缓存复用移动版页面、注入脚本在文档起始时机下脆弱、UA 与 Client Hints 信号不一致、老 WebView 缺少降级路径，以及本地导入页面的桌面入口误导。（该版本经真机验证仍存在 viewport 改写首个命中即跳出的缺陷，由 0.1.59 补齐；其 UA-CH metadata 构造必抛异常、`setUserAgentMetadata` 从未真正执行，由 0.1.61 修复。）
 
 ### Fixed
 
