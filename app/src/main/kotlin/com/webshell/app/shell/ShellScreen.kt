@@ -189,6 +189,7 @@ fun ShellScreen(
                 canGoForward = ready?.canGoForward == true,
                 loading = ready?.loading == true,
                 desktopMode = ready?.config?.desktopMode == true,
+                desktopCapable = ready?.config?.localAppId == null,
                 pageUrl = ready?.pageUrl.orEmpty(),
                 bookmarked = ready?.pageUrl.orEmpty() in bookmarkedUrls,
                 documentMode = documentMode,

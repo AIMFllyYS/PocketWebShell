@@ -2,6 +2,70 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.62] - 2026-09-19
+
+依据 0.1.61 真机探针日志（华为 HwWebview 114 / Android 12）定位并修复「桌面版仍显示手机布局」：布局链（980 改写、overview 缩放、多 meta 覆盖）实测全部正常，但 `(min-width:980px)` 媒体查询在布局宽已达 980 时仍不命中，且现代响应式站点的桌面断点普遍高于 980（Bootstrap lg=992、Tailwind lg=1024、GitHub≈1012）——980 永远拿不到桌面布局。同机证据：`navigator.userAgentData` 被该定制 WebView 摘除、`USER_AGENT_METADATA` 特性不受支持，UA-CH 身份链在此类设备上不可用。
+
+### Fixed
+
+- 桌面布局宽 980 → 1280（`DESKTOP_VIEWPORT_WIDTH`）：越过全部主流桌面断点并为引擎的媒体查询评估削减留余量；缩放公式与 overview 行为不变，整页仍缩到屏宽、可捏合放大。
+- UA-CH 不受当前 WebView 支持时记录一条明确日志（此前静默跳过，读探针 `uad:"none"` 无法区分「没设置」与「不支持」）。
+- 桌面探针新增 `outerWidth` 与根元素矩形宽：媒体查询的真实评估宽度可从日志直接读出，不再靠推测。
+
+### Testing
+
+- `testDebugUnitTest :app:assembleDebug`；新增「布局宽越过 1280」结构断言并更新缩放公式用例。
+- 真机验收：切换桌面版后日志应见 `iw:1280`、`mq` 前四项全 1；`uad:"none"` 在老 WebView 上属预期（身份链仅 UA 字符串）。
+
+## [0.1.61] - 2026-09-19
+
+修复「桌面版」身份信号从未生效的根因：0.1.58 引入的 UA-CH metadata 构造为 GREASE 品牌（`Not_A Brand`）漏填 fullVersion，`BrandVersion.Builder.build()` 对空字段必抛 `IllegalStateException`（异常发生在参数求值阶段，`setUserAgentMetadata` 从未被调用），失败被 `runCatching` 静默吞掉——三个版本以来 `Sec-CH-UA-*` 请求头与 `navigator.userAgentData` 从未真正设置，按 Client Hints 判定身份的网站始终收到「Android 手机」信号（表现为切换后只是缩小的手机布局）。经 androidx.webkit 1.17.0 源码与独立构造实验双重确认。
+
+### Fixed
+
+- UA-CH metadata 构造抽为可测试纯函数 `WebEngineDefaults.userAgentMetadata`：所有品牌补齐 fullVersion；桌面身份对齐 Windows / x86 / 64 位，移动身份携带 Android 平台版本与机型；新增单元测试直接构造验证双模式身份，杜绝同类回归。
+- 设置后回读 `WebSettingsCompat.getUserAgentMetadata` 校验并写入日志；构造或设置失败升级为 ERROR 级日志，不再静默吞掉。
+- 支持 `USER_AGENT_METADATA_FORM_FACTORS` 的 WebView 上同步声明 `Sec-CH-UA-Form-Factors`（Desktop / Mobile），对齐 Chrome 140+ 桌面模式的身份信号。
+- 桌面探针升级：除布局宽度外，同时记录 `navigator.userAgentData`（平台与移动标记）、全部 viewport meta 内容、CSS 媒体查询断点（768/980/1024/1280 与触控能力）、`visualViewport` 宽与缩放——「桌面身份 + 桌面布局」两条链路在应用日志里都有据可查。
+
+## [0.1.60] - 2026-09-19
+
+修复桌面模式缩放与布局断言问题：初始缩放被钳制在 100% 导致宽屏设备 980 布局铺不满屏宽；页面完成后缺少对站点脚本改回 viewport 的重断言；新增桌面模式运行时探针（布局宽 / DPR / viewport 状态写入应用日志）。
+
+### Fixed
+
+- 初始缩放公式移除 100% 上限（`desktopInitialScalePercent`，范围改为 25–250）：宽屏手机桌面布局现在能铺满屏宽，不再呈现为"缩小的窄条手机布局"。
+- 桌面页面在 `onPageFinished` 强制重断 viewport（`window.__wsForceZoom` 暴露给宿主调用）：覆盖站点脚本在加载后把 meta 改回 `device-width` 的情况；老 WebView 分支保留全量注入兜底。
+- 新增桌面模式运行时探针：页面完成后把 `innerWidth`、`clientWidth`、DPR、viewport 是否 980、bootstrap 是否存活写入应用日志（我的 → 开发者选项 → 日志查看），只记录数值与布尔。
+
+## [0.1.59] - 2026-09-19
+
+修复「桌面版」对自带 viewport meta 的响应式网站始终不生效的根因：改写脚本只处理第一个 viewport meta，而 Blink 对多个 viewport meta 按后解析者覆盖先前者，站点自带的 `width=device-width` 始终胜出。本轮以模拟 DOM 行为测试验证修复（document-start / pre-DOM / DOM 就绪 / 幂等 / 无 meta 五场景）。
+
+### Fixed
+
+- 桌面视口改写改为遍历并改写**所有** viewport meta（`DESKTOP_VIEWPORT_REWRITE` 移除首个命中即 `break` 的逻辑）；无 meta 时才补建，且只在 `head`/`documentElement` 已存在时挂接，绝不向 document 根节点追加元素（0.1.58 的 `||document` 兜底存在文档根污染风险，已移除）。
+- 注入脚本新增 `__wsBoot` 版本幂等守卫；桌面模式页面在 `onPageStarted` 全量补注一次（老 WebView 另在 `onPageFinished` 兜底），重复注入零副作用。
+- 单元测试从字符串 token 断言升级为结构契约断言（禁止根节点追加、禁止首个命中即跳出、幂等守卫存在）。
+
+## [0.1.58] - 2026-09-19
+
+修复浏览板块「桌面版」切换对部分网页不生效的问题：切换后缓存复用移动版页面、注入脚本在文档起始时机下脆弱、UA 与 Client Hints 信号不一致、老 WebView 缺少降级路径，以及本地导入页面的桌面入口误导。（该版本经真机验证仍存在 viewport 改写首个命中即跳出的缺陷，由 0.1.59 补齐；其 UA-CH metadata 构造必抛异常、`setUserAgentMetadata` 从未真正执行，由 0.1.61 修复。）
+
+### Fixed
+
+- 桌面/移动切换改为绕过 HTTP 缓存的 reload（`ShellWebView.reloadBypassingCache`）：主文档强制重新请求，服务器真正按新 UA 决策，主文档发出后自动恢复默认缓存策略；修复缓存中的移动版页面导致「切换后页面没有变化」。
+- document-start 注入脚本全面加固（`WebEngineDefaults`）：追加目标三级兜底（head/documentElement/document）、改写函数 try 包裹、MutationObserver 改挂 document 根节点、新增 DOMContentLoaded 晚到兜底，杜绝 DOM 未就绪时整段脚本静默中止。
+- 老 WebView 降级路径：不支持 `DOCUMENT_START_SCRIPT` 时在 `onPageStarted` 降级注入同一 bootstrap（每会话记一次诊断日志）。
+- UA-CH Client Hints 与 UA 字符串版本对齐（brand 列表 Chromium/151 + Not_A Brand/99），metadata 设置失败记 `AppLog.warn`。
+- 本地导入页（外部 HTML / local:// 应用）在浏览菜单与站点壳悬浮球中禁用「桌面版」入口——该场景本就只换 UA、不改布局。
+- `ShellWebView.setDesktopMode` / `reconfigure` 增加 AppLog 诊断日志，桌面切换链路现场可观测。
+
+### Testing
+
+- `:core:webengine:testDebugUnitTest :feature:browser:testDebugUnitTest testDebugUnitTest :app:assembleDebug`
+- 真机手测：切换「桌面版」后页面刷新、`navigator.userAgent` 变为桌面 UA、`innerWidth≈980`、`window.__wsBoot` 存在、页面呈现桌面布局。
+
 ## [0.1.57] - 2026-09-17
 
 版本更新弹窗体验重构：全面支持 GitHub Release 正文 Markdown 富文本原生渲染；弹窗卡片内部自适应屏幕宽度，提供固定标头与底部动作坞，中间内容区支持上下平滑安全滚动，完整呈现版本更新日志。

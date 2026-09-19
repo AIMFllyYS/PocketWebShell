@@ -103,6 +103,8 @@ internal fun SiteShellOrb(
     canGoForward: Boolean,
     loading: Boolean,
     desktopMode: Boolean,
+    /** 本地导入页桌面模式只换 UA 不改布局——菜单禁用该入口。 */
+    desktopCapable: Boolean = true,
     pageUrl: String,
     bookmarked: Boolean,
     onPlacement: (x: Float, y: Float, parked: Boolean) -> Unit,
@@ -347,6 +349,7 @@ internal fun SiteShellOrb(
             canGoForward = canGoForward,
             loading = loading,
             desktopMode = desktopMode,
+            desktopCapable = desktopCapable,
             bookmarked = bookmarked,
             hasPage = pageUrl.isNotBlank() && pageUrl != "about:blank",
             documentMode = documentMode,
@@ -473,6 +476,7 @@ private fun SiteShellOrbMenu(
     canGoForward: Boolean,
     loading: Boolean,
     desktopMode: Boolean,
+    desktopCapable: Boolean = true,
     bookmarked: Boolean,
     hasPage: Boolean,
     documentMode: Boolean = false,
@@ -587,7 +591,7 @@ private fun SiteShellOrbMenu(
                                 Icon(Icons.Filled.Check, stringResource(BrowserR.string.browser_enabled))
                             }
                         },
-                        onClick = if (documentMode) null else onDesktopMode,
+                        onClick = if (documentMode || !desktopCapable) null else onDesktopMode,
                     )
                     if (canAddToHome) {
                         AppListDivider()

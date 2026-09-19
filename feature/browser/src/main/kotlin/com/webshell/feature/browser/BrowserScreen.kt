@@ -335,6 +335,7 @@ fun BrowserScreen(
                     loading = activeTab?.loading == true,
                     bookmarked = currentUrl in bookmarkedUrls,
                     desktopMode = desktopOn,
+                    desktopCapable = activeTab?.kind != BrowserTabKind.INCOMING_HTML,
                     canAddToHome = activeTab?.kind != BrowserTabKind.WEB && activeTab?.localAppId != null,
                 ),
                 ::menuAction, ::dismissOverlay,

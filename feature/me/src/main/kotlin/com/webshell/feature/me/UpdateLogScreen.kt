@@ -31,6 +31,51 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.62",
+        date = "2026-09-19",
+        highlights = listOf(
+            "桌面布局宽从 980 提到 1280：现代网站的桌面断点（992/1024/1200）全部越过，真机实测 980 时连 980 断点都不命中",
+            "老内核/定制 WebView 不支持 Client Hints 时明确记日志，桌面身份退化路径可观测",
+            "桌面探针补充 outerWidth 与根元素宽度，媒体查询的真实评估宽度可直接读出",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.61",
+        date = "2026-09-19",
+        highlights = listOf(
+            "修复「桌面版」切换后网站仍按手机处理的根因：浏览器身份信号（Client Hints）构造缺字段必抛异常，此前版本从未真正生效，现已补齐并在设置后回读校验",
+            "支持新特性的 WebView 同步声明桌面形态信号（Form-Factors），与现代 Chrome 桌面模式对齐",
+            "桌面探针升级：平台身份、媒体查询断点、可视缩放全部写入日志，切换是否生效打开日志即可确认",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.60",
+        date = "2026-09-19",
+        highlights = listOf(
+            "修复桌面模式缩放被钳在 100% 的问题：宽屏手机上 980 桌面布局现在能铺满屏宽",
+            "页面加载完成后强制重断桌面视口，防止站点脚本把宽度改回手机布局",
+            "新增桌面模式运行时探针：真实布局宽度写入应用日志，问题定位不再靠猜",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.59",
+        date = "2026-09-19",
+        highlights = listOf(
+            "彻底修复「桌面版」对响应式网站不生效的根因：视口改写覆盖页面全部 viewport meta，不再被站点自带 meta 覆盖",
+            "注入脚本增加幂等守卫并在页面开始/完成回调双兜底，老 WebView 也可靠生效",
+            "移除可能污染文档根的注入兜底分支，桌面模式更稳定",
+        ),
+    ),
+    UpdateEntry(
+        version = "0.1.58",
+        date = "2026-09-19",
+        highlights = listOf(
+            "修复浏览板块「桌面版」切换对部分网页不生效：切换后绕过缓存重新请求主文档，服务器真正看到桌面 UA",
+            "桌面视口注入脚本全面加固，老 WebView 自动降级注入，UA 与 Client Hints 信号版本对齐",
+            "本地导入页面的「桌面版」入口改为禁用，消除无效的误导性切换提示",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.57",
         date = "2026-09-17",
         highlights = listOf(

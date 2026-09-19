@@ -108,6 +108,18 @@ class ShellWebView internal constructor(
     private var injectedBootstrapKey: Triple<Boolean, Boolean, Boolean>? = null
     /** setDesktopMode already flipped the flag; reconfigure must still reload once. */
     private var pendingDesktopReload = false
+    /**
+     * A desktop/mobile switch reloads with the HTTP cache bypassed so the server
+     * re-evaluates the new UA; the default cache mode is restored on the next
+     * page start (or when an explicit navigation supersedes the reload).
+     */
+    private var cacheBypassReloadPending = false
+    /** DOCUMENT_START_SCRIPT support is process-constant; cache it for the fallback path. */
+    private val documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+    /** Log the legacy-WebView fallback injection at most once per session. */
+    private var desktopFallbackLogged = false
+    /** UA-CH 不受支持只记一次（老/定制 WebView 上身份链只有 UA 字符串）。 */
+    private var uaChUnsupportedLogged = false
     /** REPLACE_IN_SHELL just handed Chromium this same WebView; drop the opener history. */
     private var pendingClearHistory = false
 
@@ -174,22 +186,52 @@ class ShellWebView internal constructor(
         webView.settings.userAgentString =
             if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else WebEngineDefaults.MOBILE_USER_AGENT
         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+            // UA 字符串只覆盖 User-Agent 头；Sec-CH-UA-* 与 navigator.userAgentData
+            // 来自 metadata。构造逻辑在 WebEngineDefaults.userAgentMetadata（纯 JVM、
+            // 有单元测试）：brand 三字段缺一整套都构造不出来，绝不能在这里内联。
             runCatching {
-                WebSettingsCompat.setUserAgentMetadata(
-                    webView.settings,
-                    androidx.webkit.UserAgentMetadata.Builder()
-                        .setPlatform(if (enabled) "Windows" else "Android")
-                        .setPlatformVersion(if (enabled) "10.0.0" else Build.VERSION.RELEASE ?: "")
-                        .setArchitecture(if (enabled) "x86" else "")
-                        .setModel(if (enabled) "" else Build.MODEL ?: "")
-                        .setMobile(!enabled)
-                        .build(),
+                var metadata = WebEngineDefaults.userAgentMetadata(
+                    desktop = enabled,
+                    mobilePlatformVersion = Build.VERSION.RELEASE ?: "",
+                    mobileModel = Build.MODEL ?: "",
                 )
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA_FORM_FACTORS)) {
+                    // Chrome 140+ 桌面模式声明 Sec-CH-UA-Form-Factors: "Desktop"；
+                    // 读取该信号的现代站点缺了它会把我们识别回手机。
+                    metadata = androidx.webkit.UserAgentMetadata.Builder(metadata)
+                        .setFormFactors(
+                            listOf(
+                                if (enabled) androidx.webkit.UserAgentMetadata.FORM_FACTOR_DESKTOP
+                                else androidx.webkit.UserAgentMetadata.FORM_FACTOR_MOBILE,
+                            ),
+                        )
+                        .build()
+                }
+                WebSettingsCompat.setUserAgentMetadata(webView.settings, metadata)
+            }.onSuccess {
+                // 回读校验：构造成功不等于内核接受，把生效的身份写进日志（不记页面内容）。
+                val applied = runCatching {
+                    WebSettingsCompat.getUserAgentMetadata(webView.settings)
+                }.getOrNull()
+                AppLog.log(
+                    "webengine",
+                    "UA-CH 已设置 desktop=$enabled platform=${applied?.platform} " +
+                        "mobile=${applied?.isMobile} brands=${applied?.brandVersionList?.size}",
+                )
+            }.onFailure { e ->
+                // 历史上这里静默失败过三个版本；失败必须显眼。
+                AppLog.error("webengine", "UA-CH metadata 设置失败 desktop=$enabled : ${e.message}")
             }
+        } else if (!uaChUnsupportedLogged) {
+            // 老内核/定制 WebView（如 HwWebview 114）没有 UA-CH：navigator.userAgentData
+            // 不存在，身份链只能靠 UA 字符串。记一条日志，读探针 uad:"none" 时不用再猜。
+            uaChUnsupportedLogged = true
+            AppLog.log("webengine", "UA-CH 不受当前 WebView 支持，桌面/移动身份仅靠 UA 字符串")
         }
         applyDesktopScale()
         injectBootstrapOnce()
         if (changed) pendingDesktopReload = true
+        AppLog.log("webengine", "桌面模式 sessionId=$sessionId enabled=$enabled changed=$changed")
     }
 
     /**
@@ -234,8 +276,8 @@ class ShellWebView internal constructor(
         val merged = old.mergedWith(newConfig)
         if (merged == old && !pendingDesktopReload) return
         config = merged
-        val needsReload = pendingDesktopReload ||
-            old.desktopMode != config.desktopMode ||
+        val desktopChanged = pendingDesktopReload || old.desktopMode != config.desktopMode
+        val needsReload = desktopChanged ||
             old.textZoomPercent != config.textZoomPercent ||
             old.algorithmicDark != config.algorithmicDark ||
             old.thirdPartyCookies != config.thirdPartyCookies ||
@@ -245,7 +287,18 @@ class ShellWebView internal constructor(
         configureBaseSettings()
         applyPullToRefresh()
         injectBootstrapOnce()
-        if (needsReload && !webView.url.isNullOrBlank() && webView.url != "about:blank") reload()
+        if (needsReload) {
+            val url = webView.url
+            val canReload = !url.isNullOrBlank() && url != "about:blank"
+            AppLog.log(
+                "webengine",
+                "reconfigure 刷新 sessionId=$sessionId desktopChanged=$desktopChanged bypassCache=$desktopChanged reload=$canReload",
+            )
+            // 桌面切换必须让服务器看到新 UA：绕过 HTTP 缓存重新请求主文档。
+            if (canReload) {
+                if (desktopChanged) reloadBypassingCache() else reload()
+            }
+        }
     }
 
     private fun applyProfile() {
@@ -263,7 +316,7 @@ class ShellWebView internal constructor(
     }
 
     private fun injectBootstrapOnce() {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        if (!documentStartSupported) return
         val enableZoom = config.forceEnableZoom
         val desktop = config.desktopMode
         val local = config.localAppId != null
@@ -308,7 +361,27 @@ class ShellWebView internal constructor(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             if (!isCurrent(view)) return
+            restoreDefaultCacheModeIfNeeded()
             lastCommittedUrl = url
+            if (config.desktopMode && config.localAppId == null) {
+                // document-start 注入是主路径；onPageStarted 再注入一次作为全
+                // WebView 版本兜底（脚本内 __wsBoot 幂等守卫，重复注入零副作用）。
+                if (!documentStartSupported && !desktopFallbackLogged) {
+                    desktopFallbackLogged = true
+                    AppLog.log(
+                        "webengine",
+                        "DOCUMENT_START_SCRIPT 不可用，桌面 viewport 改写降级为页面回调注入 sessionId=$sessionId",
+                    )
+                }
+                webView.evaluateJavascript(
+                    WebEngineDefaults.documentStartBootstrap(
+                        forceEnableZoom = config.forceEnableZoom,
+                        localApp = false,
+                        desktopMode = true,
+                    ),
+                    null,
+                )
+            }
             if (!url.startsWith("blob:", ignoreCase = true) &&
                 !url.startsWith("data:", ignoreCase = true)
             ) {
@@ -344,6 +417,25 @@ class ShellWebView internal constructor(
         override fun onPageFinished(view: WebView, url: String) {
             if (!isCurrent(view)) return
             lastCommittedUrl = url
+            if (config.desktopMode && config.localAppId == null) {
+                if (documentStartSupported) {
+                    // document-start 已注入（__wsBoot 守卫保证幂等）；页面完成后
+                    // 强制重断一次 viewport，覆盖站点脚本把 meta 改回去的情况。
+                    webView.evaluateJavascript("try{window.__wsForceZoom&&window.__wsForceZoom()}catch(e){}", null)
+                } else {
+                    // 老 WebView 的最终兜底：onPageStarted 注入可能落在旧文档上，
+                    // 这里在已提交的新文档上补全量注入（__wsBoot 守卫保证幂等）。
+                    webView.evaluateJavascript(
+                        WebEngineDefaults.documentStartBootstrap(
+                            forceEnableZoom = config.forceEnableZoom,
+                            localApp = false,
+                            desktopMode = true,
+                        ),
+                        null,
+                    )
+                }
+                desktopViewportProbe()
+            }
             AppLog.log("web", "加载完成 ${logHost(url)}")
             // A completed navigation proves that the replacement renderer is
             // stable. The next crash may therefore receive one fresh automatic
@@ -1223,6 +1315,7 @@ class ShellWebView internal constructor(
     fun loadWithStateRestore(url: String) {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
+        restoreDefaultCacheModeIfNeeded()
         pendingRecoveryUrl?.let { recovery ->
             webView.loadUrl(recovery)
             pendingRecoveryUrl = null
@@ -1243,6 +1336,7 @@ class ShellWebView internal constructor(
     fun load(url: String) {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
+        restoreDefaultCacheModeIfNeeded()
         webView.loadUrl(url)
     }
 
@@ -1264,6 +1358,62 @@ class ShellWebView internal constructor(
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
         webView.reload()
+    }
+
+    /**
+     * 绕过 HTTP 缓存的 reload：桌面/移动切换必须让服务器按新 UA 重新决策主文档，
+     * 普通 reload 可能直接复用缓存中的旧版本页面。主文档请求发出后，
+     * [restoreDefaultCacheModeIfNeeded] 在下一次 onPageStarted 恢复默认缓存策略。
+     */
+    fun reloadBypassingCache() {
+        if (retryRendererIfNeeded()) return
+        rendererRecoveryGate.resetForExplicitNavigation()
+        cacheBypassReloadPending = true
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        webView.reload()
+    }
+
+    private fun restoreDefaultCacheModeIfNeeded() {
+        if (cacheBypassReloadPending) {
+            cacheBypassReloadPending = false
+            webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        }
+    }
+
+    /**
+     * 桌面模式加载完成后的运行时探针（我的 → 开发者选项 → 日志查看）。
+     * 验收桌面切换需要同时看到两条链路，缺一不可：
+     *  - 身份链：uad（navigator.userAgentData 的平台/移动标记；"none"=当前 WebView
+     *    不支持 UA-CH，身份只能靠 UA 字符串）
+     *  - 布局链：iw/cw 布局宽、vps（全部 viewport meta 内容）、ow（outerWidth）与
+     *    rc（根元素矩形宽，用于钉死媒体查询的真实评估宽度）、mq（768/980/1024/1280
+     *    断点与触控能力查询）、vv/vs（visualViewport 宽与缩放）
+     * 断点高于布局宽时不命中属正常；iw 已达布局宽而同值断点不命中，则说明该引擎
+     * 的媒体查询评估宽有削减（HwWebview 114 实测如此）。只记录数值与布尔，不记内容。
+     */
+    private fun desktopViewportProbe() {
+        webView.evaluateJavascript(
+            "(function(){try{" +
+                "var vps=[];var ms=document.getElementsByTagName('meta');" +
+                "for(var i=0;i<ms.length;i++){var m=ms[i];" +
+                "if((m.getAttribute('name')||'').toLowerCase()==='viewport')" +
+                "vps.push(m.getAttribute('content')||'');}" +
+                "var u=navigator.userAgentData?" +
+                "(navigator.userAgentData.platform+',mobile='+navigator.userAgentData.mobile):'none';" +
+                "function mq(q){try{return matchMedia(q).matches?1:0}catch(e){return -1}}" +
+                "return JSON.stringify({" +
+                "iw:window.innerWidth,cw:document.documentElement.clientWidth," +
+                "ow:window.outerWidth," +
+                "rc:Math.round(document.documentElement.getBoundingClientRect().width)," +
+                "dpr:window.devicePixelRatio,sw:window.screen.width," +
+                "vv:window.visualViewport?Math.round(window.visualViewport.width):0," +
+                "vs:window.visualViewport?+window.visualViewport.scale.toFixed(2):0," +
+                "vps:vps,uad:u," +
+                "mq:[mq('(min-width:768px)'),mq('(min-width:980px)'),mq('(min-width:1024px)')," +
+                "mq('(min-width:1280px)'),mq('(pointer:coarse)'),mq('(hover:hover)')]," +
+                "boot:window.__wsBoot?window.__wsBoot.v:0" +
+                "});}catch(e){return 'probe-fail:'+(e&&e.message);}})()",
+        ) { raw -> AppLog.log("webengine", "桌面探针 sessionId=$sessionId $raw") }
     }
 
     /** Recreate a child WebView after the automatic recovery budget is spent.
