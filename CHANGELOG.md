@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.58] - 2026-09-19
+
+修复浏览板块「桌面版」切换对部分网页不生效的问题：切换后缓存复用移动版页面、注入脚本在文档起始时机下脆弱、UA 与 Client Hints 信号不一致、老 WebView 缺少降级路径，以及本地导入页面的桌面入口误导。
+
+### Fixed
+
+- 桌面/移动切换改为绕过 HTTP 缓存的 reload（`ShellWebView.reloadBypassingCache`）：主文档强制重新请求，服务器真正按新 UA 决策，主文档发出后自动恢复默认缓存策略；修复缓存中的移动版页面导致「切换后页面没有变化」。
+- document-start 注入脚本全面加固（`WebEngineDefaults`）：追加目标三级兜底（head/documentElement/document）、改写函数 try 包裹、MutationObserver 改挂 document 根节点、新增 DOMContentLoaded 晚到兜底，杜绝 DOM 未就绪时整段脚本静默中止。
+- 老 WebView 降级路径：不支持 `DOCUMENT_START_SCRIPT` 时在 `onPageStarted` 降级注入同一 bootstrap（每会话记一次诊断日志）。
+- UA-CH Client Hints 与 UA 字符串版本对齐（brand 列表 Chromium/151 + Not_A Brand/99），metadata 设置失败记 `AppLog.warn`。
+- 本地导入页（外部 HTML / local:// 应用）在浏览菜单与站点壳悬浮球中禁用「桌面版」入口——该场景本就只换 UA、不改布局。
+- `ShellWebView.setDesktopMode` / `reconfigure` 增加 AppLog 诊断日志，桌面切换链路现场可观测。
+
+### Testing
+
+- `:core:webengine:testDebugUnitTest :feature:browser:testDebugUnitTest testDebugUnitTest :app:assembleDebug`
+- 真机手测：切换「桌面版」后页面刷新、`navigator.userAgent` 变为桌面 UA、`innerWidth≈980`、`window.__wsBoot` 存在、页面呈现桌面布局。
+
 ## [0.1.57] - 2026-09-17
 
 版本更新弹窗体验重构：全面支持 GitHub Release 正文 Markdown 富文本原生渲染；弹窗卡片内部自适应屏幕宽度，提供固定标头与底部动作坞，中间内容区支持上下平滑安全滚动，完整呈现版本更新日志。

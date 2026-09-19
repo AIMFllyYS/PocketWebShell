@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.58",
+        date = "2026-09-19",
+        highlights = listOf(
+            "修复浏览板块「桌面版」切换对部分网页不生效：切换后绕过缓存重新请求主文档，服务器真正看到桌面 UA",
+            "桌面视口注入脚本全面加固，老 WebView 自动降级注入，UA 与 Client Hints 信号版本对齐",
+            "本地导入页面的「桌面版」入口改为禁用，消除无效的误导性切换提示",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.57",
         date = "2026-09-17",
         highlights = listOf(
