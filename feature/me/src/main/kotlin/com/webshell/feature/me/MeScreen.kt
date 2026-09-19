@@ -1,6 +1,5 @@
 package com.webshell.feature.me
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -13,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -25,7 +23,11 @@ import com.webshell.core.designsystem.components.AppConfirmDialog
 import com.webshell.core.designsystem.theme.AppMotion
 import com.webshell.core.designsystem.theme.LocalTransitionStyle
 
-internal enum class MeSection { APPEARANCE, FONT, LAYOUT, BACKGROUND, FEATURES, ENGINE, STORAGE, DATA, UPDATE_LOG, DEVELOPER, SESSIONS }
+internal enum class MeSection {
+    APPEARANCE, FONT, LAYOUT, BACKGROUND, FEATURES, ENGINE, STORAGE, DATA,
+    LEGAL, PRIVACY, TERMS, LICENSE, CONTRIBUTE,
+    UPDATE_LOG, DEVELOPER, SESSIONS,
+}
 
 /** Route/state collection only. Playbook is aggregated by app, not by this feature. */
 @Composable
@@ -42,6 +44,7 @@ fun MeScreen(
      * [onKeepAliveServiceChanged].
      */
     onStopSessions: (List<String>) -> Unit = {},
+    onOpenInBrowser: (String) -> Unit = {},
     viewModel: MeViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -59,9 +62,17 @@ fun MeScreen(
         viewModel.refreshSessions()
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    val openInBrowser = rememberUpdatedState(onOpenInBrowser)
+    fun openHttps(url: String) {
+        acceptedHttpsUrl(url)?.let(openInBrowser.value)
+    }
     fun goBack() {
         if (section == MeSection.FONT) viewModel.resetFontSaveState()
-        section = if (section == MeSection.FONT) MeSection.APPEARANCE else null
+        section = when (section) {
+            MeSection.FONT -> MeSection.APPEARANCE
+            MeSection.PRIVACY, MeSection.TERMS, MeSection.LICENSE, MeSection.CONTRIBUTE -> MeSection.LEGAL
+            else -> null
+        }
     }
     BackHandler(enabled = section != null && fontSaveState != FontSaveState.Saving) { goBack() }
     val hideDock = rememberUpdatedState(onHideLauncherDock)
@@ -132,6 +143,25 @@ fun MeScreen(
             )
             MeSection.STORAGE -> StorageManagementPage(onBack = ::goBack)
             MeSection.DATA -> DataManagementPage(onBack = ::goBack)
+            MeSection.LEGAL -> LegalHubPage(
+                onOpenSection = { section = it },
+                onOpenHttps = ::openHttps,
+                onBack = ::goBack,
+            )
+            MeSection.PRIVACY -> LegalMarkdownPage(
+                title = stringResource(R.string.me_privacy),
+                rawResId = R.raw.privacy,
+                onOpenHttps = ::openHttps,
+                onBack = ::goBack,
+            )
+            MeSection.TERMS -> LegalMarkdownPage(
+                title = stringResource(R.string.me_terms),
+                rawResId = R.raw.terms,
+                onOpenHttps = ::openHttps,
+                onBack = ::goBack,
+            )
+            MeSection.LICENSE -> LicenseNoticePage(onOpenHttps = ::openHttps, onBack = ::goBack)
+            MeSection.CONTRIBUTE -> ContributePage(onOpenHttps = ::openHttps, onBack = ::goBack)
             MeSection.UPDATE_LOG -> UpdateLogPage(onBack = ::goBack)
             MeSection.DEVELOPER -> DeveloperCenterPage(
                 onBack = ::goBack,
@@ -156,7 +186,6 @@ fun MeScreen(
             onDismiss = { pendingStopIds = emptyList() },
         )
     }
-    val context = LocalContext.current
     when (val prompt = state.updatePrompt) {
         is UpdatePrompt.UpToDate -> AppConfirmDialog(
             title = stringResource(R.string.me_update_latest_title),
@@ -169,9 +198,10 @@ fun MeScreen(
             val offer = prompt.offer
             UpdateAvailableDialog(
                 offer = offer,
+                onOpenHttps = ::openHttps,
                 onConfirm = {
                     viewModel.dismissUpdatePrompt()
-                    openHttps(context, offer.downloadUrl)
+                    openHttps(offer.downloadUrl)
                 },
                 onDismiss = viewModel::dismissUpdatePrompt,
             )
@@ -183,7 +213,7 @@ fun MeScreen(
             dismissText = stringResource(R.string.me_cancel),
             onConfirm = {
                 viewModel.dismissUpdatePrompt()
-                openHttps(context, AppUpdateChecker.WEBSITE_URL)
+                openHttps(AppUpdateChecker.WEBSITE_URL)
             },
             onDismiss = viewModel::dismissUpdatePrompt,
         )
@@ -191,11 +221,10 @@ fun MeScreen(
     }
 }
 
-private fun openHttps(context: android.content.Context, url: String) {
-    val uri = Uri.parse(url)
-    if (!uri.scheme.equals("https", ignoreCase = true)) return
-    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-        addCategory(Intent.CATEGORY_BROWSABLE)
-    }
-    runCatching { context.startActivity(intent) }
+/** Accepts https URLs with a host and no userInfo. */
+internal fun acceptedHttpsUrl(url: String): String? {
+    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+    if (!uri.scheme.equals("https", ignoreCase = true)) return null
+    if (uri.host.isNullOrBlank() || uri.userInfo != null) return null
+    return url
 }

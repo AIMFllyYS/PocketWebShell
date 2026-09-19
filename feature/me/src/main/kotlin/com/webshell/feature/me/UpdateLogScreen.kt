@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.64",
+        date = "2026-09-20",
+        highlights = listOf(
+            "「关于」里增加「政策与开源」：隐私说明、使用说明、GPL 许可、GitHub 仓库和参与贡献",
+            "这些页面和检查更新里的链接在玄览自己的浏览标签打开；点「下载」会按文件地址交给下载胶囊，不再跳到系统浏览器",
+            "项目改为 GNU GPL-3.0-or-later：分发修改版须同样开源；欢迎校园贡献，没有 CLA",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.63",
         date = "2026-09-20",
         highlights = listOf(

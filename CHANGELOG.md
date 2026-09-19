@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.64] - 2026-09-20
+
+公开测试准备：设置页增加「政策与开源」，项目改为 GPL-3.0-or-later，并写明校园贡献方式。
+
+### Added
+
+- 设置「关于」增加「政策与开源」二级页：隐私说明、使用说明、开源许可、GitHub 仓库与参与贡献（文案离线打包）。
+- 上述页面及检查更新里的 https 链接在应用内浏览标签打开，不再交给系统浏览器。
+- 浏览标签用 `loadUrl` 打开 `.apk` 等文件地址时直接交给下载胶囊（检查更新点「下载」走同一条路，不再依赖 WebView 是否触发 DownloadListener）。
+- 仓库增加 `docs/OPEN-SOURCE.md` 与 `docs/legal/`（个人信息处理规则、使用说明、许可摘要）。
+- 根目录 `LICENSE` 改为 GNU GPL v3 全文；README / CONTRIBUTING 声明 SPDX `GPL-3.0-or-later`，贡献 inbound = outbound，不使用 CLA。
+
+### Changed
+
+- 0.1.63 及更早正式版仍是当时的 Apache-2.0；自本版本起新代码与新安装包按 GPL-3.0-or-later。
+- `docs/OPS.md` / `docs/WEBSITE.md` 补充官网 `/privacy`、`/terms`、`/license`、`/contribute` 的精确 Nginx 映射（随下次正式发布部署）。
+
+### Testing
+
+- `:core:webengine:testDebugUnitTest :feature:me:compileDebugKotlin testDebugUnitTest :app:assembleDebug`
+
 ## [0.1.63] - 2026-09-20
 
 允许顶层 HTTP 导航，并在加载前用现有确认弹窗说明连接未加密：用户可「退出」或「继续访问」。继续后页面正常打开，顶栏保留「不安全」提示。HTTPS 页的混合内容与证书校验不放宽。

@@ -106,7 +106,7 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 
 ## 10. 0.1.33 下载识别与共享存储账本
 
-- **下载不再只认导航型 `DownloadListener`**：`DownloadPolicy.looksLikeFileDownload` 把带常见文件后缀的主框架 URL 交给 `DownloadSink` / 系统 `DownloadManager`，而不是当网页打开。Blob 先取元数据再按块经 `WebMessageListener` 写出，避开 `evaluateJavascript` 的 Binder 上限；`onPageStarted` 不再在 blob / data URL 上取消正在写入的文件。
+- **下载不再只认导航型 `DownloadListener`**：`DownloadPolicy.looksLikeFileDownload` 把带常见文件后缀的主框架 URL 交给 `DownloadSink` / 系统 `DownloadManager`，而不是当网页打开。`loadUrl()` 不走 `shouldOverrideUrlLoading`，因此 `loadUrlOrPrompt` 必须同样拦截（检查更新打开 GitHub APK 即此路径）。Blob 先取元数据再按块经 `WebMessageListener` 写出，避开 `evaluateJavascript` 的 Binder 上限；`onPageStarted` 不再在 blob / data URL 上取消正在写入的文件。
 - **下载记录是应用内账本，不是按站沙箱**：`DownloadRepository` 持久化条目；浏览菜单与站点壳菜单打开同一份记录，可打开文件或定向删除。进度胶囊挂在 `MainScaffold`，与当前入口无关。
 - **存储账本跟随共享 Default Profile**：运行时数据在 `app_webview/Default` 与 `cache/WebView/Default/HTTP Cache`，不是从未创建的 `app_webview/profiles/<appId>`。`siteDataBytes` 计入 Default 的 IndexedDB / Cache Storage / Cookie 等；HTTP 缓存与 Dawn/Shader 目录计入可清理。按站一行只展示 Cookie / IndexedDB / 配额 / 本地导入等可核实证据，无法按站拆分的共享数据单独记账。
 - **清缓存与清网站数据分层**：清缓存调用仍存活 WebView 的 `clearCache(true)`，并删除 `cache/WebView/` 与 Default/根缓存目录，不碰 Cookie / LocalStorage / IndexedDB。按站清除走 `WebStorageCompat.deleteBrowsingDataForSite`（作用域 eTLD+1）；清全部网站数据优先 `WebStorageCompat.deleteBrowsingData`，否则 `deleteAllData` + `removeAllCookies`，并补删 `Network/`、`Storage/`、`Shared Storage/`。应用日志占用并入存储页，随清缓存一起清空。

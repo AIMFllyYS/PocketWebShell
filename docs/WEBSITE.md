@@ -10,7 +10,7 @@
 
 - **官方正式域名**：`https://xuanlan.1037solo.com`（1037SOLO 生态挂载站点）。
 - 技术栈：React 19 + vinext（Next.js App Router 兼容层）+ Vite 8 + Tailwind v4 + Shadcn/Base UI，纯静态导出（`next.config.ts` 中 `output: 'export'`）。
-- 构建产物为 `dist/client/`（`index.html`、`changelog.html`、`404.html`、`_next/static/`、`screens/`、`icons/` 等），**无服务端函数、无数据库**，可部署到任意静态托管。
+- 构建产物为 `dist/client/`（`index.html`、`changelog.html`、`privacy.html`、`terms.html`、`license.html`、`contribute.html`、`404.html`、`_next/static/`、`screens/`、`icons/` 等），**无服务端函数、无数据库**，可部署到任意静态托管。法律页文案与应用仓 `docs/legal/`、`docs/OPEN-SOURCE.md` 对齐；站点内链是 `/privacy` 这类无扩展名路径，生产 Nginx 精确匹配见 `docs/OPS.md` 第 8 节。
 - 运行环境要求：Node 22.13+，依赖以仓库内 `package-lock.json` 为准（`npm ci` 安装）。
 
 ## 2. 触发时机

@@ -860,12 +860,7 @@ class ShellWebView internal constructor(
         val uri = runCatching { url.toUri() }.getOrNull()
         return when (decision.route) {
             UrlRoute.WEB -> {
-                if (isMainFrame && DownloadPolicy.looksLikeFileDownload(url)) {
-                    AppLog.log(
-                        "download",
-                        "页内文件链接按下载处理 host=${DownloadPolicy.logHost(url)} name=${DownloadPolicy.safeFileName(URLUtil.guessFileName(url, null, null))}",
-                    )
-                    handleDownload(url, webView.settings.userAgentString.orEmpty(), null, null)
+                if (isMainFrame && interceptFileDownload(url)) {
                     true
                 } else if (config.externalLinkPolicy == ShellConfig.ExternalLinkPolicy.OPEN_IN_BROWSER &&
                     !LocalWebHost.isLocalUrl(url) && isForeignHost(url)
@@ -1384,8 +1379,22 @@ class ShellWebView internal constructor(
     }
 
     private fun loadUrlOrPrompt(url: String) {
+        // loadUrl() does not call shouldOverrideUrlLoading. File URLs (GitHub
+        // APK, etc.) must enqueue here or Chromium may try to render the bytes.
+        if (interceptFileDownload(url)) return
         if (maybePromptCleartext(url) { webView.loadUrl(url) }) return
         webView.loadUrl(url)
+    }
+
+    /** True when the URL was taken as a DownloadManager enqueue, not a document. */
+    private fun interceptFileDownload(url: String): Boolean {
+        if (!DownloadPolicy.looksLikeFileDownload(url)) return false
+        AppLog.log(
+            "download",
+            "文件地址按下载处理 host=${DownloadPolicy.logHost(url)} name=${DownloadPolicy.safeFileName(URLUtil.guessFileName(url, null, null))}",
+        )
+        handleDownload(url, webView.settings.userAgentString.orEmpty(), null, null)
+        return true
     }
 
     /** @return true if navigation was deferred for a visible confirm. */
