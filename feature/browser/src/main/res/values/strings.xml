@@ -72,6 +72,12 @@
     <string name="browser_ssl_title">连接不安全</string>
     <string name="browser_ssl_message">网站证书校验失败（%1$s）。已拦截此连接，请勿输入密码或付款信息。重试仍会进行完整的证书检查。</string>
     <string name="browser_ssl_retry">重新检查</string>
+    <string name="browser_cleartext_title">连接未加密</string>
+    <string name="browser_cleartext_message">%1$s 使用未加密的 HTTP。网络中的他人可能看到或改写这个页面。请勿在此输入密码或付款信息。</string>
+    <string name="browser_cleartext_continue">继续访问</string>
+    <string name="browser_cleartext_exit">退出</string>
+    <string name="browser_cleartext_badge">不安全</string>
+    <string name="browser_cleartext_continued">已继续访问未加密连接。请勿在此页面输入密码或付款信息。</string>
     <string name="browser_leave">离开</string>
     <string name="browser_make_app">制作应用</string>
     <string name="browser_add_home_title">添加到主屏幕？</string>
@@ -114,7 +120,7 @@
     <string name="browser_catalog_empty_title">空态与反馈</string>
     <string name="browser_catalog_empty_description">真实空标签提示与可访问的状态消息。</string>
     <string name="browser_catalog_security_title">安全与确认</string>
-    <string name="browser_catalog_security_description">批量关闭、清空历史和证书警告统一容器；证书始终校验。</string>
+    <string name="browser_catalog_security_description">批量关闭、清空历史、证书警告和明文 HTTP 确认统一容器；证书始终校验，明文需用户确认。</string>
     <string name="browser_catalog_sample_title">阅读示例</string>
     <string name="browser_start_title">新标签页</string>
     <string name="browser_start_favorites">收藏夹</string>

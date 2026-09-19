@@ -18,7 +18,7 @@ import android.os.Bundle
 object WebViewPool {
 
     enum class ProtectionReason {
-        ACTIVE, KEEP_ALIVE, PENDING_FILE, PENDING_PERMISSION, PENDING_DOWNLOAD, PENDING_WINDOW, FULLSCREEN, AUTH
+        ACTIVE, KEEP_ALIVE, PENDING_FILE, PENDING_PERMISSION, PENDING_DOWNLOAD, PENDING_WINDOW, FULLSCREEN, AUTH, PENDING_CLEARTEXT
     }
 
     private val pool = LinkedHashMap<String, ShellWebView>(16, 0.75f, true)
@@ -111,6 +111,7 @@ object WebViewPool {
         shell.release()
         synchronized(protection) { protection.remove(sessionId) }
         lifecycle[sessionId] = SessionLifecycleState.CLOSED
+        CleartextGate.forgetSession(sessionId)
     }
 
     /** 用户彻底关闭标签：销毁实例，不存快照且移除已有快照 */
@@ -119,6 +120,7 @@ object WebViewPool {
         pool.remove(sessionId)?.release()
         synchronized(protection) { protection.remove(sessionId) }
         lifecycle[sessionId] = SessionLifecycleState.CLOSED
+        CleartextGate.forgetSession(sessionId)
     }
 
     /**

@@ -46,7 +46,7 @@
 
 本节定义从代码修改到正式 Release 的完整流转。核心原则：**release 是 debug 的确认形态，二者同号；用户的明确确认是唯一的发布闸门。**
 
-- **W1（debug 先行）**：任何版本在发布 release 之前，**必须**先以相同版本号的 debug 构建交付用户测试。在用户明确确认测试通过之前，**禁止**执行任何发布动作——包括构建 release 包、合并到 `main`、打 tag、创建 GitHub Release。
+- **W1（debug 先行）**：任何版本在发布 release 之前，**必须**先以相同版本号的 debug 构建交付用户测试。交付物**必须**从 Gradle 产出复制到本地归档目录 `dist/PocketWebShell-<versionName>-debug.apk`，并写同名 `.sha256`（`dist/` 已被 gitignore）。在用户明确确认测试通过之前，**禁止**执行任何发布动作——包括构建 release 包、合并到 `main`、打 tag、创建 GitHub Release。**禁止**把文件名含 `debug` 的 APK 上传为 GitHub Release 资产（R11）。
 - **W2（同号发布）**：release 构建的 `versionCode` / `versionName` **必须**等于用户确认通过的那个 debug 构建。二者是同一版本的两种构建形态，不是两个版本。
 - **W3（返工消耗号码）**：debug 测试未通过时，修复后**必须**按 R1/R4 递增版本号并同步 §4 全部三处，再交付新的 debug 构建。被否决的号码**禁止**复用（R5 的直接推论）；即使该版本从未存在过 release 形态，也**必须**保留在 `CHANGELOG.md` 和应用内更新日志中。
 - **W4（无变化不递增）**：代码与资源零变化的纯重打包不构成新发布（R6），**禁止**消耗新版本号。

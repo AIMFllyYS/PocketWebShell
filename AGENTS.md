@@ -41,6 +41,15 @@ Windows:
 .\gradlew.bat testDebugUnitTest :app:assembleDebug
 ```
 
+Delivering a debug build to the user also requires archiving it under gitignored `dist/`:
+
+```text
+dist/PocketWebShell-<versionName>-debug.apk
+dist/PocketWebShell-<versionName>-debug.apk.sha256
+```
+
+Copy from `app/build/outputs/apk/debug/app-debug.apk`. Do not stage `dist/`. Do not upload `*-debug.apk` to GitHub Releases. Signed release artifacts use `dist/PocketWebShell-v<versionName>.apk` (see `docs/RELEASE.md`).
+
 macOS/Linux:
 
 ```bash

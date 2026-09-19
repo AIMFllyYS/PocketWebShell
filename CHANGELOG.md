@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.63] - 2026-09-20
+
+允许顶层 HTTP 导航，并在加载前用现有确认弹窗说明连接未加密：用户可「退出」或「继续访问」。继续后页面正常打开，顶栏保留「不安全」提示。HTTPS 页的混合内容与证书校验不放宽。
+
+### Added
+
+- 应用网络安全配置允许明文 HTTP，使 WebView 不再因 `ERR_CLEARTEXT_NOT_PERMITTED` 直接失败（如 `http://hust.m.humanyun.com/`）。
+- 主框架 `http://` 导航（含地址栏、`loadUrl`、页内重定向）先弹出 `AppConfirmDialog`；同会话同 host 确认一次后不再打断。
+- 浏览标签地址栏与站点壳顶栏在明文页常驻「不安全」；继续后另有一次提示。点退出则取消这次导航（站点壳若尚未打开任何页则离开）。
+
+### Changed
+
+- 普通 HTTP 站点网络失败不再误报「无法安全载入，请升级 HTTPS」；该文案仅保留给仍出现 CLEARTEXT 平台错误的情况。
+- Manifest `<queries>` 补充 `http` VIEW，外链到系统浏览器时 Android 11+ 可见性与 HTTPS 对齐。
+
+### Testing
+
+- `:core:webengine:testDebugUnitTest :feature:browser:testDebugUnitTest testDebugUnitTest :app:assembleDebug`
+- 真机：`http://hust.m.humanyun.com/` 弹窗 → 继续应能进登录页；HTTPS 站的 HTTP 子资源仍被混合内容策略拦住。
+
 ## [0.1.62] - 2026-09-19
 
 依据 0.1.61 真机探针日志（华为 HwWebview 114 / Android 12）定位并修复「桌面版仍显示手机布局」：布局链（980 改写、overview 缩放、多 meta 覆盖）实测全部正常，但 `(min-width:980px)` 媒体查询在布局宽已达 980 时仍不命中，且现代响应式站点的桌面断点普遍高于 980（Bootstrap lg=992、Tailwind lg=1024、GitHub≈1012）——980 永远拿不到桌面布局。同机证据：`navigator.userAgentData` 被该定制 WebView 摘除、`USER_AGENT_METADATA` 特性不受支持，UA-CH 身份链在此类设备上不可用。

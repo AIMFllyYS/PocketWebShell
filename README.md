@@ -91,7 +91,14 @@ macOS / Linux：
 ./gradlew :app:assembleDebug
 ```
 
-Debug APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。
+Gradle 先把 Debug APK 写到 `app/build/outputs/apk/debug/app-debug.apk`。凡交付给用户试装的 debug 包，**必须**再归档到本地 `dist/`（该目录已被 gitignore，不进源码库）：
+
+```text
+dist/PocketWebShell-<versionName>-debug.apk
+dist/PocketWebShell-<versionName>-debug.apk.sha256
+```
+
+例如 `0.1.63` → `dist/PocketWebShell-0.1.63-debug.apk`。正式签名包仍是 `dist/PocketWebShell-v<versionName>.apk`（带 `v`、无 `-debug`），二者不要混名。debug 包禁止作为 GitHub Release 资产。
 
 ## 测试
 

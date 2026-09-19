@@ -53,6 +53,7 @@ internal fun BrowserTopBar(
     sessionKey: Any? = null,
     readOnly: Boolean = false,
     stripScheme: Boolean = true,
+    insecure: Boolean = false,
 ) {
     val focusManager = LocalFocusManager.current
     val addressLabel = stringResource(R.string.browser_address)
@@ -69,6 +70,14 @@ internal fun BrowserTopBar(
             IconButton(onClick = onMenu, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Rounded.MoreHoriz, stringResource(R.string.browser_menu), Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.onSurface)
+            }
+            if (insecure && !editing) {
+                Text(
+                    text = stringResource(R.string.browser_cleartext_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 2.dp, end = 4.dp),
+                )
             }
             AppFormField(
                 value = urlInput,
