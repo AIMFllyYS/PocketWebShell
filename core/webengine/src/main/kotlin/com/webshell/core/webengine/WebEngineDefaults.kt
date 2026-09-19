@@ -7,6 +7,11 @@ object WebEngineDefaults {
     const val UA_MAJOR_VERSION: String = "151"
     const val UA_FULL_VERSION: String = "151.0.0.0"
 
+    /** GREASE 品牌（对齐 Chrome UA-CH 的 Not_A Brand 条目）。 */
+    const val UA_GREASE_BRAND: String = "Not_A Brand"
+    const val UA_GREASE_MAJOR_VERSION: String = "99"
+    const val UA_GREASE_FULL_VERSION: String = "99.0.0.0"
+
     /** 桌面模式 UA（Chrome 桌面版，自 Chrome 110 起 minor/build 固定为 .0.0） */
     const val DESKTOP_USER_AGENT: String =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -20,6 +25,45 @@ object WebEngineDefaults {
     const val MOBILE_USER_AGENT: String =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/" + UA_FULL_VERSION + " Mobile Safari/537.36"
+
+    /**
+     * UA-CH metadata：UA 字符串只覆盖 `User-Agent` 头，`Sec-CH-UA-*` 请求头与
+     * `navigator.userAgentData` 完全由这份 metadata 决定。
+     * 每个 brand 的 brand/majorVersion/fullVersion 三字段都必填——
+     * `BrandVersion.Builder.build()` 对空字段必抛 `IllegalStateException`；
+     * 0.1.58–0.1.60 漏填 GREASE 品牌的 fullVersion，异常被调用方吞掉，
+     * 整套 Client Hints 从未真正设置，按 UA-CH 判定的站点始终收到移动身份。
+     * 纯 JVM 可构造（不触碰 Android 框架），由单元测试直接验证。
+     * [mobilePlatformVersion]/[mobileModel] 仅移动模式使用，由宿主传入 Build.* 值。
+     */
+    fun userAgentMetadata(
+        desktop: Boolean,
+        mobilePlatformVersion: String = "",
+        mobileModel: String = "",
+    ): androidx.webkit.UserAgentMetadata =
+        androidx.webkit.UserAgentMetadata.Builder()
+            .setBrandVersionList(
+                listOf(
+                    androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
+                        .setBrand("Chromium")
+                        .setMajorVersion(UA_MAJOR_VERSION)
+                        .setFullVersion(UA_FULL_VERSION)
+                        .build(),
+                    androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
+                        .setBrand(UA_GREASE_BRAND)
+                        .setMajorVersion(UA_GREASE_MAJOR_VERSION)
+                        .setFullVersion(UA_GREASE_FULL_VERSION)
+                        .build(),
+                ),
+            )
+            .setPlatform(if (desktop) "Windows" else "Android")
+            .setPlatformVersion(if (desktop) "10.0.0" else mobilePlatformVersion)
+            .setArchitecture(if (desktop) "x86" else "")
+            .setModel(if (desktop) "" else mobileModel)
+            .setMobile(!desktop)
+            // Chrome 桌面在 Windows x64 上恒上报 64 位；留空是移动端特征。
+            .apply { if (desktop) setBitness(64) }
+            .build()
 
     /** WebViewAssetLoader 的本地资源域名（本地 HTML 导入用真实 https 源提供） */
     const val ASSET_LOADER_HOST: String = "appassets.androidplatform.net"

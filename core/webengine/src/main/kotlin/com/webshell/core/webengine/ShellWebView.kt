@@ -184,34 +184,41 @@ class ShellWebView internal constructor(
         webView.settings.userAgentString =
             if (enabled) WebEngineDefaults.DESKTOP_USER_AGENT else WebEngineDefaults.MOBILE_USER_AGENT
         if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
-            // UA 字符串只覆盖 User-Agent 头；Sec-CH-UA-* Client Hints 来自 metadata。
-            // brand 列表必须与 UA 字符串版本对齐，否则按 UA-CH 判定的站点仍会收到移动信号。
+            // UA 字符串只覆盖 User-Agent 头；Sec-CH-UA-* 与 navigator.userAgentData
+            // 来自 metadata。构造逻辑在 WebEngineDefaults.userAgentMetadata（纯 JVM、
+            // 有单元测试）：brand 三字段缺一整套都构造不出来，绝不能在这里内联。
             runCatching {
-                WebSettingsCompat.setUserAgentMetadata(
-                    webView.settings,
-                    androidx.webkit.UserAgentMetadata.Builder()
-                        .setBrandVersionList(
+                var metadata = WebEngineDefaults.userAgentMetadata(
+                    desktop = enabled,
+                    mobilePlatformVersion = Build.VERSION.RELEASE ?: "",
+                    mobileModel = Build.MODEL ?: "",
+                )
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA_FORM_FACTORS)) {
+                    // Chrome 140+ 桌面模式声明 Sec-CH-UA-Form-Factors: "Desktop"；
+                    // 读取该信号的现代站点缺了它会把我们识别回手机。
+                    metadata = androidx.webkit.UserAgentMetadata.Builder(metadata)
+                        .setFormFactors(
                             listOf(
-                                androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
-                                    .setBrand("Chromium")
-                                    .setMajorVersion(WebEngineDefaults.UA_MAJOR_VERSION)
-                                    .setFullVersion(WebEngineDefaults.UA_FULL_VERSION)
-                                    .build(),
-                                androidx.webkit.UserAgentMetadata.BrandVersion.Builder()
-                                    .setBrand("Not_A Brand")
-                                    .setMajorVersion("99")
-                                    .build(),
+                                if (enabled) androidx.webkit.UserAgentMetadata.FORM_FACTOR_DESKTOP
+                                else androidx.webkit.UserAgentMetadata.FORM_FACTOR_MOBILE,
                             ),
                         )
-                        .setPlatform(if (enabled) "Windows" else "Android")
-                        .setPlatformVersion(if (enabled) "10.0.0" else Build.VERSION.RELEASE ?: "")
-                        .setArchitecture(if (enabled) "x86" else "")
-                        .setModel(if (enabled) "" else Build.MODEL ?: "")
-                        .setMobile(!enabled)
-                        .build(),
+                        .build()
+                }
+                WebSettingsCompat.setUserAgentMetadata(webView.settings, metadata)
+            }.onSuccess {
+                // 回读校验：构造成功不等于内核接受，把生效的身份写进日志（不记页面内容）。
+                val applied = runCatching {
+                    WebSettingsCompat.getUserAgentMetadata(webView.settings)
+                }.getOrNull()
+                AppLog.log(
+                    "webengine",
+                    "UA-CH 已设置 desktop=$enabled platform=${applied?.platform} " +
+                        "mobile=${applied?.isMobile} brands=${applied?.brandVersionList?.size}",
                 )
             }.onFailure { e ->
-                AppLog.warn("webengine", "UA-CH metadata 设置失败 desktop=$enabled : ${e.message}")
+                // 历史上这里静默失败过三个版本；失败必须显眼。
+                AppLog.error("webengine", "UA-CH metadata 设置失败 desktop=$enabled : ${e.message}")
             }
         }
         applyDesktopScale()
@@ -1367,17 +1374,34 @@ class ShellWebView internal constructor(
     }
 
     /**
-     * 桌面模式加载完成后的运行时探针：把真实布局宽、DPR、viewport 是否已是 980、
-     * bootstrap 是否存活写入日志（我的 → 开发者选项 → 日志查看）。
-     * 只记录数值与布尔，不记录页面内容。
+     * 桌面模式加载完成后的运行时探针（我的 → 开发者选项 → 日志查看）。
+     * 验收桌面切换需要同时看到两条链路，缺一不可：
+     *  - 身份链：uad（navigator.userAgentData 的平台/移动标记，来自 UA-CH metadata）
+     *  - 布局链：iw/cw 布局宽、vps（全部 viewport meta 内容，不止第一个）、
+     *    mq（768/980/1024/1280 断点与触控能力查询）、vv/vs（visualViewport 宽与缩放）
+     * iw:980 而 mq 的 1024/1280 为 0 属正常（断点高于布局宽）；uad 显示 Android/mobile=true
+     * 则说明身份链断了。只记录数值与布尔，不记录页面内容。
      */
     private fun desktopViewportProbe() {
         webView.evaluateJavascript(
-            "(function(){try{var m=document.querySelector('meta[name=\"viewport\"]');" +
-                "var vp=m?(m.getAttribute('content')||''):'';" +
-                "return JSON.stringify({iw:window.innerWidth,cw:document.documentElement.clientWidth," +
-                "dpr:window.devicePixelRatio,vp980:vp.indexOf('980')>=0,boot:!!window.__wsBoot});" +
-                "}catch(e){return 'probe-fail';}})()",
+            "(function(){try{" +
+                "var vps=[];var ms=document.getElementsByTagName('meta');" +
+                "for(var i=0;i<ms.length;i++){var m=ms[i];" +
+                "if((m.getAttribute('name')||'').toLowerCase()==='viewport')" +
+                "vps.push(m.getAttribute('content')||'');}" +
+                "var u=navigator.userAgentData?" +
+                "(navigator.userAgentData.platform+',mobile='+navigator.userAgentData.mobile):'none';" +
+                "function mq(q){try{return matchMedia(q).matches?1:0}catch(e){return -1}}" +
+                "return JSON.stringify({" +
+                "iw:window.innerWidth,cw:document.documentElement.clientWidth," +
+                "dpr:window.devicePixelRatio,sw:window.screen.width," +
+                "vv:window.visualViewport?Math.round(window.visualViewport.width):0," +
+                "vs:window.visualViewport?+window.visualViewport.scale.toFixed(2):0," +
+                "vps:vps,uad:u," +
+                "mq:[mq('(min-width:768px)'),mq('(min-width:980px)'),mq('(min-width:1024px)')," +
+                "mq('(min-width:1280px)'),mq('(pointer:coarse)'),mq('(hover:hover)')]," +
+                "boot:window.__wsBoot?window.__wsBoot.v:0" +
+                "});}catch(e){return 'probe-fail:'+(e&&e.message);}})()",
         ) { raw -> AppLog.log("webengine", "桌面探针 sessionId=$sessionId $raw") }
     }
 

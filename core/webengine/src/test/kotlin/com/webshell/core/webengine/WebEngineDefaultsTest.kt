@@ -139,6 +139,48 @@ class DesktopInitialScaleTest {
     }
 }
 
+class UserAgentMetadataTest {
+    @Test fun `desktop metadata builds a complete windows identity`() {
+        // BrandVersion.Builder.build() 对空 brand/majorVersion/fullVersion 必抛
+        // IllegalStateException：0.1.58–0.1.60 因 GREASE 品牌缺 fullVersion，
+        // 整套 UA-CH 从未真正设置（异常被调用方 runCatching 吞掉）。
+        val md = WebEngineDefaults.userAgentMetadata(desktop = true)
+        assertEquals("Windows", md.platform)
+        assertFalse(md.isMobile)
+        assertEquals("10.0.0", md.platformVersion)
+        assertEquals("x86", md.architecture)
+        assertEquals(64, md.bitness)
+        assertEquals("", md.model)
+        val brands = md.brandVersionList
+        assertEquals(2, brands.size)
+        assertEquals("Chromium", brands[0].brand)
+        assertEquals(WebEngineDefaults.UA_MAJOR_VERSION, brands[0].majorVersion)
+        assertEquals(WebEngineDefaults.UA_FULL_VERSION, brands[0].fullVersion)
+        assertEquals(WebEngineDefaults.UA_GREASE_BRAND, brands[1].brand)
+        brands.forEach {
+            assertTrue(it.brand.isNotBlank())
+            assertTrue(it.majorVersion.isNotBlank())
+            assertTrue(it.fullVersion.isNotBlank())
+        }
+    }
+
+    @Test fun `mobile metadata builds a complete android identity`() {
+        val md = WebEngineDefaults.userAgentMetadata(
+            desktop = false, mobilePlatformVersion = "15", mobileModel = "Pixel 9",
+        )
+        assertEquals("Android", md.platform)
+        assertTrue(md.isMobile)
+        assertEquals("15", md.platformVersion)
+        assertEquals("Pixel 9", md.model)
+        assertEquals(0, md.bitness)
+        md.brandVersionList.forEach {
+            assertTrue(it.brand.isNotBlank())
+            assertTrue(it.majorVersion.isNotBlank())
+            assertTrue(it.fullVersion.isNotBlank())
+        }
+    }
+}
+
 class ResolveForceEnableZoomTest {
     @Test fun `desktop remote sites default on and local imports do not`() {
         assertTrue(resolveForceEnableZoom(desktopMode = true, localApp = false, userEnabled = false))
