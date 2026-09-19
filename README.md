@@ -145,6 +145,8 @@ dist/PocketWebShell-<versionName>-debug.apk.sha256
 - [PROJECT_ANALYSIS.md](PROJECT_ANALYSIS.md)：四个早期实现的系统比较、布局根因和整合决策。
 - [SECURITY.md](SECURITY.md)：漏洞报告与 WebView 安全边界。
 - [docs/RELEASE.md](docs/RELEASE.md)：签名、验签和 GitHub Release 流程。
+- [docs/WEBSITE.md](docs/WEBSITE.md)：官网内容同步清单。
+- [docs/OPS.md](docs/OPS.md)：正式发布后的打包、GitHub Release、官网 zip 上传与冒烟。
 
 ## License
 
