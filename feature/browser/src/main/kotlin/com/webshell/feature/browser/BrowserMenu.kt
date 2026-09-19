@@ -59,6 +59,8 @@ internal data class BrowserMenuState(
     val loading: Boolean = false,
     val bookmarked: Boolean = false,
     val desktopMode: Boolean = false,
+    /** 本地导入页（INCOMING_HTML）桌面模式只换 UA 不改布局——入口禁用，避免误导性"已切换"。 */
+    val desktopCapable: Boolean = true,
     val canAddToHome: Boolean = false,
 )
 
@@ -151,7 +153,7 @@ private fun BrowserMenuBody(
                 title = stringResource(R.string.browser_desktop),
                 leadingIcon = Icons.Filled.DesktopWindows,
                 trailing = { if (state.desktopMode) Icon(Icons.Filled.Check, stringResource(R.string.browser_enabled)) },
-                onClick = { onAction(BrowserMenuAction.Desktop) },
+                onClick = if (state.desktopCapable) ({ onAction(BrowserMenuAction.Desktop) }) else null,
             )
             AppListDivider()
             AppListRow(
