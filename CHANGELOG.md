@@ -2,9 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow the rules in `docs/VERSIONING.md`.
 
+## [0.1.59] - 2026-09-19
+
+修复「桌面版」对自带 viewport meta 的响应式网站始终不生效的根因：改写脚本只处理第一个 viewport meta，而 Blink 对多个 viewport meta 按后解析者覆盖先前者，站点自带的 `width=device-width` 始终胜出。本轮以模拟 DOM 行为测试验证修复（document-start / pre-DOM / DOM 就绪 / 幂等 / 无 meta 五场景）。
+
+### Fixed
+
+- 桌面视口改写改为遍历并改写**所有** viewport meta（`DESKTOP_VIEWPORT_REWRITE` 移除首个命中即 `break` 的逻辑）；无 meta 时才补建，且只在 `head`/`documentElement` 已存在时挂接，绝不向 document 根节点追加元素（0.1.58 的 `||document` 兜底存在文档根污染风险，已移除）。
+- 注入脚本新增 `__wsBoot` 版本幂等守卫；桌面模式页面在 `onPageStarted` 全量补注一次（老 WebView 另在 `onPageFinished` 兜底），重复注入零副作用。
+- 单元测试从字符串 token 断言升级为结构契约断言（禁止根节点追加、禁止首个命中即跳出、幂等守卫存在）。
+
 ## [0.1.58] - 2026-09-19
 
-修复浏览板块「桌面版」切换对部分网页不生效的问题：切换后缓存复用移动版页面、注入脚本在文档起始时机下脆弱、UA 与 Client Hints 信号不一致、老 WebView 缺少降级路径，以及本地导入页面的桌面入口误导。
+修复浏览板块「桌面版」切换对部分网页不生效的问题：切换后缓存复用移动版页面、注入脚本在文档起始时机下脆弱、UA 与 Client Hints 信号不一致、老 WebView 缺少降级路径，以及本地导入页面的桌面入口误导。（该版本经真机验证仍存在 viewport 改写首个命中即跳出的缺陷，由 0.1.59 补齐。）
 
 ### Fixed
 

@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.59",
+        date = "2026-09-19",
+        highlights = listOf(
+            "彻底修复「桌面版」对响应式网站不生效的根因：视口改写覆盖页面全部 viewport meta，不再被站点自带 meta 覆盖",
+            "注入脚本增加幂等守卫并在页面开始/完成回调双兜底，老 WebView 也可靠生效",
+            "移除可能污染文档根的注入兜底分支，桌面模式更稳定",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.58",
         date = "2026-09-19",
         highlights = listOf(
