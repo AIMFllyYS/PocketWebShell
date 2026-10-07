@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.65] - 2026-10-08
+
+网页顶部避让：修复部分设备网页顶部重复留白/白边，新增三模式全局设置。
+
 ### Added
 
 - 「我的 → 浏览体验」增加「网页顶部避让」：自动（默认）、强制避让、强制不避让；选择会保存并同步到已有网页会话和设置备份。
@@ -14,7 +18,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - 原生处理顶部后，清除传给网页的重复顶部安全区及自定义 CSS 顶部距离；保留侧边挖孔、底部手势区和键盘信息。
 - 浏览标签在隐藏地址栏时由网页宿主接管顶部避让，可切换为向上铺满；原生地址栏和设置页仍保留正常安全距离。
 
-版本号尚未递增；本次以 PR 交付源码，由维护者在本地签名、打包和发布。
+### Testing
+
+- `testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest`（单元测试合计 384 项）
+- `:app:connectedDebugAndroidTest`（`WebTopInsetInstrumentedTest`，API 35 模拟器：三模式顶部几何、CSS 安全区、WebView 复用与表单/滚动位置保留）
+- 模拟器人工冒烟：主页、站点壳三种模式、浏览标签原生地址栏、设置项实时切换
 
 ## [0.1.64] - 2026-09-20
 

@@ -31,6 +31,15 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.65",
+        date = "2026-10-08",
+        highlights = listOf(
+            "修复部分设备网页顶部重复留白/白边：按 WebView 在窗口里的实际位置补足顶部安全距离，不再重复叠加",
+            "「我的 → 浏览体验」新增「网页顶部避让」：自动（推荐）、强制避让、强制不避让，切换立即生效且不刷新页面",
+            "原生处理顶部后清除传给网页的重复安全区；侧边挖孔、底部手势区和键盘距离保持正常",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.64",
         date = "2026-09-20",
         highlights = listOf(

@@ -24,11 +24,11 @@
 
 ## 已验证与待验证
 
-本次源码交付保持 versionName `0.1.64`、versionCode `65`，未构建正式 Release。
+本节内容随 0.1.65 发布（versionName `0.1.65`、versionCode `66`）；PR 阶段曾以 `0.1.64` 源码交付。
 
 - 完整 `testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest` 通过。
 - 新增回归覆盖已有父层/系统偏移、部分偏移、未布局状态、手动模式、持久化取值兼容；另有 Android 兼容层测试确认清除顶部后侧/底挖孔、waterfall、导航栏和键盘距离仍保留。单元测试合计 384 项，无失败。
-- Luna 子智能体做了独立源码审查；官方 API 30 软件模拟器在无 KVM 环境尝试 10 分钟未完成启动，已停止。因此设备端测试尚未执行，没有真机截图。
+- 维护者已在 API 35 模拟器执行 `:app:connectedDebugAndroidTest`（`WebTopInsetInstrumentedTest`，1 项通过），并完成主页、站点壳三模式、浏览标签地址栏与设置项实时切换的人工冒烟；OPPO / 华为真机、键盘和厂商 WebView 差异仍建议真机对照。
 
 在已启动且连接的 Android 设备上运行：
 
