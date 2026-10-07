@@ -65,6 +65,7 @@ fun ShellScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val pullToRefresh by viewModel.pullToRefreshEnabled.collectAsStateWithLifecycle()
     val forceEnableZoom by viewModel.forceEnableZoomEnabled.collectAsStateWithLifecycle()
+    val webTopInsetMode by viewModel.webTopInsetMode.collectAsStateWithLifecycle()
     val orb by viewModel.siteShellOrb.collectAsStateWithLifecycle()
     val bookmarkedUrls by viewModel.bookmarkedUrls.collectAsStateWithLifecycle()
     val askAddToHome by viewModel.askAddToHome.collectAsStateWithLifecycle()
@@ -150,6 +151,7 @@ fun ShellScreen(
                     configFactory = {
                         config.copy(
                             pullToRefresh = pullToRefresh ?: config.pullToRefresh,
+                            topInsetMode = webTopInsetMode ?: config.topInsetMode,
                             forceEnableZoom = forceEnableZoom?.let {
                                 resolveForceEnableZoom(
                                     desktopMode = config.desktopMode,

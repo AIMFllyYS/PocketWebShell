@@ -204,7 +204,9 @@ fun MainScaffold(
                         Modifier.fillMaxSize().padding(
                             start = safeInsets.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
                             end = safeInsets.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
-                            top = safeInsets.calculateTopPadding(),
+                            top = if (tab == MainTab.BROWSE && browserShowsWebView && !browserChrome.state.toolbarVisible) {
+                                0.dp // The webpage host owns this edge when browser chrome is hidden.
+                            } else safeInsets.calculateTopPadding(),
                             bottom = if (tab == MainTab.HOME) {
                                 safeInsets.calculateBottomPadding() + bottomClearance
                             } else {
@@ -228,6 +230,7 @@ fun MainScaffold(
                                     MainTab.BROWSE -> BrowserScreen(
                                         viewModel = browserViewModel,
                                         chrome = browserChrome,
+                                        webTopInsetMode = browserPreferences.webTopInsetMode,
                                         isVisible = selectedTab == MainTab.BROWSE,
                                         autoCollapse = browserPreferences.autoCollapse,
                                         pullToRefresh = browserPreferences.pullToRefresh,

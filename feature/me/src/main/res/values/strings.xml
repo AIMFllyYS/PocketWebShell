@@ -328,4 +328,11 @@
     <string name="me_data_export_done_hint">可将文件分享或发送到其他设备，文件内容保持不变。</string>
     <string name="me_data_export_share_again">再次分享</string>
     <string name="me_done">完成</string>
+    <string name="me_web_top_inset">网页顶部避让</string>
+    <string name="me_web_top_auto">自动（推荐）</string>
+    <string name="me_web_top_auto_hint">按实际系统安全区补足边距，避免重复留白</string>
+    <string name="me_web_top_avoid">强制避让</string>
+    <string name="me_web_top_avoid_hint">始终为状态栏和顶部挖孔预留位置</string>
+    <string name="me_web_top_edge">强制不避让</string>
+    <string name="me_web_top_edge_hint">取消应用额外顶部边距；网页内容可能靠近状态栏或挖孔，网站自身留白仍会保留</string>
 </resources>
