@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import com.webshell.core.model.AppFontFamily
 import com.webshell.core.model.AppFontScale
+import com.webshell.core.model.WebTopInsetMode
 
 private val Context.settingsStore by preferencesDataStore(name = "webshell_settings")
 
@@ -60,6 +61,7 @@ data class HomeSettings(
      * 桌面模式本身默认允许，不受此开关影响。
      */
     val forceEnableZoomEnabled: Boolean = false,
+    val webTopInsetMode: WebTopInsetMode = WebTopInsetMode.AUTO,
     /** Site-shell assist orb; default on to match the previous always-visible corner button. */
     val siteShellOrbEnabled: Boolean = true,
     /** Normalized center; -1 means the default top-right rest point. */
@@ -118,6 +120,7 @@ class SettingsRepository @Inject constructor(
         val BROWSER_ORB_Y = floatPreferencesKey("browser_orb_y")
         val PULL_TO_REFRESH = booleanPreferencesKey("pull_to_refresh")
         val FORCE_ENABLE_ZOOM = booleanPreferencesKey("force_enable_zoom")
+        val WEB_TOP_INSET_MODE = stringPreferencesKey("web_top_inset_mode")
         val SITE_SHELL_ORB_ENABLED = booleanPreferencesKey("site_shell_orb_enabled")
         val SITE_SHELL_ORB_X = floatPreferencesKey("site_shell_orb_x")
         val SITE_SHELL_ORB_Y = floatPreferencesKey("site_shell_orb_y")
@@ -153,6 +156,7 @@ class SettingsRepository @Inject constructor(
             browserOrbY = normalizedOrbCoordinate(prefs[Keys.BROWSER_ORB_Y]),
             pullToRefreshEnabled = prefs[Keys.PULL_TO_REFRESH] ?: false,
             forceEnableZoomEnabled = prefs[Keys.FORCE_ENABLE_ZOOM] ?: false,
+            webTopInsetMode = WebTopInsetMode.fromStored(prefs[Keys.WEB_TOP_INSET_MODE]),
             siteShellOrbEnabled = prefs[Keys.SITE_SHELL_ORB_ENABLED] ?: true,
             siteShellOrbX = normalizedOrbCoordinate(prefs[Keys.SITE_SHELL_ORB_X]),
             siteShellOrbY = normalizedOrbCoordinate(prefs[Keys.SITE_SHELL_ORB_Y]),
@@ -240,6 +244,10 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setPullToRefreshEnabled(enabled: Boolean) {
         context.settingsStore.edit { it[Keys.PULL_TO_REFRESH] = enabled }
+    }
+
+    suspend fun setWebTopInsetMode(mode: WebTopInsetMode) {
+        context.settingsStore.edit { it[Keys.WEB_TOP_INSET_MODE] = mode.storedValue }
     }
 
     suspend fun setForceEnableZoomEnabled(enabled: Boolean) {

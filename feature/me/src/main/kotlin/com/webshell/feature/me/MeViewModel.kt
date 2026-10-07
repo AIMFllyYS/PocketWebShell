@@ -261,6 +261,10 @@ class MeViewModel @Inject constructor(
         settingsRepository.setPullToRefreshEnabled(enabled)
     }
 
+    fun setWebTopInsetMode(mode: com.webshell.core.model.WebTopInsetMode) = viewModelScope.launch {
+        settingsRepository.setWebTopInsetMode(mode)
+    }
+
     fun setForceEnableZoomEnabled(enabled: Boolean) = viewModelScope.launch {
         settingsRepository.setForceEnableZoomEnabled(enabled)
     }

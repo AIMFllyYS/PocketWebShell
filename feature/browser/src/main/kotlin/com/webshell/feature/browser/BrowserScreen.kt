@@ -51,6 +51,7 @@ fun BrowserScreen(
     isVisible: Boolean = true,
     autoCollapse: Boolean = true,
     pullToRefresh: Boolean = false,
+    webTopInsetMode: com.webshell.core.model.WebTopInsetMode? = null,
     onOpenDownloads: () -> Unit = {},
     onLeaveToHome: () -> Unit = {},
     documentContent: @Composable (BrowserTab) -> Unit = {},
@@ -288,6 +289,7 @@ fun BrowserScreen(
                             localAppId = incomingLocal,
                         )).copy(
                             pullToRefresh = pullToRefresh,
+                            topInsetMode = webTopInsetMode ?: existing?.topInsetMode ?: com.webshell.core.model.WebTopInsetMode.AUTO,
                             externalLinkPolicy = ShellConfig.ExternalLinkPolicy.OPEN_IN_SAME,
                             desktopMode = desktopOn,
                             forceEnableZoom = forceEnableZoomUser?.let {
@@ -306,6 +308,7 @@ fun BrowserScreen(
                     listener = requests.listener,
                     isVisible = isVisible,
                     parentHandlesInsets = true,
+                    parentHandlesTopInset = chrome.state.toolbarVisible,
                     sessionListener = viewModel.listenerFor(sessionId),
                     onFindResult = { active, total -> viewModel.onFindResult(sessionId, active, total) },
                     onReady = { viewModel.onHostReady(sessionId) },
