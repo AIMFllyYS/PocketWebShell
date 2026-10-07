@@ -39,6 +39,8 @@ import com.webshell.core.designsystem.components.AppListRow
 import com.webshell.core.designsystem.components.AppSettingsSection
 import com.webshell.core.designsystem.components.AppToggleRow
 import com.webshell.core.webengine.WebViewCapabilities
+import com.webshell.core.model.WebTopInsetMode
+import com.webshell.core.designsystem.components.AppSelectionRow
 
 /** 二级页：后台与通知（系统权限入口 + 增强保活）。 */
 @Composable
@@ -210,6 +212,8 @@ internal fun FeatureSettingsPage(
     onDownloadCapsule: (Boolean) -> Unit,
     onNewWindowAdopt: (Boolean) -> Unit,
     onBack: () -> Unit,
+    webTopInsetMode: WebTopInsetMode,
+    onWebTopInsetMode: (WebTopInsetMode) -> Unit,
 ) {
     DetailPage(stringResource(R.string.me_features), onBack) {
         FeatureSettingsContent(
@@ -225,6 +229,8 @@ internal fun FeatureSettingsPage(
             onSiteShellOrb,
             onDownloadCapsule,
             onNewWindowAdopt,
+            webTopInsetMode,
+            onWebTopInsetMode,
         )
     }
 }
@@ -243,6 +249,8 @@ internal fun FeatureSettingsContent(
     onSiteShellOrb: (Boolean) -> Unit,
     onDownloadCapsule: (Boolean) -> Unit,
     onNewWindowAdopt: (Boolean) -> Unit,
+    webTopInsetMode: WebTopInsetMode,
+    onWebTopInsetMode: (WebTopInsetMode) -> Unit,
 ) {
     AppSettingsSection(stringResource(R.string.me_browsing_experience)) {
         AppToggleRow(
@@ -286,6 +294,23 @@ internal fun FeatureSettingsContent(
             checked = newWindowAdopt,
             onCheckedChange = onNewWindowAdopt,
         )
+    }
+    Spacer(Modifier.height(16.dp))
+    AppSettingsSection(stringResource(R.string.me_web_top_inset)) {
+        val options = listOf(
+            Triple(WebTopInsetMode.AUTO, R.string.me_web_top_auto, R.string.me_web_top_auto_hint),
+            Triple(WebTopInsetMode.AVOID, R.string.me_web_top_avoid, R.string.me_web_top_avoid_hint),
+            Triple(WebTopInsetMode.EDGE_TO_EDGE, R.string.me_web_top_edge, R.string.me_web_top_edge_hint),
+        )
+        options.forEachIndexed { index, (mode, title, hint) ->
+            if (index > 0) AppListDivider(hasLeadingIcon = false)
+            AppSelectionRow(
+                title = stringResource(title),
+                subtitle = stringResource(hint),
+                selected = webTopInsetMode == mode,
+                onClick = { onWebTopInsetMode(mode) },
+            )
+        }
     }
     Spacer(Modifier.height(24.dp))
 }

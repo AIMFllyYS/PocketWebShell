@@ -136,6 +136,8 @@ fun MeScreen(
                 onDownloadCapsule = viewModel::setDownloadCapsuleEnabled,
                 onNewWindowAdopt = viewModel::setSiteShellNewWindowAdopt,
                 onBack = ::goBack,
+                webTopInsetMode = settings.webTopInsetMode,
+                onWebTopInsetMode = viewModel::setWebTopInsetMode,
             )
             MeSection.ENGINE -> EngineInfoPage(
                 capabilities = state.capabilities,

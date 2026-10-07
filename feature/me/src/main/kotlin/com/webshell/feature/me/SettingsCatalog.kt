@@ -43,6 +43,7 @@ fun settingsCatalog(): List<CatalogEntry> = listOf(
         var siteShellOrb by remember { mutableStateOf(true) }
         var downloadCapsule by remember { mutableStateOf(true) }
         var newWindowAdopt by remember { mutableStateOf(true) }
+        var webTopInsetMode by remember { mutableStateOf(com.webshell.core.model.WebTopInsetMode.AUTO) }
         FeatureSettingsContent(
             autoCollapse,
             pullToRefresh,
@@ -56,6 +57,8 @@ fun settingsCatalog(): List<CatalogEntry> = listOf(
             { siteShellOrb = it },
             { downloadCapsule = it },
             { newWindowAdopt = it },
+            webTopInsetMode,
+            { webTopInsetMode = it },
         )
     },
     CatalogEntry("settings.engine", CatalogCategory.CONTENT, R.string.me_engine, R.string.me_catalog_settings_hint, layout = CatalogLayout.ScrollContent) {

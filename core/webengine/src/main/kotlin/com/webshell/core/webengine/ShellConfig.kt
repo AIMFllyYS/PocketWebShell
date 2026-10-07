@@ -1,5 +1,7 @@
 package com.webshell.core.webengine
 
+import com.webshell.core.model.WebTopInsetMode
+
 /**
  * 一个"网页应用壳"会话的配置。
  * @param sessionId 唯一会话 ID，仅用于池内实例复用（切 tab/主页往返不丢状态）。
@@ -36,6 +38,7 @@ data class ShellConfig(
     val forceEnableZoom: Boolean = false,
     /** 内容边距模式 */
     val insetMode: InsetMode = InsetMode.PAD,
+    val topInsetMode: WebTopInsetMode = WebTopInsetMode.AUTO,
     /** 外链（非当前站点域）策略 */
     val externalLinkPolicy: ExternalLinkPolicy = ExternalLinkPolicy.OPEN_IN_BROWSER,
     /**
@@ -58,7 +61,7 @@ data class ShellConfig(
         /** 系统 bar/IME 以 padding 形式避让（适合未适配刘海的普通网站） */
         PAD,
 
-        /** 全屏铺满 + 注入 --ws-safe-* CSS 变量（适合声明了 viewport-fit=cover 的页面） */
+        /** Internal opt-in: full bleed; the page must consume --ws-safe-* (not env) for its top edge. */
         CSS_ONLY,
     }
 

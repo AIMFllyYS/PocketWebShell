@@ -23,7 +23,7 @@ class MainScaffoldViewModel @Inject constructor(
     private val incomingOpener: IncomingBrowserOpener,
 ) : ViewModel() {
     val browserPreferences = settingsRepository.settings
-        .map { BrowserHostPreferences(it.browserAutoCollapse, it.browserOrbX, it.browserOrbY, it.pullToRefreshEnabled) }
+        .map { BrowserHostPreferences(it.browserAutoCollapse, it.browserOrbX, it.browserOrbY, it.pullToRefreshEnabled, it.webTopInsetMode) }
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BrowserHostPreferences())
 
@@ -56,4 +56,5 @@ data class BrowserHostPreferences(
     val orbX: Float = -1f,
     val orbY: Float = -1f,
     val pullToRefresh: Boolean = false,
+    val webTopInsetMode: com.webshell.core.model.WebTopInsetMode? = null,
 )

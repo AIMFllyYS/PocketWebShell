@@ -103,6 +103,9 @@ class SiteShellViewModel @Inject constructor(
     val forceEnableZoomEnabled: StateFlow<Boolean?> = settingsRepository.settings
         .map { it.forceEnableZoomEnabled }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val webTopInsetMode: StateFlow<com.webshell.core.model.WebTopInsetMode?> = settingsRepository.settings
+        .map { it.webTopInsetMode }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val siteShellOrb: StateFlow<SiteShellOrbUi> = settingsRepository.settings
         .map {
             SiteShellOrbUi(

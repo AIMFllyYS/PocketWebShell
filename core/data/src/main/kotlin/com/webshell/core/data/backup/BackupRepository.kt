@@ -514,6 +514,9 @@ class BackupRepository @Inject constructor(
         settings["keepAliveServiceEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setKeepAliveServiceEnabled(it) }
         settings["pullToRefreshEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setPullToRefreshEnabled(it) }
         settings["forceEnableZoomEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setForceEnableZoomEnabled(it) }
+        settings["webTopInsetMode"]?.let {
+            settingsRepository.setWebTopInsetMode(com.webshell.core.model.WebTopInsetMode.fromStored(it))
+        }
         settings["siteShellOrbEnabled"]?.toBooleanStrictOrNull()?.let { settingsRepository.setSiteShellOrbEnabled(it) }
         val orbX = settings["siteShellOrbX"]?.toFloatOrNull()
         val orbY = settings["siteShellOrbY"]?.toFloatOrNull()
@@ -547,6 +550,7 @@ class BackupRepository @Inject constructor(
         "keepAliveServiceEnabled" to s.keepAliveServiceEnabled.toString(),
         "pullToRefreshEnabled" to s.pullToRefreshEnabled.toString(),
         "forceEnableZoomEnabled" to s.forceEnableZoomEnabled.toString(),
+        "webTopInsetMode" to s.webTopInsetMode.storedValue,
         "siteShellOrbEnabled" to s.siteShellOrbEnabled.toString(),
         "siteShellOrbX" to s.siteShellOrbX.toString(),
         "siteShellOrbY" to s.siteShellOrbY.toString(),

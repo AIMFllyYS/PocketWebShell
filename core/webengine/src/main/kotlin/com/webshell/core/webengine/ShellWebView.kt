@@ -1269,14 +1269,13 @@ class ShellWebView internal constructor(
     /** 最近一次 insets 注入脚本；换文档（新页面加载）后需重放 */
     private var lastInsetsJs: String? = null
 
-    /** 宿主把系统 insets 写进页面 CSS 变量（WebView 中 env(safe-area-inset-*) 恒为 0） */
+    /** Host-owned remaining insets, converted from physical pixels to the document's CSS pixels. */
     fun updateSafeAreaInsets(top: Int, bottom: Int, left: Int, right: Int, imeHeight: Int = 0) {
         val js = "(function(){if(!document.documentElement)return;" +
-            "document.documentElement.style.setProperty('--ws-safe-top','${top}px');" +
-            "document.documentElement.style.setProperty('--ws-safe-bottom','${bottom}px');" +
-            "document.documentElement.style.setProperty('--ws-safe-left','${left}px');" +
-            "document.documentElement.style.setProperty('--ws-safe-right','${right}px');" +
-            "document.documentElement.style.setProperty('--ws-ime-height','${imeHeight}px');})();"
+            "var ratio=(window.devicePixelRatio||1)*((window.visualViewport&&window.visualViewport.scale)||1);" +
+            "function set(k,v){document.documentElement.style.setProperty(k,(v/ratio)+'px');}" +
+            "set('--ws-safe-top',$top);set('--ws-safe-bottom',$bottom);" +
+            "set('--ws-safe-left',$left);set('--ws-safe-right',$right);set('--ws-ime-height',$imeHeight);})();"
         if (lastInsetsJs == js) return
         lastInsetsJs = js
         post { webView.evaluateJavascript(js, null) }

@@ -52,7 +52,7 @@ class ShellSessionController @Inject constructor(
             settings.pullToRefreshEnabled,
             settings.forceEnableZoomEnabled,
             settings.siteShellNewWindowPolicy,
-        )
+        ).copy(topInsetMode = settings.webTopInsetMode)
         createSession(config)
         if (app.keepAlive && settings.keepAliveServiceEnabled) {
             if (config.localAppId != null) {
@@ -83,6 +83,7 @@ class ShellSessionController @Inject constructor(
             // it must honor the user's pull-to-refresh preference exactly
             // like a saved-site or browser-tab session does.
             pullToRefresh = settings.pullToRefreshEnabled,
+            topInsetMode = settings.webTopInsetMode,
             forceEnableZoom = resolveForceEnableZoom(
                 desktopMode = false,
                 localApp = false,
