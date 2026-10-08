@@ -165,7 +165,8 @@ Do not claim success if a required check was skipped. State exactly what ran and
 
 - `main` is stable and releaseable. Do not develop directly on it after repository bootstrap.
 - `dev` is the integration branch.
-- Branch from `dev` using `feat/<topic>`, `fix/<topic>`, `refactor/<topic>`, `test/<topic>` or `docs/<topic>`.
+- For cloud work, read and follow [`skills/pocketwebshell-cloud/SKILL.md`](skills/pocketwebshell-cloud/SKILL.md): create a fresh branch from the latest `origin/main`, submit a PR to `dev`, and hand off local acceptance and publication to the maintainer. Local development continues to branch from `dev`.
+- Use `feat/<topic>`, `fix/<topic>`, `refactor/<topic>`, `test/<topic>` or `docs/<topic>` for work branches.
 - Use Conventional Commits: `type(scope): imperative summary`, with a summary under 72 characters.
 - Keep one logical concern per commit. Do not mix formatting, generated artifacts and behavior changes.
 - Never force-push `main`; do not bypass hooks; do not rewrite shared history unless the maintainer explicitly requests it.
