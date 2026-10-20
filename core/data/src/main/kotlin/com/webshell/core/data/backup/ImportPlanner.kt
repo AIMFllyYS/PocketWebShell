@@ -38,6 +38,7 @@ data class PlannedApp(
     val runtimeProfileKey: String?,
     /** 本地网页归档键：压缩包 "localapps/<key>/" 应恢复到 entity.id（仅 FULL/LAYOUT 的 isLocal 应用）。 */
     val localAppSourceKey: String?,
+    val customIcon: Boolean = false,
 )
 
 data class ImportPlan(
@@ -345,6 +346,7 @@ object ImportPlanner {
             bundledIconArchivePath = bundledIcon,
             runtimeProfileKey = runtimeKey,
             localAppSourceKey = localKey,
+            customIcon = app.customIcon ?: (bundledIcon != null),
         )
     }
 

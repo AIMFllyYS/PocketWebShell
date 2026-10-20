@@ -79,6 +79,7 @@ fun MainScaffold(
     var selectedTab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var openedUrl by rememberSaveable { mutableStateOf(launchUrl) }
     var openedAppId by rememberSaveable { mutableStateOf<String?>(null) }
+    var appSeed by remember { mutableStateOf<com.webshell.core.model.WebAppDraftSeed?>(null) }
     var playbookOpen by rememberSaveable { mutableStateOf(false) }
     val browserChrome = rememberBrowserChromeController()
     val browserPreferences by viewModel.browserPreferences.collectAsStateWithLifecycle()
@@ -226,7 +227,8 @@ fun MainScaffold(
                                         onAddRequested = { selectedTab = MainTab.ADD },
                                         onEditChromeChange = { homeEditChrome = it },
                                     )
-                                    MainTab.ADD -> AddScreen(onCreated = { selectedTab = MainTab.HOME })
+                                    MainTab.ADD -> AddScreen(onCreated = { selectedTab = MainTab.HOME },
+                                        seed = appSeed, onSeedConsumed = { appSeed = null })
                                     MainTab.BROWSE -> BrowserScreen(
                                         viewModel = browserViewModel,
                                         chrome = browserChrome,
@@ -234,6 +236,7 @@ fun MainScaffold(
                                         isVisible = selectedTab == MainTab.BROWSE,
                                         autoCollapse = browserPreferences.autoCollapse,
                                         pullToRefresh = browserPreferences.pullToRefresh,
+                                        onMakeApp = { appSeed = it; selectedTab = MainTab.ADD },
                                         onOpenDownloads = downloadViewModel::showHistory,
                                         onLeaveToHome = { selectedTab = MainTab.HOME },
                                         documentContent = { tab ->

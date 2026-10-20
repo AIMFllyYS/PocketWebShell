@@ -33,8 +33,13 @@ import com.webshell.core.designsystem.theme.LocalTransitionStyle
 fun AddScreen(
     modifier: Modifier = Modifier,
     onCreated: () -> Unit = {},
+    seed: com.webshell.core.model.WebAppDraftSeed? = null,
+    onSeedConsumed: () -> Unit = {},
     viewModel: AddViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
 ) {
+    LaunchedEffect(seed?.token) {
+        seed?.let { viewModel.prepareFromPage(it); onSeedConsumed() }
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current

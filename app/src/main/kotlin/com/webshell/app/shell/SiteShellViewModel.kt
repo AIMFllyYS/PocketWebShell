@@ -81,6 +81,7 @@ class SiteShellViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val savedPages: BrowserSavedPagesRepository,
     private val metadataFetcher: SiteMetadataFetcher,
+    private val siteIcons: com.webshell.core.data.SiteIconRepository,
     private val incomingDocuments: IncomingDocumentAccess,
 ) : ViewModel() {
     /**
@@ -255,7 +256,31 @@ class SiteShellViewModel @Inject constructor(
         override fun onCanGoForwardChanged(canGoForward: Boolean) {
             update(sessionId) { it.copy(canGoForward = canGoForward) }
         }
+        override fun onPageUrlChanged(url: String) { update(sessionId) { it.copy(pageUrl = url) } }
+        private var iconRevision = 0L
+        private var iconJob: kotlinx.coroutines.Job? = null
+        private var hasIcon = false
+        private var declarations: List<String>? = null
+        override fun onIconReceived(pageUrl: String, bitmap: android.graphics.Bitmap) { receiveIcon(pageUrl, bitmap, emptyList()) }
+        override fun onIconCandidates(pageUrl: String, candidates: List<String>) { receiveIcon(pageUrl, null, candidates) }
+        private fun receiveIcon(url: String, bitmap: android.graphics.Bitmap?, candidates: List<String>) {
+            if (bitmap == null) {
+                val old = declarations; declarations = candidates
+                if (old == candidates || (old == null && hasIcon)) return
+            }
+            iconJob?.cancel()
+            val revision = iconRevision
+            iconJob = viewModelScope.launch {
+                val path = if (bitmap != null) siteIcons.save(bitmap) else siteIcons.resolve(candidates)
+                val ready = _state.value as? SiteShellState.Ready
+                if (path != null && revision == iconRevision && ready?.config?.sessionId == sessionId && ready.pageUrl == url) {
+                    hasIcon = true
+                    siteIcons.publish(url, path, ready.request.second)
+                }
+            }
+        }
         override fun onPageStarted(url: String) {
+            iconRevision++; hasIcon = false; declarations = null; iconJob?.cancel()
             if (!url.equals("about:blank", ignoreCase = true)) rendererGone = false
             update(sessionId) { it.applyPageStarted(url) }
         }

@@ -84,27 +84,10 @@ object LocalHtmlIcon {
             href.startsWith("http://", ignoreCase = true)
 
     internal fun extractDataUri(dir: File, href: String): String? {
-        val comma = href.indexOf(',')
-        if (comma <= 0) return null
-        val header = href.substring(5, comma).lowercase()
-        val payload = href.substring(comma + 1)
-        if (payload.isEmpty() || payload.length > MAX_DATA_URI_CHARS) return null
-        if ("base64" !in header) return null
-        val ext = when {
-            header.startsWith("image/png") -> "png"
-            header.startsWith("image/jpeg") || header.startsWith("image/jpg") -> "jpg"
-            header.startsWith("image/webp") -> "webp"
-            header.startsWith("image/x-icon") || header.startsWith("image/vnd.microsoft.icon") -> "ico"
-            else -> return null
-        }
-        val bytes = runCatching { Base64.getDecoder().decode(payload) }.getOrNull() ?: return null
-        if (bytes.isEmpty() || bytes.size > MAX_DATA_URI_BYTES) return null
+        val image = IconDataUri.decode(href) ?: return null
         if (!dir.isDirectory && !dir.mkdirs()) return null
-        val dest = File(dir, "extracted-favicon.$ext")
-        return runCatching {
-            dest.writeBytes(bytes)
-            dest.absolutePath
-        }.getOrNull()
+        val dest = File(dir, "extracted-favicon.${image.extension}")
+        return runCatching { dest.writeBytes(image.bytes); dest.absolutePath }.getOrNull()
     }
 
     internal const val HEAD_BYTES = 256 * 1024

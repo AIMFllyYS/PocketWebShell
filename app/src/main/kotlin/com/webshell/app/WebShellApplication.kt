@@ -67,7 +67,7 @@ class WebShellApplication : Application(), SingletonImageLoader.Factory {
     }
 
     override fun newImageLoader(context: android.content.Context): ImageLoader {
-        val builder = ImageLoader.Builder(context)
+        val builder = ImageLoader.Builder(context).components { add(coil3.svg.SvgDecoder.Factory()) }
         if (this::imageHttpClient.isInitialized) {
             builder.components { add(OkHttpNetworkFetcherFactory(imageHttpClient)) }
         }

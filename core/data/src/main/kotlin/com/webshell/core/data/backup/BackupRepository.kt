@@ -59,6 +59,7 @@ class BackupRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val webAppDao: WebAppDao,
     private val settingsRepository: SettingsRepository,
+    private val siteIcons: com.webshell.core.data.SiteIconRepository,
 ) {
 
     // ---------- 导出 ----------
@@ -159,6 +160,7 @@ class BackupRepository @Inject constructor(
             return BackupApp(
                 title = entity.title,
                 url = entity.url,
+                customIcon = !siteIcons.canReplace(entity),
                 iconUrl = iconEntry ?: entity.iconUrl?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
                 desktopMode = entity.desktopMode,
                 darkMode = entity.darkMode,
@@ -373,6 +375,7 @@ class BackupRepository @Inject constructor(
         // 第三阶段：单次全量落库；失败则尽力删除已落位文件
         return try {
             webAppDao.upsertAll(finalEntities)
+            plan.apps.forEach { siteIcons.markCustom(it.entity.id, it.customIcon) }
             stagingRoot.deleteRecursively()
             AppLog.log(TAG, "导入完成：${plan.apps.size} 个应用、${plan.folderCount} 个文件夹（${plan.type}）")
             ImportOutcome.Success(
@@ -412,7 +415,8 @@ class BackupRepository @Inject constructor(
                 warnings += "「${planned.entity.title}」的图标未包含在备份中"
                 null
             } else {
-                val target = File(stagingRoot, "icons/icon_${UUID.randomUUID()}.img")
+                val prefix = if (planned.customIcon) "icon_" else "auto_"
+                val target = File(stagingRoot, "icons/${prefix}${UUID.randomUUID()}.img")
                 target.parentFile?.mkdirs()
                 zip.getInputStream(entry).use { input -> target.outputStream().use { input.copyTo(it) } }
                 target

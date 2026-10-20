@@ -19,6 +19,7 @@ data class BrowserTab(
      */
     val restoreStartUrlIfBlank: Boolean = true,
     val thumbnail: Bitmap? = null,
+    val iconPath: String? = null,
     val progress: Int = 0,
     val loading: Boolean = false,
     val canGoBack: Boolean = false,
@@ -44,6 +45,14 @@ data class BrowserTab(
             url.isNotBlank() &&
             url != "about:blank" &&
             !isIncomingAssetUrl(url)
+
+    fun canMakeApp(): Boolean = when (kind) {
+        BrowserTabKind.WEB -> canBookmark() && runCatching {
+            val uri = java.net.URI(url)
+            uri.scheme.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()
+        }.getOrDefault(false)
+        else -> localAppId != null
+    }
 
     fun canEditAddress(): Boolean = kind == BrowserTabKind.WEB
 }

@@ -101,6 +101,7 @@ dependencies {
     implementation(libs.haze)
     implementation(libs.haze.materials)
     implementation(libs.coil.compose)
+    implementation(libs.coil.svg)
     implementation(libs.coil.network.okhttp) {
         exclude(group = "com.squareup.okhttp3", module = "okhttp")
     }

@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.first
 class ShellSessionController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsRepository: SettingsRepository,
+    private val refresher: com.webshell.core.webengine.WebRefreshCoordinator,
 ) {
     private val deferredLocalKeepAlive = LinkedHashMap<String, Pair<String, String>>()
 
@@ -54,6 +55,7 @@ class ShellSessionController @Inject constructor(
             settings.siteShellNewWindowPolicy,
         ).copy(topInsetMode = settings.webTopInsetMode)
         createSession(config)
+        WebViewPool.get(app.id)?.let { refresher.prepareLaunch(app.id, it) }
         if (app.keepAlive && settings.keepAliveServiceEnabled) {
             if (config.localAppId != null) {
                 // Do not start FGS on the same beat as the first local WebGL peak.
@@ -105,6 +107,7 @@ class ShellSessionController @Inject constructor(
     fun ensureLoaded(config: ShellConfig): Boolean {
         val id = config.sessionId ?: return false
         val shell = WebViewPool.get(id) ?: return false
+        refresher.prepareLaunch(id, shell)
         val current = shell.currentUrl()
         val needsFirstNavigation = current.isNullOrBlank() || current.equals("about:blank", ignoreCase = true)
         // Only clear siblings before the first real navigation of a heavy local

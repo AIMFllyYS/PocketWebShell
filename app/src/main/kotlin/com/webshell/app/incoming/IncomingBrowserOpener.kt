@@ -103,6 +103,7 @@ class IncomingBrowserOpener @Inject constructor(
                 displayPath = tab.displayPath.orEmpty(),
                 sourceKey = tab.sourceKey ?: IncomingSourceKey.fromFilesystemPath(tab.displayPath),
                 kind = kind,
+                renderedIcon = tab.iconPath,
             )
         }.onFailure {
             AppLog.warn("incoming", "Incoming document home add failed")
@@ -247,6 +248,7 @@ class IncomingBrowserOpener @Inject constructor(
         displayPath: String,
         sourceKey: String?,
         kind: ViewerDocumentKind,
+        renderedIcon: String? = null,
     ): PersistedIncomingApp {
         if (sourceKey != null) {
             val existing = webAppDao.findLocalBySourceKey(sourceKey)
@@ -289,7 +291,10 @@ class IncomingBrowserOpener @Inject constructor(
         val cleanTitle = title.substringBeforeLast('.').ifBlank { title }.ifBlank { "document" }
         val url = LocalWebHost.buildLocalAppUrl(appId, entryName)
         val iconUrl = if (kind == ViewerDocumentKind.HTML) {
-            LocalHtmlIcon.existingPath(destDir, entryName)
+            renderedIcon?.takeIf { path ->
+                val file = File(path).canonicalFile
+                file.isFile && file.parentFile == File(documents.filesDir, "icons").canonicalFile && file.name.startsWith("auto_")
+            } ?: LocalHtmlIcon.existingPath(destDir, entryName)
         } else {
             null
         }
