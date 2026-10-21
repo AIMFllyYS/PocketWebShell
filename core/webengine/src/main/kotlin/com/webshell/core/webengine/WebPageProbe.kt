@@ -72,7 +72,21 @@ class WebPageProbe @Inject constructor(@ApplicationContext private val context: 
                     while (!inspected) delay(25)
                     val reset = if (resetOffline && sameWebOrigin(url, view.url.orEmpty())) {
                         val key = "__wsReset" + java.util.UUID.randomUUID().toString().replace("-", "")
-                        view.evaluateJavascript("window['$key']='pending';Promise.all([caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))),navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister())))]).then(()=>Promise.all([caches.keys(),navigator.serviceWorker.getRegistrations()])).then(r=>window['$key']=(r[0].length===0&&r[1].length===0?'done':'failed'),()=>window['$key']='failed');void 0", null)
+                        // Cache deletion decides the result; it is the part we can verify. Service-worker
+                        // cleanup stays best-effort: this inert document is same-origin and secure, yet
+                        // Chromium rejects getRegistrations() with InvalidStateError because the document
+                        // is not a real navigation target. Awaiting it in the same Promise.all rejected the
+                        // whole chain, so a successful cache purge reported failure and made the caller
+                        // (StorageViewModel.resetOffline) show a false "cleanup failed" toast.
+                        view.evaluateJavascript(
+                            "window['$key']='pending';(function(){var k='$key';function d(v){window[k]=v;}" +
+                                "try{caches.keys().then(function(ks){return Promise.all(ks.map(function(c){return caches.delete(c);}));})" +
+                                ".then(function(){return caches.keys();}).then(function(left){" +
+                                "try{navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.unregister();}));},function(){});}catch(e){}" +
+                                "d(left&&left.length===0?'done':'failed');},function(){d('failed');});" +
+                                "}catch(e){d('failed');}})();void 0",
+                            null,
+                        )
                         var state = "pending"
                         withTimeoutOrNull(5000) {
                             while (state == "pending") {
