@@ -52,6 +52,7 @@ fun BrowserScreen(
     autoCollapse: Boolean = true,
     pullToRefresh: Boolean = false,
     webTopInsetMode: com.webshell.core.model.WebTopInsetMode? = null,
+    onMakeApp: (com.webshell.core.model.WebAppDraftSeed) -> Unit = {},
     onOpenDownloads: () -> Unit = {},
     onLeaveToHome: () -> Unit = {},
     documentContent: @Composable (BrowserTab) -> Unit = {},
@@ -231,7 +232,10 @@ fun BrowserScreen(
             BrowserMenuAction.HideToolbar -> { focusManager.clearFocus(); chrome.dispatch(BrowserChromeEvent.HideToolbar) }
             BrowserMenuAction.Collapse -> chrome.dispatch(BrowserChromeEvent.Collapse)
             BrowserMenuAction.CloseAll -> chrome.dispatch(BrowserChromeEvent.ShowOverlay(BrowserOverlay.CloseAll))
-            BrowserMenuAction.AddToHome -> viewModel.addIncomingToHome(activeTab?.tabId)
+            BrowserMenuAction.AddToHome -> {
+                if (activeTab?.kind == BrowserTabKind.WEB) viewModel.appSeed(activeTab.tabId)?.let(onMakeApp)
+                else viewModel.addIncomingToHome(activeTab?.tabId)
+            }
         }
     }
 
@@ -341,7 +345,7 @@ fun BrowserScreen(
                     bookmarked = currentUrl in bookmarkedUrls,
                     desktopMode = desktopOn,
                     desktopCapable = activeTab?.kind != BrowserTabKind.INCOMING_HTML,
-                    canAddToHome = activeTab?.kind != BrowserTabKind.WEB && activeTab?.localAppId != null,
+                    canAddToHome = activeTab?.canMakeApp() == true,
                 ),
                 ::menuAction, ::dismissOverlay,
             )

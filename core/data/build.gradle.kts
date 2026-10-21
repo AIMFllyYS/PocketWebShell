@@ -43,9 +43,12 @@ dependencies {
     // 站点元数据抓取（feature/add 新增与 feature/home 强制刷新共用）
     implementation(libs.okhttp)
     implementation(libs.jsoup)
+    implementation(libs.coil.core)
+    implementation(libs.coil.svg)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }

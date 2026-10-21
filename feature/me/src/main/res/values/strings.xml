@@ -335,4 +335,16 @@
     <string name="me_web_top_avoid_hint">始终为状态栏和顶部挖孔预留位置</string>
     <string name="me_web_top_edge">强制不避让</string>
     <string name="me_web_top_edge_hint">取消应用额外顶部边距；网页内容可能靠近状态栏或挖孔，网站自身留白仍会保留</string>
+    <string name="me_browsing_data">浏览数据清理</string>
+    <string name="me_clear_resource_cache">网页与图片缓存</string>
+    <string name="me_clear_cookies">Cookie（退出所有网站登录）</string>
+    <string name="me_clear_site_storage">全部网站数据（含 Cookie 与离线数据）</string>
+    <string name="me_clear_visit_history">浏览历史</string>
+    <string name="me_clear_selected">清理选中项目</string>
+    <string name="me_clear_selected_hint">将按选项清理所有网站的共享数据。清理缓存、Cookie 或网站数据会关闭活动网页；清理网站数据可能删除未同步的离线内容。已制作应用、导入文件、书签与自定义图标会保留。</string>
+    <string name="me_clear_selected_done">选中的浏览数据已清理</string>
+    <string name="me_dns_capability">网络与 DNS：当前 WebView 未提供系统 DNS 缓存清理接口。清缓存或重新打开网页不保证 DNS 更新；解析仍异常时可检查系统私人 DNS、VPN 或切换网络。</string>
+    <string name="me_reset_offline">重置此网站离线资源</string>
+    <string name="me_reset_offline_hint">将关闭此来源的网页，并删除网站的离线资源缓存与 Service Worker。Cookie 和网站本地存储保留；网站缓存在离线资源中的未同步内容可能丢失。</string>
+    <string name="me_reset_offline_done">网站离线资源已重置，请重新打开</string>
 </resources>

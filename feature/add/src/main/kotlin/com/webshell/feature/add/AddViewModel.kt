@@ -22,6 +22,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -40,6 +41,8 @@ class AddViewModel @Inject constructor(
     private val dao: WebAppDao,
     private val settingsRepository: SettingsRepository,
     private val icons: UserIconRepository,
+    private val siteIcons: com.webshell.core.data.SiteIconRepository,
+    private val pageProbe: com.webshell.core.webengine.WebPageProbe,
 ) : ViewModel() {
     private val _state = MutableStateFlow<AddUiState>(AddUiState.Input)
     val state: StateFlow<AddUiState> = _state.asStateFlow()
@@ -60,22 +63,45 @@ class AddViewModel @Inject constructor(
     private var discoverFinished = false
     private var lastDiscoveryFingerprint: StorageFingerprint? = null
 
+    fun prepareFromPage(seed: com.webshell.core.model.WebAppDraftSeed) {
+        val url = AddUrl.normalize(seed.url) ?: return
+        preparation?.cancel(); revision++
+        val id = newAppId()
+        _state.value = AddUiState.Edit(AddDraft(appId = id, url = url,
+            title = seed.title.ifBlank { AddUrl.hostLabel(url) }, iconUrl = (siteIcons.latest(url) ?: seed.iconPath).orEmpty()))
+        preparation = viewModelScope.launch {
+            siteIcons.observe(url).collect { path ->
+                val current = _state.value as? AddUiState.Edit ?: return@collect
+                if (path != null && current.draft.appId == id && current.draft.iconUrl.isBlank() &&
+                    !current.isSaving && !current.isImportingIcon) {
+                    _state.value = current.copy(draft = current.draft.copy(iconUrl = path))
+                }
+            }
+        }
+    }
+
     fun confirmUrl(rawUrl: String) {
         val normalized = AddUrl.normalize(rawUrl) ?: return
         preparation?.cancel()
         val expectedRevision = ++revision
         _state.value = AddUiState.Loading
         preparation = viewModelScope.launch {
-            val metadata = fetcher.fetch(normalized).getOrNull()
+            val (metadata, page) = kotlinx.coroutines.coroutineScope {
+                val meta = async { fetcher.fetch(normalized).getOrNull() }
+                val rendered = async { pageProbe.fetch(normalized) }
+                meta.await() to rendered.await()
+            }
+            val resolvedIcon = page?.icon?.let { siteIcons.save(it) }
+                ?: siteIcons.resolve(page?.candidates.orEmpty() + metadata?.iconCandidates.orEmpty())
             if (revision != expectedRevision) return@launch
-            _state.value = if (metadata == null) {
+            _state.value = if (metadata == null && page == null) {
                 AppLog.warn("add", "Metadata unavailable; manual editor shown")
                 AddUiState.Edit(
                     draft = AddDraft(
                         appId = newAppId(),
                         url = normalized,
                         title = AddUrl.hostLabel(normalized),
-                        iconUrl = fetcher.displayFallbackIconUrl(normalized).orEmpty(),
+                        iconUrl = resolvedIcon.orEmpty(),
                     ),
                     fetchFailed = true,
                 )
@@ -83,9 +109,9 @@ class AddViewModel @Inject constructor(
                 AddUiState.Edit(
                     draft = AddDraft(
                         appId = newAppId(),
-                        url = metadata.finalUrl,
-                        title = metadata.title,
-                        iconUrl = metadata.iconUrl.orEmpty(),
+                        url = page?.url ?: metadata!!.finalUrl,
+                        title = page?.title?.takeIf { it.isNotBlank() } ?: metadata?.title ?: AddUrl.hostLabel(normalized),
+                        iconUrl = resolvedIcon.orEmpty(),
                     ),
                 )
             }
@@ -175,6 +201,7 @@ class AddViewModel @Inject constructor(
         _state.value = editor.copy(isImportingIcon = true)
         viewModelScope.launch {
             val result = icons.importIcon(uri)
+            if (result.isSuccess) siteIcons.markCustom(expectedId)
             val current = _state.value as? AddUiState.Edit ?: return@launch
             if (current.draft.appId != expectedId) return@launch
             _state.value = current.copy(
@@ -187,7 +214,11 @@ class AddViewModel @Inject constructor(
 
     fun updateDraft(transform: (AddDraft) -> AddDraft) {
         val editor = _state.value as? AddUiState.Edit ?: return
-        if (!editor.isSaving && !editor.isImportingIcon) _state.value = editor.copy(draft = transform(editor.draft))
+        if (!editor.isSaving && !editor.isImportingIcon) {
+            val draft = transform(editor.draft)
+            if (draft.iconUrl != editor.draft.iconUrl) siteIcons.markCustom(draft.appId)
+            _state.value = editor.copy(draft = draft)
+        }
     }
 
     fun save() {

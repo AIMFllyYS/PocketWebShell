@@ -45,6 +45,7 @@ import kotlinx.coroutines.launch
 class BrowserViewModel @Inject constructor(
     private val savedPages: BrowserSavedPagesRepository,
     private val metadataFetcher: SiteMetadataFetcher,
+    private val siteIcons: com.webshell.core.data.SiteIconRepository,
     private val settingsRepository: SettingsRepository,
     private val openTabs: BrowserOpenTabsRepository,
     private val incomingDocuments: IncomingDocumentAccess,
@@ -185,6 +186,34 @@ class BrowserViewModel @Inject constructor(
         super.onCleared()
     }
 
+    private val historyGenerations = mutableMapOf<String, Long>()
+    private val iconRevisions = mutableMapOf<String, Long>()
+    private val iconJobs = mutableMapOf<String, Job>()
+    private val iconDeclarations = mutableMapOf<String, List<String>>()
+
+    fun appSeed(tabId: String): com.webshell.core.model.WebAppDraftSeed? {
+        val tab = _tabs.value.firstOrNull { it.tabId == tabId && it.canBookmark() } ?: return null
+        WebViewPool.get(tab.sessionId)?.requestPageIcons()
+        return com.webshell.core.model.WebAppDraftSeed(tab.url, tab.title, tab.iconPath, UUID.randomUUID().toString())
+    }
+
+    private fun receiveIcon(tabId: String, url: String, native: Bitmap? = null, candidates: List<String> = emptyList()) {
+        val tab = _tabs.value.firstOrNull { it.tabId == tabId && it.url == url } ?: return
+        if (native == null) {
+            val old = iconDeclarations.put(tabId, candidates)
+            if (old == candidates || (old == null && tab.iconPath != null)) return
+        }
+        iconJobs[tabId]?.cancel()
+        val revision = iconRevisions[tabId]
+        iconJobs[tabId] = viewModelScope.launch {
+            val path = if (native != null) siteIcons.save(native) else siteIcons.resolve(candidates)
+            if (path != null && iconRevisions[tabId] == revision && _tabs.value.any { it.tabId == tabId && it.url == url }) {
+                _tabs.value = _tabs.value.map { if (it.tabId == tabId) it.copy(iconPath = path) else it }
+                siteIcons.publish(url, path)
+            }
+        }
+    }
+
     /** 取（或建）指定会话的持久监听者；由 BrowserScreen 挂到 ShellWebView.sessionListener */
     fun listenerFor(sessionId: String): ShellListener =
         sessionListeners.getOrPut(sessionId) {
@@ -207,7 +236,16 @@ class BrowserViewModel @Inject constructor(
                     }
                 }
 
+                override fun onPageUrlChanged(url: String) { updateTabMeta(tabId, url = url) }
+                override fun onIconReceived(pageUrl: String, bitmap: Bitmap) { receiveIcon(tabId, pageUrl, native = bitmap) }
+                override fun onIconCandidates(pageUrl: String, candidates: List<String>) { receiveIcon(tabId, pageUrl, candidates = candidates) }
+
                 override fun onPageStarted(url: String) {
+                    historyGenerations[tabId] = savedPages.historyGeneration()
+                    iconRevisions[tabId] = (iconRevisions[tabId] ?: 0) + 1
+                    iconJobs.remove(tabId)?.cancel()
+                    iconDeclarations.remove(tabId)
+                    _tabs.value = _tabs.value.map { if (it.tabId == tabId) it.copy(iconPath = null) else it }
                     updateTabMeta(tabId, url = url)
                     updateTabNav(tabId, progress = 0, loading = true)
                     updateTabError(tabId, null)
@@ -241,11 +279,8 @@ class BrowserViewModel @Inject constructor(
                 }
 
                 override fun onIconUrl(url: String) {
-                    val clean = sanitizeHistoryIconUrl(url) ?: return
                     val tab = _tabs.value.firstOrNull { it.tabId == tabId } ?: return
-                    if (tab.kind == BrowserTabKind.WEB) {
-                        viewModelScope.launch { savedPages.updateHistoryIcon(tab.url, clean) }
-                    }
+                    receiveIcon(tabId, tab.url, candidates = listOf(url))
                 }
 
                 override fun onPageFinished(url: String) {
@@ -258,7 +293,7 @@ class BrowserViewModel @Inject constructor(
                         offerAddToHome(tabId)
                     }
                     if (tab?.kind == BrowserTabKind.WEB) {
-                        recordHistory(url, tab.title, metadataFetcher.displayFallbackIconUrl(url))
+                        recordHistory(url, tab.title, tab.iconPath, historyGenerations[tabId] ?: savedPages.historyGeneration())
                     }
                 }
 
@@ -693,7 +728,7 @@ class BrowserViewModel @Inject constructor(
 
     fun toggleBookmark(url: String, title: String) {
         viewModelScope.launch {
-            savedPages.toggleBookmark(url, title, metadataFetcher.displayFallbackIconUrl(url))
+            savedPages.toggleBookmark(url, title, siteIcons.latest(url))
         }
     }
 
@@ -703,9 +738,9 @@ class BrowserViewModel @Inject constructor(
 
     // ---------------------------------------------------------------- history
 
-    fun recordHistory(url: String, title: String, iconUrl: String? = null) {
+    fun recordHistory(url: String, title: String, iconUrl: String? = null, expectedGeneration: Long = savedPages.historyGeneration()) {
         if (isIncomingAssetUrl(url)) return
-        viewModelScope.launch { savedPages.recordVisit(url, title, iconUrl) }
+        viewModelScope.launch { savedPages.recordVisit(url, title, iconUrl, expectedGeneration) }
     }
 
     fun loadMoreHistory() {

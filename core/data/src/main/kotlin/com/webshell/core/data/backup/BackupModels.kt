@@ -13,6 +13,7 @@ data class BackupApp(
     val url: String,
     /** 远程 http(s) 图标地址，或压缩包内相对路径 "icons/<file>"（打包的本地图标），或 null。 */
     val iconUrl: String? = null,
+    val customIcon: Boolean? = null,
     val desktopMode: Boolean = false,
     val darkMode: Boolean = false,
     val keepAlive: Boolean = false,

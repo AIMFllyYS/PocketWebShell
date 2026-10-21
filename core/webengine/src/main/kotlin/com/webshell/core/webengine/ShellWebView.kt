@@ -115,6 +115,26 @@ class ShellWebView internal constructor(
      * page start (or when an explicit navigation supersedes the reload).
      */
     private var cacheBypassReloadPending = false
+    private var forcedReload: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+
+    suspend fun forceRefresh(): Boolean {
+        val completion = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        forcedReload?.complete(false)
+        forcedReload = completion
+        return try {
+            reloadBypassingCache()
+            kotlinx.coroutines.withTimeoutOrNull(20_000) { completion.await() } ?: false
+        } finally {
+            if (forcedReload === completion) { forcedReload = null; restoreDefaultCacheModeIfNeeded() }
+        }
+    }
+
+    fun bypassNextNavigation() {
+        cacheBypassReloadPending = true
+        webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        val generation = documentRevision
+        mainHandler.postDelayed({ if (documentRevision <= generation + 1) restoreDefaultCacheModeIfNeeded() }, 25_000)
+    }
     /** DOCUMENT_START_SCRIPT support is process-constant; cache it for the fallback path. */
     private val documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
     /** Log the legacy-WebView fallback injection at most once per session. */
@@ -362,7 +382,7 @@ class ShellWebView internal constructor(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             if (!isCurrent(view)) return
-            restoreDefaultCacheModeIfNeeded()
+            documentRevision++
             lastCommittedUrl = url
             if (config.desktopMode && config.localAppId == null) {
                 // document-start 注入是主路径；onPageStarted 再注入一次作为全
@@ -407,6 +427,7 @@ class ShellWebView internal constructor(
             if (!isCurrent(view)) return
             notifyListeners { onCanGoBackChanged(view.canGoBack()) }
             notifyListeners { onCanGoForwardChanged(view.canGoForward()) }
+            notifyListeners { onPageUrlChanged(url) }
             super.doUpdateVisitedHistory(view, url, isReload)
         }
 
@@ -445,7 +466,14 @@ class ShellWebView internal constructor(
             rendererRecoveryGate.markStable()
             rendererRecoveryFailed = false
             setRefreshingInternal(false)
+            restoreDefaultCacheModeIfNeeded()
+            forcedReload?.complete(true)
             notifyListeners { onPageFinished(url) }
+            requestPageIcons()
+            val document = documentRevision
+            for (delay in listOf(1000L, 3000L)) mainHandler.postDelayed({
+                if (document == documentRevision && webView.url == url) requestPageIcons()
+            }, delay)
             CookieManager.getInstance().flush()
         }
 
@@ -456,6 +484,8 @@ class ShellWebView internal constructor(
         ) {
             if (!isCurrent(view)) return
             if (request.isForMainFrame) {
+                forcedReload?.complete(false)
+                restoreDefaultCacheModeIfNeeded()
                 AppLog.error(
                     "web",
                     "加载失败 ${logHost(request.url?.toString())}: ${error.errorCode} ${error.description}",
@@ -476,6 +506,8 @@ class ShellWebView internal constructor(
         ) {
             if (!isCurrent(view)) return
             if (request.isForMainFrame && errorResponse.statusCode >= 400) {
+                forcedReload?.complete(false)
+                restoreDefaultCacheModeIfNeeded()
                 val failedUrl = request.url?.toString().orEmpty()
                 notifyListeners {
                     onPageError(
@@ -597,9 +629,14 @@ class ShellWebView internal constructor(
             notifyListeners { onTitleReceived(title) }
         }
 
+        override fun onReceivedIcon(view: WebView, icon: Bitmap) {
+            if (!isCurrent(view)) return
+            notifyListeners { onIconReceived(view.url.orEmpty(), icon) }
+        }
+
         override fun onReceivedTouchIconUrl(view: WebView, url: String, precomposed: Boolean) {
             if (!isCurrent(view) || url.isBlank()) return
-            notifyListeners { onIconUrl(url) }
+            notifyListeners { onIconUrl(url); onIconCandidates(view.url.orEmpty(), listOf(url)) }
         }
 
         override fun onCreateWindow(
@@ -1314,7 +1351,6 @@ class ShellWebView internal constructor(
     fun loadWithStateRestore(url: String) {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
-        restoreDefaultCacheModeIfNeeded()
         val target = pendingRecoveryUrl?.also { pendingRecoveryUrl = null } ?: url
         loadUrlOrPrompt(target)
     }
@@ -1361,15 +1397,29 @@ class ShellWebView internal constructor(
 
     /**
      * 绕过 HTTP 缓存的 reload：桌面/移动切换必须让服务器按新 UA 重新决策主文档，
-     * 普通 reload 可能直接复用缓存中的旧版本页面。主文档请求发出后，
-     * [restoreDefaultCacheModeIfNeeded] 在下一次 onPageStarted 恢复默认缓存策略。
+     * 普通 reload 可能直接复用缓存中的旧版本页面。整个导航期间保持绕缓存，
+     * 完成、失败、停止或超时后恢复默认策略；不删除 Cookie 或网站存储。
      */
+    private var documentRevision = 0L
+
+    fun requestPageIcons() {
+        val revision = documentRevision
+        val url = webView.url ?: return
+        webView.evaluateJavascript(PageIconDeclarations.script) { raw ->
+            if (revision != documentRevision || webView.url != url) return@evaluateJavascript
+            val candidates = PageIconDeclarations.parse(raw)
+            if (candidates.isNotEmpty()) notifyListeners { onIconCandidates(url, candidates) }
+        }
+    }
+
     fun reloadBypassingCache() {
         if (retryRendererIfNeeded()) return
         rendererRecoveryGate.resetForExplicitNavigation()
         val go = {
             cacheBypassReloadPending = true
             webView.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+            val generation = documentRevision
+            mainHandler.postDelayed({ if (documentRevision <= generation + 1) restoreDefaultCacheModeIfNeeded() }, 25_000)
             webView.reload()
         }
         val url = webView.url
@@ -1514,6 +1564,8 @@ class ShellWebView internal constructor(
     }
 
     fun stopLoading() {
+        forcedReload?.complete(false)
+        restoreDefaultCacheModeIfNeeded()
         runCatching { webView.stopLoading() }
     }
 
@@ -1532,6 +1584,9 @@ class ShellWebView internal constructor(
     }
 
     fun release() {
+        documentRevision++
+        forcedReload?.complete(false)
+        restoreDefaultCacheModeIfNeeded()
         listener = null
         sessionListener = null
         callbackGeneration++

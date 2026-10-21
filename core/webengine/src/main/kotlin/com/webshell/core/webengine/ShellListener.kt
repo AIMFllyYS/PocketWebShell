@@ -19,8 +19,12 @@ interface ShellListener {
     fun onFirstPaint(url: String) {}
 
     fun onPageFinished(url: String) {}
+    fun onPageUrlChanged(url: String) {}
 
     fun onTitleReceived(title: String) {}
+
+    fun onIconReceived(pageUrl: String, bitmap: android.graphics.Bitmap) {}
+    fun onIconCandidates(pageUrl: String, candidates: List<String>) {}
 
     /** 页面声明的 touch icon / favicon 地址（可能晚于 onPageFinished）。 */
     fun onIconUrl(url: String) {}

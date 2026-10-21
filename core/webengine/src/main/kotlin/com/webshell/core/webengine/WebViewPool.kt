@@ -99,6 +99,8 @@ object WebViewPool {
     }
 
     /** Used by the explicit "clear all browser data" action after all live sessions are closed. */
+    fun discardSavedState(sessionId: String) { savedStates.remove(sessionId) }
+
     fun clearSavedStates() {
         savedStates.clear()
         lifecycle.entries.removeIf { it.value == SessionLifecycleState.EVICTED }

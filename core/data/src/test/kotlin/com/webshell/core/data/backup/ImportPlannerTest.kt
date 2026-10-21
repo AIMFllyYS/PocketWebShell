@@ -435,4 +435,17 @@ class ImportPlannerTest {
         assertEquals("app-old", plan.apps.single().localAppSourceKey)
         assertNull(plan.apps.single().runtimeProfileKey)
     }
+    @Test fun customIconSourceSurvivesIdRemappingWhileAutomaticIconsRemainRefreshable() {
+        val custom = app("custom").copy(iconUrl = "https://custom.example/icon.svg", customIcon = true)
+        val automatic = app("automatic").copy(iconUrl = "icons/auto.png", customIcon = false)
+        val imported = plan(manifest(BackupType.FULL, listOf(custom, automatic))).requirePlan().apps
+        assertTrue(imported[0].customIcon)
+        assertEquals(false, imported[1].customIcon)
+    }
+
+    @Test fun legacyBundledIconsKeepTheirConservativeCustomProtection() {
+        val old = app("old").copy(iconUrl = "icons/old.png", customIcon = null)
+        assertTrue(plan(manifest(BackupType.FULL, listOf(old))).requirePlan().apps.single().customIcon)
+    }
+
 }

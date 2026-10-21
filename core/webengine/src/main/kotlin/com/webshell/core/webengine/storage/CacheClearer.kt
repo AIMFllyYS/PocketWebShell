@@ -15,6 +15,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.resume
 
 sealed interface ClearOutcome {
@@ -34,9 +35,9 @@ data class ClearAllResult(
 )
 
 /**
- * 缓存清理器：只删除共享 Default（以及旧版根目录）的缓存子目录
- * （Cache / Code Cache / GPUCache / Dawn / Shader）和 `cache/WebView` HTTP 缓存，
- * 绝不触碰 Cookies、Local Storage、IndexedDB、Service Worker 等站点数据。
+ * Public WebView data operations. Resource-cache clearing preserves website data;
+ * explicit website-data deletion is a separate operation with capability checks.
+ * No Chromium-private directory deletion is used.
  */
 @Singleton
 class CacheClearer @Inject constructor(
@@ -103,20 +104,14 @@ class CacheClearer @Inject constructor(
     }
 
     /** Clear only re-creatable browser cache. Cookies and LocalStorage remain intact. */
-    suspend fun clearBrowserCache(): ClearOutcome = withContext(Dispatchers.IO) {
+    suspend fun clearBrowserCache(): ClearOutcome = withContext(Dispatchers.Main.immediate) {
         if (runningSharedSessions().isNotEmpty()) return@withContext ClearOutcome.Failed("浏览器仍有活动会话")
-        val root = File(context.dataDir, "app_webview")
-        val before = measureAllCacheBytes(root)
-        val failure = StorageClassifier.CACHE_DIR_NAMES.filter { name ->
-            val candidates = listOf(File(root, name), File(root, "Default/$name"))
-            candidates.any { it.exists() && !runCatching { it.deleteRecursively() }.getOrDefault(false) }
-        }
-        if (failure.isNotEmpty()) return@withContext ClearOutcome.Failed(failure.joinToString())
-        val httpFreed = clearWebViewHttpCache()
-        val after = measureAllCacheBytes(root)
-        val profileFreed = if (before != null && after != null) (before - after).coerceAtLeast(0) else null
-        val freed = if (profileFreed != null && httpFreed != null) profileFreed + httpFreed else null
-        ClearOutcome.Done(freed)
+        try {
+            val probe = android.webkit.WebView(context)
+            try { probe.clearCache(true) } finally { probe.destroy() }
+            // The public API has no disk-deletion callback; do not invent a freed-byte count.
+            ClearOutcome.Done(null)
+        } catch (_: Exception) { ClearOutcome.Failed("无法清除 WebView 缓存") }
     }
 
     /**
@@ -125,82 +120,38 @@ class CacheClearer @Inject constructor(
      */
     suspend fun clearAllWebViewData(): ClearOutcome = withContext(Dispatchers.IO) {
         if (liveSessions().isNotEmpty()) return@withContext ClearOutcome.Failed("请先关闭所有浏览器会话")
+        WebViewPool.clearSavedStates()
+        var complete = true
         val cleared = runCatching {
-            withContext(Dispatchers.Main.immediate) {
+            kotlinx.coroutines.withTimeout(10_000) { withContext(Dispatchers.Main.immediate) {
                 val storage = WebStorage.getInstance()
                 if (WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
                     suspendCancellableCoroutine { continuation ->
                         WebStorageCompat.deleteBrowsingData(storage) {
-                            continuation.resume(Unit)
+                            if (continuation.isActive) continuation.resume(Unit)
                         }
                     }
                 } else {
+                    complete = false
                     storage.deleteAllData()
                     suspendCancellableCoroutine { continuation ->
-                        CookieManager.getInstance().removeAllCookies { continuation.resume(Unit) }
+                        CookieManager.getInstance().removeAllCookies { if (continuation.isActive) continuation.resume(Unit) }
                     }
                 }
-            }
+            } }
         }.isSuccess
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
         if (!cleared) return@withContext ClearOutcome.Failed("无法清除 WebView 数据")
         runCatching { CookieManager.getInstance().flush() }
-        deleteResidualSiteDataDirs()
+        if (!complete) return@withContext ClearOutcome.Failed(context.getString(com.webshell.core.webengine.R.string.web_data_partial))
         WebViewPool.clearSavedStates()
         ClearOutcome.Done(null)
     }
 
-    /**
-     * 平台 API 之后的纵深防御：删除 Default 与遗留 `Profile N` 下的站点数据目录。
-     * 失败只记日志；平台删除才是保证合同。
-     */
-    private fun deleteResidualSiteDataDirs() {
-        val webviewRoot = File(context.dataDir, "app_webview")
-        val profileDirs = listOf(File(webviewRoot, "Default")) +
-            webviewRoot.listFiles()?.filter {
-                it.isDirectory && StorageClassifier.isLegacyProfileDirName(it.name)
-            }.orEmpty()
-        for (dir in profileDirs) {
-            for (name in StorageClassifier.SITE_DATA_DIR_NAMES) {
-                val target = File(dir, name)
-                if (target.exists()) {
-                    runCatching { target.deleteRecursively() }
-                        .onFailure { AppLog.warn(TAG, "站点数据目录删除失败: ${dir.name}/$name") }
-                }
-            }
-        }
-    }
-
-    /**
-     * 清理共享可清理缓存：Default / 根缓存目录 + HTTP 缓存 + Coil image_cache。
-     * 不再遍历从未创建的 `profiles/<appId>`。
-     */
-    suspend fun clearAllClearable(): ClearAllResult = withContext(Dispatchers.IO) {
-        var freedSum = 0L
-        var reliable = true
-
-        if (runningSharedSessions().isEmpty()) {
-            val webviewRoot = File(context.dataDir, "app_webview")
-            val sharedFreed = clearCacheDirsOf(File(webviewRoot, "Default"), "默认 Profile")
-            val legacyFreed = clearCacheDirsOf(webviewRoot, "旧版根目录缓存")
-            val httpFreed = clearWebViewHttpCache()
-            for (freed in listOf(sharedFreed, legacyFreed, httpFreed)) {
-                if (freed == null) reliable = false else freedSum += freed
-            }
-        } else {
-            AppLog.log(TAG, "默认 Profile 有共享会话运行，跳过其缓存清理")
-        }
-
-        val imageCacheFreed = deleteDirMeasured(File(context.cacheDir, "image_cache"), "图片缓存")
-        if (imageCacheFreed == null) reliable = false else freedSum += imageCacheFreed
-
-        val result = ClearAllResult(
-            clearedSites = 0,
-            failedSites = 0,
-            freedBytes = if (reliable) freedSum else null,
-            failures = emptyList(),
-        )
-        AppLog.log(TAG, "全量缓存清理完成: 释放=${result.freedBytes ?: -1}B")
-        result
+    /** Native resource-cache clearing. ImageCacheRepository owns Coil's live caches. */
+    suspend fun clearAllClearable(): ClearAllResult = when (val outcome = clearBrowserCache()) {
+        is ClearOutcome.Done -> ClearAllResult(0, 0, null, emptyList())
+        is ClearOutcome.Failed -> ClearAllResult(0, 1, null, listOf(outcome.reason))
     }
 
     fun multiProfileSupported(): Boolean = runCatching {
@@ -209,65 +160,6 @@ class CacheClearer @Inject constructor(
 
     private fun liveSessions(): List<String> =
         (WebViewPool.liveSessions() + KeepAliveRegistry.entries.map { it.sessionId }).distinct()
-
-    /** 删除 [root] 下的缓存子目录（若存在），返回实测释放字节；测量不可靠返回 null。失败仅记日志。 */
-    private fun clearCacheDirsOf(root: File, label: String): Long? {
-        if (!root.exists()) return 0L
-        val before = measureCacheBytes(root)
-        for (name in StorageClassifier.CACHE_DIR_NAMES) {
-            val dir = File(root, name)
-            if (dir.exists()) {
-                runCatching { require(dir.deleteRecursively()) { "deleteRecursively 返回 false" } }
-                    .onFailure { AppLog.warn(TAG, "$label 缓存目录删除失败: $name") }
-            }
-        }
-        val after = measureCacheBytes(root)
-        val freed = if (before != null && after != null) (before - after).coerceAtLeast(0) else null
-        AppLog.log(TAG, "清理$label: 释放 ${freed ?: -1}B")
-        return freed
-    }
-
-    /** 删除整个目录并实测释放字节；目录不存在返回 0，测量不可靠返回 null。 */
-    private fun deleteDirMeasured(dir: File, label: String): Long? {
-        if (!dir.exists()) return 0L
-        val before = walkFiles(dir)?.totalBytes()
-        runCatching { require(dir.deleteRecursively()) { "deleteRecursively 返回 false" } }
-            .onFailure { AppLog.warn(TAG, "$label 删除失败") }
-        val after = walkFiles(dir)?.totalBytes()
-        val freed = if (before != null && after != null) (before - after).coerceAtLeast(0) else null
-        AppLog.log(TAG, "清理$label: 释放 ${freed ?: -1}B")
-        return freed
-    }
-
-    /** 缓存子目录的总字节；任一存在但不可读 → null。 */
-    private fun measureCacheBytes(profileDir: File): Long? {
-        var total = 0L
-        for (name in StorageClassifier.CACHE_DIR_NAMES) {
-            val dir = File(profileDir, name)
-            if (dir.exists()) {
-                val files = walkFiles(dir) ?: return null
-                total += files.totalBytes()
-            }
-        }
-        return total
-    }
-
-    private fun measureAllCacheBytes(webviewRoot: File): Long? {
-        val root = measureCacheBytes(webviewRoot) ?: return null
-        val default = measureCacheBytes(File(webviewRoot, "Default")) ?: return null
-        return root + default
-    }
-
-    /** 删除 cacheDir 下 Chromium HTTP 缓存整树（`WebView/Default/HTTP Cache` 等）。 */
-    private fun clearWebViewHttpCache(): Long? {
-        var freed = 0L
-        var reliable = true
-        for (name in StorageClassifier.WEBVIEW_CACHE_DIR_NAMES) {
-            val result = deleteDirMeasured(File(context.cacheDir, name), "HTTP 缓存 $name")
-            if (result == null) reliable = false else freed += result
-        }
-        return if (reliable) freed else null
-    }
 
     private companion object {
         const val TAG = "storage"

@@ -17,6 +17,9 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE url = :url LIMIT 1")
     suspend fun getByUrl(url: String): BookmarkEntity?
 
+    @Query("UPDATE bookmarks SET iconUrl = :path WHERE url = :url")
+    suspend fun updateIcon(url: String, path: String)
+
     @Upsert
     suspend fun upsert(bookmark: BookmarkEntity)
 
