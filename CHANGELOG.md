@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.67] - 2026-10-22
+
+离线资源重置结果修正：清理缓存现在如实反馈成功，不再误报失败。
+
+### Fixed
+
+- 网站详情「重置离线资源」在缓存已成功清除后仍提示「清理失败」。探测用的同源惰性文档在 Chromium 中无法调用 `serviceWorker.getRegistrations()`（`InvalidStateError`），该异常与缓存删除共用一个 `Promise.all`，使整条链进入 reject 分支。现在缓存删除决定结果，Service Worker 注销保持尽力而为。
+
+### Testing
+
+- `testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest`（单元测试合计 410 项）
+- `:app:connectedDebugAndroidTest`（API 35 模拟器，22 项全部通过；含此前失败的离线重置与浏览菜单「关闭全部标签」两条用例）
+
 ## [0.1.66] - 2026-10-21
 
 制作应用、网站图标与强制刷新：普通网页可制作成持久应用，自动图标贯通采集到缓存，主页强刷真正重新加载网页资源，并新增分类浏览数据清理。
