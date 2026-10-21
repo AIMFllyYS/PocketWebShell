@@ -66,12 +66,23 @@ try {
         throw "APK signature verification failed"
     }
 
-    & keytool -exportcert -rfc `
-        -keystore $keystore `
-        -storepass:env POCKET_WEBSHELL_KEYSTORE_PASSWORD `
-        -alias $alias `
-        -file $certificateFile
-    if ($LASTEXITCODE -ne 0) {
+    # keytool writes its progress text ("certificate stored in <file>") to stderr. Under
+    # $ErrorActionPreference = 'Stop' PowerShell 7 promotes that native stderr to a terminating
+    # error and aborts the script before the checksum is written, even though the certificate
+    # export itself succeeded. Relax the preference just for this call and judge it by exit code.
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & keytool -exportcert -rfc `
+            -keystore $keystore `
+            -storepass:env POCKET_WEBSHELL_KEYSTORE_PASSWORD `
+            -alias $alias `
+            -file $certificateFile 2>$null
+        $keytoolExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
+    if ($keytoolExit -ne 0) {
         throw "Public certificate export failed"
     }
 
