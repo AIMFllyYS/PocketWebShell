@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.webshell.core.data.HomeSettings
 import com.webshell.core.data.SCROLL_MODE_PAGER
@@ -189,7 +190,9 @@ class IosPresentationInstrumentedTest {
         shot("browser-tabs")
         device.pressBack()
         description("菜单").click()
-        text("关闭全部标签").click()
+        // The menu body is a vertical scroller; the destructive footer sits below the fold at
+        // 1080x2400, so it must be scrolled into view before it enters the accessibility tree.
+        scrolledText("关闭全部标签").click()
         // The destructive action opens the shared confirmation dialog; selecting the menu item
         // alone must not close tabs without an explicit confirmation.
         text("关闭全部").click()
@@ -243,6 +246,24 @@ class IosPresentationInstrumentedTest {
 
     private fun text(value: String) = device.wait(Until.findObject(By.text(value)), 6_000)
         ?: throw AssertionError("Missing text: $value")
+
+    /** Finds [value] inside the sheet's scroller, swiping toward the end until it is reachable. */
+    private fun scrolledText(value: String): UiObject2 {
+        device.wait(Until.findObject(By.text(value)), 1_000)?.let { return it }
+        repeat(4) {
+            val scroll = device.findObjects(By.scrollable(true)).firstOrNull {
+                it.visibleBounds.height() > device.displayHeight / 5
+            } ?: throw AssertionError("Missing scrollable sheet for text: $value")
+            val bounds = scroll.visibleBounds
+            val x = bounds.centerX()
+            val top = bounds.top + bounds.height() / 4
+            val bottom = bounds.bottom - bounds.height() / 4
+            device.swipe(x, bottom, x, top, 24)
+            SystemClock.sleep(250)
+            device.wait(Until.findObject(By.text(value)), 1_500)?.let { return it }
+        }
+        throw AssertionError("Missing text: $value")
+    }
 
     private fun description(value: String) = device.wait(Until.findObject(By.desc(value)), 5_000)
         ?: throw AssertionError("Missing content description: $value")

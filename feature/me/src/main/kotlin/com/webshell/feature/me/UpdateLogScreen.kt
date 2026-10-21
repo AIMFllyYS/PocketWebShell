@@ -31,6 +31,14 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.67",
+        date = "2026-10-22",
+        highlights = listOf(
+            "修复网站详情「重置离线资源」：缓存已经清理成功却仍提示「清理失败」的问题，现在按实际结果如实反馈",
+            "离线资源重置失败时，Service Worker 注销不再影响缓存清理的成败判定",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.66",
         date = "2026-10-21",
         highlights = listOf(
