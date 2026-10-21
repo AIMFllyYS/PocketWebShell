@@ -20,6 +20,12 @@ interface WebAppDao {
     @Query("SELECT * FROM web_apps WHERE isLocal = 1 AND importSourceKey = :key ORDER BY createdAt ASC LIMIT 1")
     suspend fun findLocalBySourceKey(key: String): WebAppEntity?
 
+    @Query("UPDATE web_apps SET iconUrl = :path WHERE id = :id AND ((iconUrl IS NULL AND :previous IS NULL) OR iconUrl = :previous)")
+    suspend fun updateAutomaticIcon(id: String, previous: String?, path: String)
+
+    @Query("UPDATE web_apps SET title = :title WHERE id = :id AND title = :previous")
+    suspend fun updateRefreshedTitle(id: String, previous: String, title: String)
+
     @Upsert
     suspend fun upsert(app: WebAppEntity)
 

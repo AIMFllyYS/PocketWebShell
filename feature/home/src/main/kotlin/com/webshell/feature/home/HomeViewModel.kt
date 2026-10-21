@@ -29,10 +29,14 @@ import kotlinx.coroutines.withContext
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val dao: WebAppDao,
     private val settingsRepository: SettingsRepository,
     private val fetcher: SiteMetadataFetcher,
     private val icons: UserIconRepository,
+    private val siteIcons: com.webshell.core.data.SiteIconRepository,
+    private val refresher: com.webshell.core.webengine.WebRefreshCoordinator,
+    private val pageProbe: com.webshell.core.webengine.WebPageProbe,
     private val backupRepository: BackupRepository,
 ) : ViewModel() {
 
@@ -371,6 +375,7 @@ class HomeViewModel @Inject constructor(
      * null/空白 = 清除图标，回退首字母兜底。
      */
     fun updateIcon(appId: String, iconUrl: String?) {
+        siteIcons.markCustom(appId)
         val cleaned = iconUrl?.trim()?.takeIf {
             it.startsWith("http://") || it.startsWith("https://") || it.startsWith("/")
         }
@@ -382,25 +387,33 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** 强制刷新站点元数据：成功时同步最终 URL/title/icon；失败不泄露完整 URL 或响应详情。 */
+    private val refreshingApps = mutableSetOf<String>()
+
     fun refreshMetadata(appId: String) {
+        if (!refreshingApps.add(appId)) return
+        _messages.tryEmit(context.getString(R.string.home_refresh_running))
         viewModelScope.launch {
-            val app = apps.value.firstOrNull { it.id == appId } ?: return@launch
-            fetcher.fetch(app.url)
-                .onSuccess { metadata ->
-                    val updated = app.copy(
-                        url = metadata.finalUrl,
-                        title = metadata.title.ifBlank { app.title },
-                        iconUrl = metadata.iconUrl ?: app.iconUrl,
-                    )
-                    dao.upsert(updated)
-                    AppLog.log("home", "刷新「${updated.title}」站点信息成功")
-                    _messages.tryEmit("已刷新「${updated.title}」")
+            try {
+                val app = dao.getById(appId) ?: return@launch
+                val refreshed = refresher.refresh(appId)
+                if (!app.isLocal) {
+                    val page = pageProbe.fetch(app.url)
+                    val metadata = fetcher.fetch(app.url).getOrNull()
+                    val path = siteIcons.resolve(metadata?.iconCandidates.orEmpty() + page?.candidates.orEmpty())
+                        ?: page?.icon?.let { siteIcons.save(it) }
+                    if (path != null) siteIcons.publish(app.url, path, appId)
+                    val title = page?.takeIf { com.webshell.core.webengine.sameWebOrigin(app.url, it.url) }?.title
+                        ?: metadata?.takeIf { com.webshell.core.webengine.sameWebOrigin(app.url, it.finalUrl) }?.title
+                    if (!title.isNullOrBlank()) dao.updateRefreshedTitle(appId, app.title, title)
                 }
-                .onFailure {
-                    AppLog.warn("home", "站点元数据刷新失败")
-                    _messages.tryEmit("刷新失败，请检查网络或稍后重试")
-                }
+                _messages.tryEmit(when (refreshed) {
+                    true -> context.getString(R.string.home_refresh_completed)
+                    false -> context.getString(R.string.home_refresh_failed)
+                    null -> context.getString(R.string.home_refresh_pending)
+                })
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { _messages.tryEmit(context.getString(R.string.home_refresh_failed)) }
+            finally { refreshingApps.remove(appId) }
         }
     }
 

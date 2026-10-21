@@ -17,6 +17,7 @@ data class SiteMetadata(
     val iconUrl: String?,
     val themeColor: String?,
     val finalUrl: String,
+    val iconCandidates: List<String> = emptyList(),
 )
 
 /**
@@ -45,6 +46,7 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
                 iconUrl = iconUrl,
                 themeColor = themeColor,
                 finalUrl = finalUrl,
+                iconCandidates = (listOfNotNull(iconUrl) + rankDocumentIcons(finalUrl, doc)).distinct(),
             )
         }
     }
@@ -77,6 +79,7 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
     private fun request(url: String): Request =
         Request.Builder()
             .url(url)
+            .header("Cache-Control", "no-cache")
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/*;q=0.8,*/*;q=0.5")
             .build()
 
@@ -92,7 +95,7 @@ class SiteMetadataFetcher @javax.inject.Inject constructor(
     fun rankDocumentIcons(pageUrl: String, doc: Document): List<String> {
         val ranked = ArrayList<Pair<Int, String>>()
         fun add(url: String, score: Int) {
-            if ((url.startsWith("http://", true) || url.startsWith("https://", true)) &&
+            if ((url.startsWith("http://", true) || url.startsWith("https://", true) || url.startsWith("data:image/", true)) &&
                 ranked.none { it.second == url }
             ) {
                 ranked += score to url

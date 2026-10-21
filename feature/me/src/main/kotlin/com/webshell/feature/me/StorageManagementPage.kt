@@ -195,6 +195,7 @@ private fun StorageListPage(
             }
         },
     ) {
+        BrowsingDataControls(viewModel, state.clearingAll || state.erasingSite)
         StorageOverviewSection(
             state = state,
             onClearAll = { clearAllPreview = viewModel.clearAllPreview() },
@@ -457,6 +458,7 @@ private fun StorageDetailPage(
     onBack: () -> Unit,
 ) {
     var erasePreview by remember { mutableStateOf<EraseSitePreview?>(null) }
+    var resetOfflineConfirm by rememberSaveable(app.id) { mutableStateOf(false) }
     val canErase = viewModel.canEraseSite() && !app.isLocal
     val siblings = remember(app.id, apps) {
         val host = hostOfUrl(app.url).orEmpty()
@@ -466,7 +468,18 @@ private fun StorageDetailPage(
         }
     }
 
+    if (resetOfflineConfirm) AppConfirmDialog(
+        title = stringResource(R.string.me_reset_offline),
+        text = stringResource(R.string.me_reset_offline_hint),
+        confirmText = stringResource(R.string.me_storage_confirm_clear),
+        onConfirm = { resetOfflineConfirm = false; viewModel.resetOffline(app.id) },
+        onDismiss = { resetOfflineConfirm = false },
+    )
     DetailPage(title = app.title, onBack = onBack) {
+        if (!app.isLocal) TextButton(
+            onClick = { resetOfflineConfirm = true },
+            enabled = !state.clearingAll && !state.erasingSite,
+        ) { Text(stringResource(R.string.me_reset_offline)) }
         Column(
             Modifier.fillMaxWidth().padding(vertical = AppSpacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,

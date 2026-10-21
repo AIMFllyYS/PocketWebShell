@@ -81,6 +81,10 @@ class StorageViewModel @Inject constructor(
     private val webAppDao: WebAppDao,
     private val logRepository: LogRepository,
     private val logDao: LogDao,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
+    private val savedPages: com.webshell.core.data.BrowserSavedPagesRepository,
+    private val imageCache: com.webshell.core.data.ImageCacheRepository,
+    private val pageProbe: com.webshell.core.webengine.WebPageProbe,
 ) : ViewModel() {
 
     val apps: StateFlow<List<WebAppEntity>> = webAppDao.observeAll()
@@ -181,16 +185,19 @@ class StorageViewModel @Inject constructor(
         _state.value = s.copy(clearingAll = true, clearAllFailedSites = 0)
         viewModelScope.launch {
             try {
-                clearer.destroySessions(clearer.runningSharedSessions())
-                when (val outcome = clearer.clearAllWebViewData()) {
-                    is ClearOutcome.Done -> {
-                        clearer.clearAllClearable()
-                        storageStats.invalidate()
-                        scan(forceRefresh = true)
-                        _toasts.tryEmit(StorageToast(R.string.me_storage_data_cleared))
-                    }
-                    is ClearOutcome.Failed -> {
-                        _toasts.tryEmit(StorageToast(R.string.me_storage_data_clear_failed, outcome.reason))
+                pageProbe.withDataLock {
+                    clearer.destroySessions(clearer.runningSharedSessions())
+                    when (val outcome = clearer.clearAllWebViewData()) {
+                        is ClearOutcome.Done -> {
+                            imageCache.clear()
+                            clearer.clearAllClearable()
+                            storageStats.invalidate()
+                            scan(forceRefresh = true)
+                            _toasts.tryEmit(StorageToast(R.string.me_storage_data_cleared))
+                        }
+                        is ClearOutcome.Failed -> {
+                            _toasts.tryEmit(StorageToast(R.string.me_storage_data_clear_failed, outcome.reason))
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -204,6 +211,63 @@ class StorageViewModel @Inject constructor(
         }
     }
 
+    fun resetOffline(appId: String) {
+        if (_state.value.clearingAll || _state.value.erasingSite) return
+        _state.value = _state.value.copy(erasingSite = true)
+        viewModelScope.launch {
+            try {
+                val app = webAppDao.getById(appId) ?: return@launch
+                val origin = java.net.URI(app.url)
+                check(origin.scheme in setOf("http", "https"))
+                val sessions = com.webshell.core.webengine.WebViewPool.liveSessions().filter { id ->
+                    val current = com.webshell.core.webengine.WebViewPool.get(id)?.currentUrl() ?: return@filter false
+                    com.webshell.core.webengine.sameWebOrigin(app.url, current)
+                }
+                check(pageProbe.fetch(app.url, resetOffline = true,
+                    beforeLoad = { clearer.destroySessions(sessions) })?.offlineReset == true)
+                _toasts.tryEmit(StorageToast(R.string.me_reset_offline_done))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed)) }
+            finally { _state.value = _state.value.copy(erasingSite = false) }
+        }
+    }
+
+    fun clearSelected(cache: Boolean, cookies: Boolean, data: Boolean, history: Boolean) {
+        if (_state.value.clearingAll || _state.value.erasingSite) return
+        _state.value = _state.value.copy(clearingAll = true)
+        viewModelScope.launch {
+            try {
+                pageProbe.withDataLock {
+                    if (cache || cookies || data) {
+                        if (cache) { clearer.clearLiveWebViewCaches(); imageCache.clear() }
+                        clearer.destroySessions(clearer.runningSharedSessions())
+                        com.webshell.core.webengine.WebViewPool.clearSavedStates()
+                    }
+                    if (data) {
+                        check(clearer.clearAllWebViewData() is ClearOutcome.Done)
+                    } else if (cookies) {
+                        kotlinx.coroutines.withTimeout(10_000) {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                                kotlinx.coroutines.suspendCancellableCoroutine<Unit> { continuation ->
+                                    android.webkit.CookieManager.getInstance().removeAllCookies {
+                                        if (continuation.isActive) continuation.resumeWith(Result.success(Unit))
+                                    }
+                                }
+                                android.webkit.CookieManager.getInstance().flush()
+                            }
+                        }
+                    }
+                    if (cache) check(clearer.clearBrowserCache() is ClearOutcome.Done)
+                    if (history) savedPages.clearHistory()
+                    storageStats.invalidate(); scan(forceRefresh = true)
+                    _toasts.tryEmit(StorageToast(R.string.me_clear_selected_done))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed)) }
+            finally { _state.value = _state.value.copy(clearingAll = false) }
+        }
+    }
+
     /** 全量清理：关闭共享会话 → 清 Default/根缓存 + HTTP 缓存 + 图片缓存 → 重扫。 */
     fun clearAll() {
         val s = _state.value
@@ -212,25 +276,28 @@ class StorageViewModel @Inject constructor(
         _state.value = s.copy(clearingAll = true, clearAllFailedSites = 0)
         viewModelScope.launch {
             try {
-                val running = clearer.runningSharedSessions()
-                clearer.clearLiveWebViewCaches()
-                clearer.closeSessions(running)
-                val result = clearer.clearAllClearable()
-                AppLog.clear()
-                runCatching { logRepository.clear() }
-                storageStats.invalidate()
-                scan(forceRefresh = true)
-                val freed = result.freedBytes
-                _toasts.tryEmit(
-                    if (freed != null) {
-                        StorageToast(R.string.me_storage_cleared_size, formatStorageBytes(freed))
-                    } else {
-                        StorageToast(R.string.me_storage_cleared)
-                    },
-                )
-                if (result.failedSites > 0) {
-                    _state.value = _state.value.copy(clearAllFailedSites = result.failedSites)
-                    _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed))
+                pageProbe.withDataLock {
+                    val running = clearer.runningSharedSessions()
+                    clearer.clearLiveWebViewCaches()
+                    imageCache.clear()
+                    clearer.destroySessions(running)
+                    val result = clearer.clearAllClearable()
+                    AppLog.clear()
+                    runCatching { logRepository.clear() }
+                    storageStats.invalidate()
+                    scan(forceRefresh = true)
+                    val freed = result.freedBytes
+                    _toasts.tryEmit(
+                        if (freed != null) {
+                            StorageToast(R.string.me_storage_cleared_size, formatStorageBytes(freed))
+                        } else {
+                            StorageToast(R.string.me_storage_cleared)
+                        },
+                    )
+                    if (result.failedSites > 0) {
+                        _state.value = _state.value.copy(clearAllFailedSites = result.failedSites)
+                        _toasts.tryEmit(StorageToast(R.string.me_storage_clear_failed))
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled

@@ -19,6 +19,9 @@ interface HistoryDao {
     @Query("UPDATE history SET iconUrl = :iconUrl WHERE url = :url")
     suspend fun updateIcon(url: String, iconUrl: String)
 
+    @Query("SELECT * FROM history WHERE url = :url LIMIT 1")
+    suspend fun getByUrl(url: String): HistoryEntity?
+
     /** 相同 URL 的近期记录合并为一条最新记录，避免历史列表刷屏 */
     @Query("DELETE FROM history WHERE url = :url")
     suspend fun deleteByUrl(url: String)

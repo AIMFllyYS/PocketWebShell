@@ -30,6 +30,7 @@ internal data class DeveloperUiState(
 @HiltViewModel
 internal class DeveloperCenterViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val imageCache: com.webshell.core.data.ImageCacheRepository,
 ) : ViewModel() {
     private val packageInfo = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
     private val _state = MutableStateFlow(DeveloperUiState(
@@ -46,8 +47,7 @@ internal class DeveloperCenterViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    context.imageLoader.memoryCache?.clear()
-                    context.imageLoader.diskCache?.clear()
+                    imageCache.clear()
                 }
                 _state.value = _state.value.copy(cacheState = CacheClearState.Cleared)
                 AppLog.log("dev", "图标缓存已清除")
