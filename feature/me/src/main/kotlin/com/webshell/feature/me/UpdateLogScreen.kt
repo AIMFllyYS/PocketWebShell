@@ -31,6 +31,16 @@ private const val UPDATE_PAGE_SIZE = 20
 
 private val updateEntries = listOf(
     UpdateEntry(
+        version = "0.1.66",
+        date = "2026-10-21",
+        highlights = listOf(
+            "浏览菜单的「制作应用」支持普通网页：进入预填好的编辑页保存成桌面应用，本地 HTML 仍走原来的文件流程",
+            "自动图标接通 WebView 原生图标回调，支持 SVG 与内嵌图片解码，失败时按候选顺序回退；自定义图标不会被覆盖",
+            "主页强制刷新会真正重新加载网页资源，未运行的应用下次打开绕缓存；Cookie 与网站数据保持",
+            "存储管理新增缓存 / Cookie / 网站数据 / 历史分类清理，网站详情可单独重置同源离线资源",
+        ),
+    ),
+    UpdateEntry(
         version = "0.1.65",
         date = "2026-10-08",
         highlights = listOf(
