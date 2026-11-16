@@ -2,12 +2,6 @@ package com.webshell.feature.home
 
 import kotlin.math.min
 
-/** Kept for geometry tests that still describe a 48dp action line. */
-internal const val EDIT_HEADER_MARGIN_DP = 8f
-
-internal fun launcherDoneHeightDp(actionLineHeightDp: Float): Float =
-    maxOf(48f, actionLineHeightDp + 16f)
-
 /**
  * Constraint-only launcher geometry. Images and drawing/drag transforms never enter this model.
  * Both scroll modes use the same cell dimensions, so a saved slot keeps its visual position.

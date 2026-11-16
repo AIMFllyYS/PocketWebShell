@@ -1,5 +1,7 @@
 # 浏览器引擎诊断与选型决策
 
+> **决策仍有效，诊断行号是历史。** 「继续使用 Android System WebView」仍然是现行决定。下文以 0.1.6–0.1.7 文件行号描述的缺陷清单是当时的诊断，不是当前源码地图。现行会话模型见 [core-browser-session.md](core-browser-session.md)。
+
 > 版本：v1（2026-08-31，随 0.1.7 落地）。本文回答三个问题：
 > ① 为什么"很多网站（B 站等）打不开"？② 为什么标签页互相串台？③ 该用什么引擎？
 > 结论先行：**问题不在引擎，在引擎集成层。引擎维持 Chromium（Android System WebView），本版本重构集成层。**
@@ -120,7 +122,7 @@ Android WebView 不是"自造引擎"，它就是 **Chromium**——与 Chrome �
 - **证书对话框不离开页面**：`onPageStarted` 仍会 cancel 未决 handler；用户点取消只关掉对话框，不再 `closeTab` / 退出站点壳。从不默认 `SslErrorHandler.proceed()`。
 - **顶层 HTTP（0.1.63）**：网络安全配置允许明文，但主框架 `http://` 必须经可见宿主确认（`onCleartextPrompt` → `AppConfirmDialog`）。继续后按会话+host 记住，混合内容仍 `MIXED_CONTENT_NEVER_ALLOW`，证书路径不变。`loadUrl` 不走 `shouldOverrideUrlLoading`，闸门同时拦引擎加载入口与主框架导航回调。
 - **站点壳新窗口**：`ShellConfig.NewWindowPolicy`。默认 `ADOPT_IN_BROWSER`（`onCreateWindow` 分配 `browser-*`）。`REPLACE_IN_SHELL` 把 transport 指回当前 WebView，并在下一帧 `clearHistory()`。全局 DataStore + 每站可空覆盖。
-- **外部 HTML 复用浏览标签；Markdown 走站点壳**：`MainScaffold` 不再整页早退 `ViewerScreen`。Markdown 以 `tmp-*` 或已保存的 `local://` 打开全屏站点壳（悬浮球、无顶栏）；HTML 创建时就带 `localAppId`。地址栏显示本机路径且只读。
+- **外部 HTML 复用浏览标签；Markdown 走站点壳**：外部文档由 `IncomingBrowserOpener` 挂到浏览标签或全屏站点壳。早期的 `ViewerScreen` / `ViewerViewModel` 已删除。Markdown 以 `tmp-*` 或已保存的 `local://` 打开全屏站点壳（悬浮球、无顶栏，`SafeMarkdown`）；HTML 创建时就带 `localAppId`。地址栏显示本机路径且只读。
 - **开页清单进 Room v5**：`browser_open_tabs` 只存标签条，不存 WebView Bundle/Cookie。系统返回在不能后退时回主屏，不关标签。
 
 ## 12. 0.1.47–0.1.53 开屏重构与 Markdown 站点壳

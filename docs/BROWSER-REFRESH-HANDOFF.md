@@ -1,3 +1,5 @@
+> **状态：历史交接。** 不是现行规范。见 [historical/README.md](historical/README.md)。
+
 # 制作应用、网站图标与强制刷新：本地交接
 
 本次从 `origin/main` 创建 `fix/browser-app-icons-refresh`，PR 目标为 `dev`。保持应用版本号，不合并、不打发布 tag、不构建正式 Release、不部署官网。最终真机验收、版本发布、原签名构建与官网 SSH 部署由维护者本地完成。

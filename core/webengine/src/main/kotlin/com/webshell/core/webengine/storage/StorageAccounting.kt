@@ -34,20 +34,6 @@ private fun collectSkipping(root: File, children: Array<File>, out: MutableList<
 
 internal fun List<FileEntry>.totalBytes(): Long = sumOf { it.size }
 
-/** 把某个 Profile 的文件列表按分类器拆成 (可清理, 站点数据)。 */
-internal fun splitProfileBytes(entries: List<FileEntry>): Pair<Long, Long> {
-    var clearable = 0L
-    var siteData = 0L
-    for (e in entries) {
-        if (StorageClassifier.classifyProfileEntry(e.relativePath) == StorageCategory.CLEARABLE_CACHE) {
-            clearable += e.size
-        } else {
-            siteData += e.size
-        }
-    }
-    return clearable to siteData
-}
-
 internal fun Map<String, Long>.sumForSiteGroup(groupKey: String): Long =
     entries.filter { siteGroupKey(it.key) == groupKey }.sumOf { it.value }
 

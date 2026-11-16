@@ -29,25 +29,18 @@ kotlin {
 
 dependencies {
     implementation(project(":core:model"))
-    implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":core:webengine"))
-    implementation(project(":feature:browser"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.kotlinx.coroutines.android)
     implementation(libs.markdown.renderer)
     implementation(libs.markdown.renderer.m3)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
 
     testImplementation(libs.junit)
 }

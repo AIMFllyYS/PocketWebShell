@@ -1,3 +1,5 @@
+> **状态：历史验证记录（0.1.23）。** 不是当前版本的通过证明。见 [historical/README.md](historical/README.md)。
+
 # Core browser validation record
 
 ## Build environment

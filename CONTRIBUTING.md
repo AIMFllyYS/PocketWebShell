@@ -13,7 +13,7 @@
 ## 开发流程
 
 1. 从 `dev` 创建分支：`feat/<topic>`、`fix/<topic>`、`refactor/<topic>`、`test/<topic>` 或 `docs/<topic>`。
-2. 阅读并遵守 [AGENTS.md](AGENTS.md)，尤其是所修改模块的不变量和测试矩阵。
+2. 阅读并遵守 [AGENTS.md](AGENTS.md)，尤其是所修改模块的不变量和测试矩阵。文件怎么拆、文档改哪一份，见 [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md) 和 [docs/DOC-LIFECYCLE.md](docs/DOC-LIFECYCLE.md)。
 3. 使用 Conventional Commits，例如：
    - `feat(home): add folder rename flow`
    - `fix(browser): update callbacks after tab switch`

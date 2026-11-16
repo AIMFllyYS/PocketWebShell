@@ -51,20 +51,6 @@ import com.webshell.core.data.SCROLL_MODE_VERTICAL
 /** Scaffold 给主屏预留的编辑底栏高度（两行 48dp + 与 Dock 相同的 20dp 外边距）。 */
 const val HOME_EDIT_TOOLBAR_CLEARANCE_DP = 116f
 
-internal const val LAUNCHER_EDIT_ACTION_COUNT = 4
-
-internal fun launcherEditActionWidthDp(widthDp: Float): Float =
-    ((widthDp - 64f) / LAUNCHER_EDIT_ACTION_COUNT - 24f).coerceAtLeast(1f)
-
-internal fun launcherFooterHeightFromMeasuredAction(actionHeightDp: Float): Float {
-    val buttonHeight = maxOf(48f, actionHeightDp + 16f)
-    return maxOf(52f, buttonHeight + 4f)
-}
-
-/** Large type / 窄屏时底排可收成 2×2；完成始终留在第一行。 */
-internal fun stackLauncherEditActions(widthDp: Float, fontScale: Float): Boolean =
-    fontScale > 1.3f || (widthDp < 360f && fontScale > 1.1f)
-
 data class HomeEditChromeState(
     val selectedCount: Int,
     val totalCount: Int,

@@ -20,9 +20,6 @@
     <string name="download_progress">正在下载 %1$d%%</string>
     <string name="download_progress_indeterminate">正在下载</string>
     <string name="download_path_short">Download/PocketWebShell/%1$s</string>
-    <string name="download_complete_title">下载完成</string>
-    <string name="download_complete_message">文件已保存到 Download/PocketWebShell/%1$s</string>
-    <string name="download_complete_open">在文件中查看</string>
     <string name="download_failed_title">下载失败</string>
     <string name="download_failed_message">无法保存 %1$s</string>
     <string name="download_open_failed">无法打开系统文件管理器</string>

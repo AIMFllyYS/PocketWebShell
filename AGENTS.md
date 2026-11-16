@@ -19,14 +19,14 @@ Protect these product properties in every change:
 - `app/`: composition root, Navigation 3, bottom navigation, session controller, foreground service integration.
 - `core/model/`: cross-module domain models; keep Android dependencies out where practical.
 - `core/data/`: Room entities/DAO, DataStore preferences, repositories, persistence migrations.
-- `core/designsystem/`: Material 3 theme and reusable visual primitives.
+- `core/designsystem/`: iOS-oriented tokens on a Material 3 component base (color, type, shape, glass). Visual rules live in `docs/DESIGN.md`.
 - `core/webengine/`: WebView ownership, configuration, pooling, profiles, local asset loading, callbacks.
-- `feature/home/`: launcher pages, folders, fixed grid, DragLayer and persisted ordering. Interaction layer split: `HomeInteractionState.kt` (centralized drag/menu/edit session state holder) and `HomeGestures.kt` (cell gesture detection, root drag session, blank-area long-press, pinch edit mode, edge-hover page-turn state machine); `HomeScreen.kt` keeps composition root, grid containers, menus/dialogs and overlays. Instrumented gesture tests: `app/src/androidTest/.../HomeGestureInstrumentedTest.kt`（`:app:connectedDebugAndroidTest`，真机/模拟器回归主页手势验收路径）。
+- `feature/home/`: launcher pages, folders, fixed grid, DragLayer and persisted ordering. Interaction layer split: `HomeInteractionState.kt` (centralized drag/menu/edit session state holder) and `HomeGestures.kt` (cell gesture detection, root drag session, blank-area long-press, pinch edit mode, edge-hover page-turn state machine); `HomeScreen.kt` keeps the composition root and grid; `HomeScreenOverlays.kt` keeps menus, dialogs and the all-apps/folder overlays. Instrumented gesture tests: `app/src/androidTest/.../HomeGestureInstrumentedTest.kt`（`:app:connectedDebugAndroidTest`，真机/模拟器回归主页手势验收路径）。
 - `feature/add/`: URL normalization, metadata parsing, icon discovery and app editing.
 - `feature/browser/`: browser chrome, tabs and tab switcher.
 - `feature/me/`: settings, Android permission/status surfaces, running-session presentation, GitHub Release check-for-update, and in-app privacy / terms / license / contribute pages (bundled from `docs/legal/`).
 - `feature/viewer/`: VIEW/SEND 解析、临时文件拷贝、Markdown 消毒。外部 Markdown 走站点壳全屏（悬浮球、无顶栏、原生长按选中）；外部 HTML 仍复用浏览标签。同一源路径复用已打开的 HTML 标签或已保存的本地应用；可选「制作应用」才会写入 Room。
-- `docs/`: maintained technical and release documentation.
+- `docs/`: maintained technical and release documentation. Index and lifecycle: `docs/README.md`, `docs/DOC-LIFECYCLE.md`. File size, module direction and dead-code rules: `docs/CODING-STANDARDS.md`. Shared-profile session model: `docs/core-browser-session.md`.
 
 Do not place production code in generated `build/` directories, screenshots, or release artifact folders.
 
@@ -203,6 +203,7 @@ A change is complete only when:
 
 The following documents are authoritative and apply to every change in their domain:
 
+- `docs/README.md`: documentation index. `docs/CODING-STANDARDS.md` and `docs/DOC-LIFECYCLE.md` govern file shape and which document moves with which change. `docs/core-browser-session.md` is the shared-profile session spec.
 - `docs/DESIGN.md`: visual design baseline — Apple-style pure white/pure black color system, theme modes (system/light/dark/photo wallpaper), iOS Liquid Glass baseline for bottom navigation and floating layers, and the component-library selection principle (prefer mature open-source libraries, one unified library per capability, no reinventing the wheel).
 - `docs/VERSIONING.md`: version numbering rules — counting restarted from 0.0.0 (versionCode 1); the default and ONLY automatic increment is the third digit +1, with no carry (0.1.1000 → 0.1.1001); the first and second digits change ONLY on explicit user instruction; every version change must sync `CHANGELOG.md` and the in-app update log page. Releases follow the debug-first workflow (§5): a release ships only after the user approves the debug build of that exact version, rejected debug iterations consume their numbers permanently, and the GitHub Release notes must aggregate every version since the previous published release.
 - `docs/PERFORMANCE.md`: performance budgets — at most one live blur backdrop (the bottom bar), blur radius ≤ 24dp equivalent, glass/wallpaper layers never affect measurement, background-thread image decoding and palette extraction, graceful degradation on API 29–32.
