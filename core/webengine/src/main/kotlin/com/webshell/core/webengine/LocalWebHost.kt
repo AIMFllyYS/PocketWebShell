@@ -114,11 +114,6 @@ object LocalWebHost {
     fun isLocalAppUrl(url: String): Boolean =
         url.regionMatches(0, "$LOCAL_SCHEME://", 0, "$LOCAL_SCHEME://".length, ignoreCase = true)
 
-    fun localAppId(url: String): String? {
-        if (!isLocalAppUrl(url)) return null
-        return url.substring("$LOCAL_SCHEME://".length).substringBefore('/').takeIf { it.isNotBlank() }
-    }
-
     /** local://<appId>/<file> → https://appassets.androidplatform.net/local/<appId>/<file> */
     fun toHttpsUrl(url: String): String {
         if (!isLocalAppUrl(url)) return url

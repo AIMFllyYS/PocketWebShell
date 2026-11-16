@@ -6,6 +6,8 @@ glass Dock/orb/edge surface. Its Saver restores the bottom shape and toolbar vis
 session, open menu, keyboard, permission request or interaction lock. With no surviving page, the
 environment reducer returns to reachable expanded navigation.
 
+`rememberWebSessionRequests`（`WebSessionRequestBridge.kt`）、请求状态（`WebSessionRequests.kt`）和
+`WebSessionDialogs`（`WebSessionDialogs.kt`）是浏览页与站点壳共用的平台请求门面。
 `rememberWebSessionRequests(sessionId, visible, onNewWindow, onMessage)` and
 `WebSessionDialogs(requests, onRetry, onLeave)` are the shared platform-request facade for both the
 multi-tab browser and app's single-site shell. Pass `requests.listener` to `ShellWebViewHost`; `busy`

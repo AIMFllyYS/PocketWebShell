@@ -26,7 +26,6 @@ object WebViewPool {
     /** 淘汰下来的会话快照（含返回栈）；会话重建时恢复并移除 */
     private val savedStates = HashMap<String, Bundle>()
     private val protection = HashMap<String, MutableSet<ProtectionReason>>()
-    private val lifecycle = HashMap<String, SessionLifecycleState>()
 
     @Volatile
     var maxLive: Int = 6
@@ -51,7 +50,6 @@ object WebViewPool {
         evictIfNeeded()
         val created = ShellWebView(context.applicationContext, config = config(existing))
         pool[sessionId] = created
-        lifecycle[sessionId] = SessionLifecycleState.CREATED
         // 有淘汰期快照则恢复返回栈，并移除该条目
         savedStates.remove(sessionId)?.let { created.restoreSessionState(it) }
         return created
@@ -83,19 +81,6 @@ object WebViewPool {
 
     fun suspendSession(sessionId: String) {
         pool[sessionId]?.suspendRendering()
-        if (pool.containsKey(sessionId)) lifecycle[sessionId] = SessionLifecycleState.BACKGROUND
-    }
-
-    fun resumeSession(sessionId: String) {
-        pool[sessionId]?.resumeRendering()
-        if (pool.containsKey(sessionId)) lifecycle[sessionId] = SessionLifecycleState.ACTIVE
-    }
-
-    fun lifecycleState(sessionId: String): SessionLifecycleState =
-        lifecycle[sessionId] ?: if (savedStates.containsKey(sessionId)) SessionLifecycleState.EVICTED else SessionLifecycleState.CLOSED
-
-    internal fun markLifecycle(sessionId: String, state: SessionLifecycleState) {
-        if (pool.containsKey(sessionId)) lifecycle[sessionId] = state
     }
 
     /** Used by the explicit "clear all browser data" action after all live sessions are closed. */
@@ -103,7 +88,6 @@ object WebViewPool {
 
     fun clearSavedStates() {
         savedStates.clear()
-        lifecycle.entries.removeIf { it.value == SessionLifecycleState.EVICTED }
     }
 
     /** 销毁实例释放 WebView；会话快照保留在池中（Profile 数据保留在磁盘），重建时恢复 */
@@ -112,7 +96,6 @@ object WebViewPool {
         shell.saveSessionState()?.let { savedStates[sessionId] = it }
         shell.release()
         synchronized(protection) { protection.remove(sessionId) }
-        lifecycle[sessionId] = SessionLifecycleState.CLOSED
         CleartextGate.forgetSession(sessionId)
     }
 
@@ -121,7 +104,6 @@ object WebViewPool {
         savedStates.remove(sessionId)
         pool.remove(sessionId)?.release()
         synchronized(protection) { protection.remove(sessionId) }
-        lifecycle[sessionId] = SessionLifecycleState.CLOSED
         CleartextGate.forgetSession(sessionId)
     }
 
@@ -152,7 +134,6 @@ object WebViewPool {
         shell.saveSessionState()?.let { savedStates[sessionId] = it }
         shell.release()
         synchronized(protection) { protection.remove(sessionId) }
-        lifecycle[sessionId] = SessionLifecycleState.EVICTED
         onSessionEvicted?.invoke(sessionId)
     }
 }
