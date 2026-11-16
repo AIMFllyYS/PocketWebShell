@@ -28,9 +28,11 @@
 
 - 不默认 `SslErrorHandler.proceed()`。证书决定是一次一站的用户动作，超时则取消。
 - 主框架 `http://` 必须经过可见确认。混合内容保持禁止。
+- 主框架 `data:` 和 `blob:` 由壳拦截，不交给 WebView。子资源里的 `data:` / `blob:` 仍可加载。blob 文件下载仍走分片回传。
 - `local://` 只允许当前会话声明的本地应用 id，并且主文档还停在该应用上。拒绝时返回本地 403，不落到网络。
 - 不向任意远程源暴露 Android 对象。blob 下载通过 `evaluateJavascript` 回传分片，不注册 JavaScript 接口。
-- 外部 intent 拒绝显式组件、包名和 selector。
+- 外部 intent 拒绝显式组件、包名和 selector，并去掉 URI 授权 flag 与 clip data。extras 里出现嵌套 Intent 时不启动。普通字符串 extra 保留。
+- 日志只记 host。没有 host 时只记短 scheme，不保留 URL 其余部分。桌面探针只记数值和 viewport meta 条数。
 
 ## 验证
 

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 29–30. Exclude rules only: DataStore, Room, and settings stay in the default set. -->
+<full-backup-content>
+    <exclude domain="root" path="app_webview" />
+    <exclude domain="device_root" path="app_webview" />
+    <exclude domain="database" path="webview.db" />
+    <exclude domain="database" path="webviewCookiesChromium.db" />
+</full-backup-content>

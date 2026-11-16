@@ -310,7 +310,7 @@
     <string name="me_data_export_layout">导出网址和必要数据</string>
     <string name="me_data_export_layout_hint">包含文件夹与主屏布局，导入时按原位置恢复，冲突则拒绝</string>
     <string name="me_data_export_full">导出全部数据（实验性）</string>
-    <string name="me_data_export_full_hint">包含可迁移的运行数据；不含原图标位置，导入时追加排列；登录状态恢复为实验性能力，导出文件含敏感数据请妥善保管</string>
+    <string name="me_data_export_full_hint">包含可迁移的运行数据，含 Cookie 与网站存储；不含原图标位置，导入时追加排列；登录状态恢复为实验性能力，导出文件含敏感数据请妥善保管</string>
     <string name="me_data_export_action">导出…</string>
     <string name="me_data_exporting">正在导出…</string>
     <string name="me_data_export_confirm_title">导出数据</string>
@@ -318,7 +318,7 @@
     <string name="me_data_export_confirm_yes">导出</string>
     <string name="me_data_export_confirm_no">否</string>
     <string name="me_data_export_failed">导出失败：%1$s</string>
-    <string name="me_data_export_full_note">全量导出包含登录相关数据，请勿分享给不可信对象。</string>
+    <string name="me_data_export_full_note">全量导出包含登录相关数据（Cookie 与网站存储），请勿分享给不可信对象。</string>
     <string name="me_data_share_title">分享备份文件</string>
     <string name="me_data_share_failed">无法打开系统分享，请重试</string>
     <string name="me_data_export_done_title">导出成功</string>

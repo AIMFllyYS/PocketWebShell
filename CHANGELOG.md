@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- 导入备份时拒绝路径穿越，并在拷贝进缓存前限制为 512 MiB。
+- Android 系统备份和换机传输不再包含 WebView Cookie 与网站存储。应用内「导出全部数据」仍包含这些内容，并在说明里写明。
+- 主框架不再加载 `data:` 和 `blob:` 文档。桌面探针和没有 host 的地址不再把页面内容写入日志。
+
 ## [0.1.67] - 2026-10-22
 
 离线资源重置结果修正：清理缓存现在如实反馈成功，不再误报失败。
