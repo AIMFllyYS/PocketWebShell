@@ -1,3 +1,5 @@
+> **状态：历史记录（0.1.15）。** 不是现行规范。文中的 debug 包路径不是现行 `dist/` 归档。见 [historical/README.md](historical/README.md)。
+
 # 0.1.15 unattended implementation ledger
 
 ## Scope locked by user

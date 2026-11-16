@@ -140,7 +140,7 @@ dist/PocketWebShell-<versionName>-debug.apk.sha256
 
 - `main`：稳定、可发布分支；Release 标签只从这里创建。
 - `dev`：日常集成分支。
-- 功能分支：从 `dev` 创建，命名为 `feat/<topic>`、`fix/<topic>` 或 `docs/<topic>`。
+- 功能分支：从 `dev` 创建，命名为 `feat/<topic>`、`fix/<topic>`、`refactor/<topic>`、`test/<topic>` 或 `docs/<topic>`。
 - 提交采用 [Conventional Commits](https://www.conventionalcommits.org/)。
 
 贡献流程、变更范围和 PR 检查清单见 [CONTRIBUTING.md](CONTRIBUTING.md)。编码代理和自动化工具必须同时遵守 [AGENTS.md](AGENTS.md)。
@@ -157,6 +157,11 @@ dist/PocketWebShell-<versionName>-debug.apk.sha256
 - [docs/RELEASE.md](docs/RELEASE.md)：签名、验签和 GitHub Release 流程。
 - [docs/WEBSITE.md](docs/WEBSITE.md)：官网内容同步清单。
 - [docs/OPS.md](docs/OPS.md)：正式发布后的打包、GitHub Release、官网 zip 上传与冒烟。
+- [docs/README.md](docs/README.md)：文档索引，区分规范、运行手册和历史记录。
+- [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md)：模块方向、文件拆分和死代码。
+- [docs/VERSIONING.md](docs/VERSIONING.md)：版本号与 debug 先行。
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md)：模糊、手势和图片预算。
+- [docs/WEB-TOP-INSETS.md](docs/WEB-TOP-INSETS.md)：网页顶部避让的三种模式。
 - [docs/OPEN-SOURCE.md](docs/OPEN-SOURCE.md)：校园开源说明、copyleft 含义与贡献入口。
 - [docs/legal/PRIVACY.md](docs/legal/PRIVACY.md) / [docs/legal/TERMS.md](docs/legal/TERMS.md)：个人信息处理规则与使用说明。
 

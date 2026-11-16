@@ -3,7 +3,7 @@
 This document is the issue-ready backlog for capabilities intentionally kept out of the
 single-user/shared-profile critical path. Each item is independent and should be opened as a
 GitHub issue with the labels shown below. The dependency anchor for every item is
-`core-browser-session`.
+[core-browser-session.md](core-browser-session.md).
 
 ## P2 · browser and webengine
 

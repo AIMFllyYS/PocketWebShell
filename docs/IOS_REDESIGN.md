@@ -1,3 +1,5 @@
+> **状态：历史记录（0.1.14）。** 不是现行规范。见 [historical/README.md](historical/README.md)。
+
 # iOS 风格呈现重构 · 0.1.14
 
 ## 项目定位与保留边界
