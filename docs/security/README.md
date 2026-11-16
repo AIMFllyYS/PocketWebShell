@@ -41,4 +41,4 @@
 | [04-refactor-diff-review.md](04-refactor-diff-review.md) | 这次重构的回归审查 |
 | [05-findings-register.md](05-findings-register.md) | 发现项总表 |
 
-这些文件是时点记录，不是规范。规范仍是 [../core-browser-session.md](../core-browser-session.md) 和仓库根目录 `SECURITY.md`。
+这些文件是时点记录，不是规范。规范仍是 [../core-browser-session.md](../core-browser-session.md) 和仓库根目录 `SECURITY.md`。审查当时的结论保持不动。哪些编号已经在后续变更里修掉，写在 [05-findings-register.md](05-findings-register.md) 末尾的加固记录里。

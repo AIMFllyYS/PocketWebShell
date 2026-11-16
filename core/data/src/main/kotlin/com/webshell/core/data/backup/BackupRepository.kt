@@ -318,12 +318,13 @@ class BackupRepository @Inject constructor(
         }
     }
 
+    /** 先按上限拷进缓存，再校验清单。超限删除临时文件；失败原因是固定文案，不包含 URI。 */
     private fun copyToTemp(uri: Uri): File {
         val temp = File.createTempFile("pws-import-", ".zip", context.cacheDir)
         try {
             val input = context.contentResolver.openInputStream(uri)
                 ?: throw IOException("无法读取所选文件")
-            input.use { temp.outputStream().use { output -> it.copyTo(output) } }
+            BackupImportGuard.copyBounded(input, temp, BackupImportGuard.MAX_IMPORT_BYTES)
             return temp
         } catch (e: Exception) {
             temp.delete()
@@ -481,13 +482,23 @@ class BackupRepository @Inject constructor(
         source.deleteRecursively()
     }
 
-    /** 解压 zip 中 prefix 下的全部文件到 target；prefix 无任何条目时返回 false。 */
+    /**
+     * 解压 zip 中 prefix 下的全部文件到 target。
+     * 没有文件条目时返回 false（这棵树不在包里）。
+     * 先校验全部条目名和 canonical 目的地，通过后才写文件；名字不安全时不写这棵树，
+     * 并抛出 [IOException]，由导入流程记为 Failure，而不是当成缺树继续。
+     */
     private fun extractTree(zip: ZipFile, prefix: String, target: File): Boolean {
-        val entries = zip.entries().toList().filter { !it.isDirectory && it.name.startsWith(prefix) }
+        val entries = zip.entries().toList().filter { entry ->
+            !entry.isDirectory && !entry.name.endsWith("/") && entry.name.startsWith(prefix)
+        }
         if (entries.isEmpty()) return false
-        for (entry in entries) {
-            val relative = entry.name.removePrefix(prefix)
-            val out = File(target, relative)
+        val destinations = BackupImportGuard.resolveTree(
+            target,
+            BackupImportGuard.relativeNames(prefix, entries.map { it.name }),
+        )
+        if (destinations.size != entries.size) throw IOException(BackupImportGuard.UNSAFE_PATH_MESSAGE)
+        for ((entry, out) in entries.zip(destinations)) {
             out.parentFile?.mkdirs()
             zip.getInputStream(entry).use { input -> out.outputStream().use { input.copyTo(it) } }
         }

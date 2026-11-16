@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -388,14 +387,10 @@ class ShellWebView internal constructor(
     // ---------------------------------------------------------------- routing
 
     /**
-     * 日志只记录 host（隐私纪律：不落完整 URL/查询串）；
-     * 解析失败时截断原串到 64 字符内兜底。
+     * 日志只记录 host。没有 host 时只记录短的安全 scheme，不保留 URL 其余部分。
+     * data: / blob: 载荷不能进入日志。
      */
-    internal fun logHost(url: String?): String {
-        if (url.isNullOrBlank()) return "(无 URL)"
-        val host = runCatching { Uri.parse(url).host?.takeIf { it.isNotBlank() } }.getOrNull()
-        return host ?: url.take(64)
-    }
+    internal fun logHost(url: String?): String = ShellNavigation.logHost(url)
 
     /** @return true 表示本引擎已处理（不交给 WebView 加载） */
     internal fun routeUrl(url: String, isMainFrame: Boolean = true): Boolean {
@@ -425,7 +420,27 @@ class ShellWebView internal constructor(
                     true
                 } else false
             }
-            UrlRoute.ABOUT_BLANK, UrlRoute.DATA, UrlRoute.BLOB -> false
+            UrlRoute.ABOUT_BLANK -> false
+            // Main-frame data: and blob: documents are not loaded. Subresource
+            // data: and blob: (images, media) still return false so WebView can
+            // fetch them. Blob downloads go through ShellBlobTransfer, not here.
+            UrlRoute.DATA, UrlRoute.BLOB -> {
+                if (!ShellNavigation.consumesOpaqueMainFrame(decision.route, isMainFrame)) {
+                    false
+                } else {
+                    val label = logHost(url)
+                    AppLog.log("web", "${ShellNavigation.OPAQUE_MAIN_FRAME_DESCRIPTION} scheme=$label")
+                    notifyListeners {
+                        onPageError(
+                            label,
+                            ShellNavigation.ERROR_OPAQUE_MAIN_FRAME,
+                            ShellNavigation.OPAQUE_MAIN_FRAME_DESCRIPTION,
+                            false,
+                        )
+                    }
+                    true
+                }
+            }
             UrlRoute.JAVASCRIPT -> true
             UrlRoute.EXTERNAL_INTENT -> if (uri?.scheme.equals("intent", ignoreCase = true)) {
                 launchIntentUri(url)
@@ -460,10 +475,65 @@ class ShellWebView internal constructor(
             check(intent.component == null && intent.selector == null && intent.`package` == null) {
                 "Explicit target blocked"
             }
+            // URI grants and clip data are not part of a normal deep link.
+            // String extras stay. A nested Intent extra is refused the same
+            // way as an explicit component, and extras are not cleared wholesale.
+            intent.removeFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+            )
+            intent.clipData = null
+            check(!extrasContainNestedIntent(intent)) { "Nested intent blocked" }
             check(intent.resolveActivity(context.packageManager) != null) { "No handler" }
             dispatchActivity(intent)
         }.onFailure { notifyListeners { onExternalLaunchFailed(url) } }
         return true
+    }
+
+    /** True when an extra, or an extra nested inside a Bundle or collection, is an [Intent]. */
+    private fun extrasContainNestedIntent(intent: Intent): Boolean =
+        try {
+            containsNestedIntent(intent.extras)
+        } catch (_: Exception) {
+            true
+        }
+
+    private fun containsNestedIntent(
+        value: Any?,
+        depth: Int = 0,
+        seen: MutableSet<Int> = mutableSetOf(),
+    ): Boolean {
+        if (value == null) return false
+        if (value is Intent) return true
+        if (depth >= 8) {
+            return value is Bundle || value is Array<*> || value is Iterable<*> || value is Map<*, *>
+        }
+        return when (value) {
+            is Bundle -> {
+                val id = System.identityHashCode(value)
+                if (!seen.add(id)) return true
+                try {
+                    for (key in value.keySet()) {
+                        val child = try {
+                            @Suppress("DEPRECATION") // Typed getters cannot see an unknown nested Intent.
+                            value.get(key)
+                        } catch (_: Exception) {
+                            return true
+                        }
+                        if (containsNestedIntent(child, depth + 1, seen)) return true
+                    }
+                    false
+                } finally {
+                    seen.remove(id)
+                }
+            }
+            is Array<*> -> value.any { containsNestedIntent(it, depth + 1, seen) }
+            is Iterable<*> -> value.any { containsNestedIntent(it, depth + 1, seen) }
+            is Map<*, *> -> value.values.any { containsNestedIntent(it, depth + 1, seen) }
+            else -> false
+        }
     }
 
     /** WebViewPool deliberately stores application-context views; add the
@@ -833,38 +903,18 @@ class ShellWebView internal constructor(
 
     /**
      * 桌面模式加载完成后的运行时探针（我的 → 开发者选项 → 日志查看）。
-     * 验收桌面切换需要同时看到两条链路，缺一不可：
-     *  - 身份链：uad（navigator.userAgentData 的平台/移动标记；"none"=当前 WebView
-     *    不支持 UA-CH，身份只能靠 UA 字符串）
-     *  - 布局链：iw/cw 布局宽、vps（全部 viewport meta 内容）、ow（outerWidth）与
-     *    rc（根元素矩形宽，用于钉死媒体查询的真实评估宽度）、mq（768/980/1024/1280
-     *    断点与触控能力查询）、vv/vs（visualViewport 宽与缩放）
-     * 断点高于布局宽时不命中属正常；iw 已达布局宽而同值断点不命中，则说明该引擎
-     * 的媒体查询评估宽有削减（HwWebview 114 实测如此）。只记录数值与布尔，不记内容。
+     * 只记录固定数值：iw、cw、ow、rc、dpr、sw、vv、vs、mq 六个整数、boot，
+     * 以及 viewport meta 的条数 metas。不记录 meta 原文、userAgentData、
+     * 原始 JSON 或异常信息；探针失败是固定标记。
+     * 断点高于布局宽时不命中属正常。
      */
     internal fun desktopViewportProbe() {
-        webView.evaluateJavascript(
-            "(function(){try{" +
-                "var vps=[];var ms=document.getElementsByTagName('meta');" +
-                "for(var i=0;i<ms.length;i++){var m=ms[i];" +
-                "if((m.getAttribute('name')||'').toLowerCase()==='viewport')" +
-                "vps.push(m.getAttribute('content')||'');}" +
-                "var u=navigator.userAgentData?" +
-                "(navigator.userAgentData.platform+',mobile='+navigator.userAgentData.mobile):'none';" +
-                "function mq(q){try{return matchMedia(q).matches?1:0}catch(e){return -1}}" +
-                "return JSON.stringify({" +
-                "iw:window.innerWidth,cw:document.documentElement.clientWidth," +
-                "ow:window.outerWidth," +
-                "rc:Math.round(document.documentElement.getBoundingClientRect().width)," +
-                "dpr:window.devicePixelRatio,sw:window.screen.width," +
-                "vv:window.visualViewport?Math.round(window.visualViewport.width):0," +
-                "vs:window.visualViewport?+window.visualViewport.scale.toFixed(2):0," +
-                "vps:vps,uad:u," +
-                "mq:[mq('(min-width:768px)'),mq('(min-width:980px)'),mq('(min-width:1024px)')," +
-                "mq('(min-width:1280px)'),mq('(pointer:coarse)'),mq('(hover:hover)')]," +
-                "boot:window.__wsBoot?window.__wsBoot.v:0" +
-                "});}catch(e){return 'probe-fail:'+(e&&e.message);}})()",
-        ) { raw -> AppLog.log("webengine", "桌面探针 sessionId=$sessionId $raw") }
+        webView.evaluateJavascript(DESKTOP_VIEWPORT_PROBE_JS) { raw ->
+            AppLog.log(
+                "webengine",
+                "桌面探针 sessionId=$sessionId ${ShellNavigation.desktopProbeLog(raw)}",
+            )
+        }
     }
 
     /** Recreate a child WebView after the automatic recovery budget is spent.
@@ -952,3 +1002,28 @@ class ShellWebView internal constructor(
 
 
 }
+
+/**
+ * Numeric desktop probe. Order is the contract of [ShellNavigation.desktopProbeLog]:
+ * iw, cw, ow, rc, dpr, sw, vv, vs, viewport-meta count, six media-query ints, boot.
+ * Meta content and userAgentData are not read. Failures return a fixed token.
+ */
+private val DESKTOP_VIEWPORT_PROBE_JS =
+    "(function(){try{" +
+        "var metas=0;var ms=document.getElementsByTagName('meta');" +
+        "for(var i=0;i<ms.length;i++){" +
+        "if((ms[i].getAttribute('name')||'').toLowerCase()==='viewport')metas++;}" +
+        "function mq(q){try{return matchMedia(q).matches?1:0}catch(e){return -1}}" +
+        "function n(v){var x=+v;return isFinite(x)?x:0}" +
+        "return [" +
+        "n(window.innerWidth),n(document.documentElement.clientWidth)," +
+        "n(window.outerWidth)," +
+        "n(Math.round(document.documentElement.getBoundingClientRect().width))," +
+        "n(window.devicePixelRatio),n(window.screen.width)," +
+        "n(window.visualViewport?Math.round(window.visualViewport.width):0)," +
+        "n(window.visualViewport?+window.visualViewport.scale.toFixed(2):0)," +
+        "metas|0," +
+        "mq('(min-width:768px)'),mq('(min-width:980px)'),mq('(min-width:1024px)')," +
+        "mq('(min-width:1280px)'),mq('(pointer:coarse)'),mq('(hover:hover)')," +
+        "n(window.__wsBoot?window.__wsBoot.v:0)" +
+        "].join(',');}catch(e){return '${ShellNavigation.PROBE_FAIL}';}})()"
